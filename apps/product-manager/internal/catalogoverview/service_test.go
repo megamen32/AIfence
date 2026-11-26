@@ -62,3 +62,14 @@ func TestPaginationKeepsUnshownProducts(t *testing.T) {
 		t.Fatalf("wrong second page: %+v", got)
 	}
 }
+
+func TestPanelPreservesEveryVendor(t *testing.T) {
+	doc := ImportInput{TotalProducts: 1326, Vendors: make([]Vendor, 1326)}
+	for i := range doc.Vendors {
+		doc.Vendors[i].ProductCount = 1
+	}
+	got := page(doc, GetInput{Limit: len(doc.Vendors)})
+	if len(got.Vendors) != 1326 || got.OutsidePageProducts != 0 || got.TotalProducts != 1326 {
+		t.Fatalf("panel omitted vendors: %+v", got)
+	}
+}

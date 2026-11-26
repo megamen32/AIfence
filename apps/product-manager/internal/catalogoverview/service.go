@@ -128,28 +128,45 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Receipt, error) {
 	return Receipt{AsOf: in.AsOf, VendorCount: len(in.Vendors), TotalProducts: in.TotalProducts}, nil
 }
 func (s *Service) Get(ctx context.Context, in GetInput) (Overview, error) {
-	id, err := owner(ctx)
-	if err != nil {
-		return Overview{}, err
-	}
 	if in.Offset < 0 || in.Limit < 0 || in.Limit > 100 {
 		return Overview{}, errors.New("invalid pagination")
 	}
 	if in.Limit == 0 {
 		in.Limit = 30
 	}
-	data, err := db.New(s.database).GetCatalogOverview(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Overview{}, errors.New("catalog overview unavailable")
-	}
+	doc, err := s.read(ctx)
 	if err != nil {
 		return Overview{}, err
 	}
-	var doc ImportInput
-	if err = json.Unmarshal(data, &doc); err != nil {
+	return page(doc, in), nil
+}
+
+// Panel returns all groups to the server-side view, without exposing an unbounded tool.
+func (s *Service) Panel(ctx context.Context, _ GetInput) (Overview, error) {
+	doc, err := s.read(ctx)
+	if err != nil {
 		return Overview{}, err
 	}
-	return page(doc, in), nil
+	return page(doc, GetInput{Limit: len(doc.Vendors)}), nil
+}
+
+func (s *Service) read(ctx context.Context) (ImportInput, error) {
+	id, err := owner(ctx)
+	if err != nil {
+		return ImportInput{}, err
+	}
+	data, err := db.New(s.database).GetCatalogOverview(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ImportInput{}, errors.New("catalog overview unavailable")
+	}
+	if err != nil {
+		return ImportInput{}, err
+	}
+	var doc ImportInput
+	if err = json.Unmarshal(data, &doc); err != nil {
+		return ImportInput{}, err
+	}
+	return doc, nil
 }
 
 func page(doc ImportInput, in GetInput) Overview {
