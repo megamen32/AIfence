@@ -19,7 +19,7 @@ Use a new output directory for each run. The generator refuses to replace an
 existing dataset. Visible product names and SKU fields identify verified Market
 Watch offers. Seven independently configured profiles cover Kaspersky Small Office
 Security (`KL4141RCEFR`), Astra Linux Special Edition (`OS2304ELB81BOX000WS01-SO36`),
-Microsoft 365 Family (`6GQ-00084`), VMware vSphere Edition Starter Kit
+Microsoft 365 для семьи (Family) (`6GQ-00084`), VMware vSphere Edition Starter Kit
 (`PRGN-0121-105`), Kaspersky Endpoint Security (`KL4210RAKDE`), Dr.Web Desktop
 Security Suite (`LBW-BC-12M-100-A3`) and МойОфис Частное облако
 (`X2-CLD-NB-3NUNL-A`). Every SKU is accompanied by its exact offer URL.
@@ -35,7 +35,10 @@ Each opaque `set-<hash>/input` contains:
 - `manifest.json` — no scenario name, answer path or cause hint.
 
 `answers/<scenario>.json` and `truth.json` are outside `input/` and must not be
-mounted into the agent's catalog. Generation itself is deterministic and offline.
+mounted into the agent's catalog. The public observation and dataset IDs are
+derived from the published content. The input has no seed, seed hash or scenario
+verdict. Missing measurements, event availability dates and verified SKU aliases
+remain available as source facts. Generation is deterministic and offline.
 For an explicit live-counter smoke test, build a token-free recent plan from the
 latest evidence week:
 

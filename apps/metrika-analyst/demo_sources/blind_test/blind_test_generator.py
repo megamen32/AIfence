@@ -36,7 +36,7 @@ PRODUCTS = {
         "visits": 920, "view_rate": 0.7, "cart_rate": 0.2, "checkout_rate": 0.58, "order_rate": 0.76, "aov": 13200,
     },
     "microsoft_365_family": {
-        "label": "Microsoft 365 Family", "sku": "6GQ-00084", "catalog_seller": "Softline",
+        "label": "Microsoft 365 для семьи (Family)", "sku": "6GQ-00084", "catalog_seller": "Softline",
         "catalog_url": "https://store.softline.ru/microsoft/6gq-00084-195981/",
         "visits": 1280, "view_rate": 0.73, "cart_rate": 0.22, "checkout_rate": 0.6, "order_rate": 0.78, "aov": 17100,
     },
@@ -199,16 +199,17 @@ def evidence_rows(truth: list[dict], seed: int, scenario: str, choice: dict) -> 
         for metric in METRICS:
             period_from = row["week_start"]
             period_to = (dt.date.fromisoformat(period_from) + dt.timedelta(days=6)).isoformat()
-            source = {"source_id": "blind-metrika", "locator": f"week={row['week']};family={row['family']};device={row['device']}", "revision": f"seed:{seed}"}
+            source = {"source_id": "blind-metrika",
+                      "locator": f"week={row['week']};family={row['family']};device={row['device']};metric={metric}",
+                      "revision": "synthetic-v2"}
             status = "observed"; caveats = ["Synthetic measurement with event undercount; aggregate only."]
             value: float | None = float(row[metric]) * loss_factor(rng, metric)
             details = {"device": row["device"], "synthetic": True, "origin": "synthetic_fixture",
                        **catalog_reference(row["family"])}
-            for key in ("bot_share_estimate", "traffic_quality", "traffic_source", "canonical_product_id",
-                        "observed_product_key", "catalog_migration_week", "experiment_id",
-                        "allocation_status", "comparable_evidence", "payment_confirmation_lag_hours",
-                        "event_available_on", "traffic_campaign", "traffic_lift_pct", "checkout_regression_pct"):
-                if key in row: details[key] = row[key]
+            for key in ("bot_share_estimate", "traffic_quality", "traffic_source",
+                        "experiment_id", "allocation_status"):
+                if key in row:
+                    details[key] = row[key]
             product_observed = row["family"]
             if scenario == "S7" and row["family"] == choice["family"] and row["week"] >= choice["week"]:
                 product_observed = row["observed_product_key"]
@@ -216,30 +217,27 @@ def evidence_rows(truth: list[dict], seed: int, scenario: str, choice: dict) -> 
             if scenario == "S1" and row["family"] == choice["family"] and row["week"] >= choice["week"] and metric == "cart_additions":
                 value = None; status = "missing"; caveats = ["Event collection is incomplete for this period; absence is not zero."]
             if scenario == "S12" and row["family"] == choice["family"] and row["week"] == choice["week"] and metric in ("orders", "revenue"):
-                value = None; status = "missing"; caveats = ["Experiment allocation is unavailable; comparable evidence is insufficient for a causal claim."]
+                value = None; status = "missing"; caveats = ["No comparable measurement for this window."]
             if scenario == "S13" and row["family"] == choice["family"] and row["week"] in (choice["week"], choice["week"] + 1) and metric in ("orders", "revenue"):
-                value = None; status = "missing"; caveats = ["Purchase event is delayed in the collection queue; absence is not zero."]
+                value = None; status = "missing"; caveats = ["Value unavailable in the weekly extract."]
                 details["available_on"] = week_start(row["week"] + 2).isoformat()
                 details["availability_status"] = "late"
             if scenario == "S14" and row["family"] == choice["family"] and row["week"] >= choice["week"] and metric == "cart_additions":
                 # Keep total observed loss in the required 10–25% QA band while
                 # retaining a separate masked tracking component in details.
                 value = float(row[metric]) * rng.uniform(.915, .988) * .82
-                caveats.append("Additional cart-event undercount overlaps a real checkout regression.")
-                details["additional_tracking_loss_pct"] = 18
             if value is not None:
                 factor = value / max(float(row[metric]), 1.0)
                 if metric in ("visits", "card_views", "cart_additions", "checkouts"): losses.append(1 - factor)
                 value = round_value(metric, value)
-            observations.append({"id": "obs-" + stable_id(seed, scenario, row["week"], row["family"], row["device"], metric),
-                    "kind": "metric", "product_key": product_key(product_observed), "metric_key": metric,
-                    "value": value, "unit": "RUB" if metric == "revenue" else "count",
-                    "period": {"from": period_from, "to": period_to}, "segment": row["device"],
-                    "source_ref": source, "status": status, "caveats": caveats, "details": details})
+            observation = {"kind": "metric", "product_key": product_key(product_observed), "metric_key": metric,
+                           "value": value, "unit": "RUB" if metric == "revenue" else "count",
+                           "period": {"from": period_from, "to": period_to}, "segment": row["device"],
+                           "source_ref": source, "status": status, "caveats": caveats, "details": details}
+            observation["id"] = "obs-" + stable_id(observation)
+            observations.append(observation)
     partial = scenario in ("S1", "S12", "S13")
     warnings = ["Blind synthetic dataset; aggregate week × family × device.", "Metrika behaviour events include 10–25% measurement loss."]
-    if scenario == "S12": warnings.append("Experiment allocation is unavailable for part of the period.")
-    if scenario == "S13": warnings.append("Purchase events may arrive after the business week; inspect event_available_on before alerting.")
     return {"schema_version": "aifence.v1", "source": "metrika",
             "as_of": (week_start(len(set(r['week'] for r in truth)) - 1) + dt.timedelta(days=6)).isoformat() + "T23:59:59Z",
             "status": "partial" if partial else "ok", "observations": observations, "warnings": warnings}, losses
@@ -263,20 +261,17 @@ def releases_and_backlog(seed: int, scenario: str, choice: dict, weeks: int) -> 
         target["competitor_price_rub"] = round(PRODUCTS[choice["family"]]["aov"] * .94)
     if scenario == "S6":
         target["description"] = "Обновление каталога и правила обхода роботов"
-        target["context_flag"] = "traffic_quality_changed"
     elif scenario == "S7":
         target["description"] = "Миграция названий и ключей каталога"
-        target["context_flag"] = "taxonomy_migration"
         target["alias_from"] = choice["family"]; target["alias_to"] = PRODUCTS[choice["family"]]["sku"].lower()
     elif scenario == "S12":
         target["description"] = "Запуск checkout-эксперимента"
-        target["context_flag"] = "experiment_allocation_unknown"; target["experiment_id"] = "checkout-v3"
+        target["experiment_id"] = "checkout-v3"
     elif scenario == "S13":
-        target["description"] = "Техническое обновление очереди подтверждений платежа"
-        target["context_flag"] = "event_delivery_lag"; target["payment_confirmation_lag_hours"] = 52
+        target["description"] = "Техническое обслуживание платёжной интеграции"
     elif scenario == "S14":
-        target["description"] = "Обновление checkout на фоне enterprise-кампании"
-        target["context_flag"] = "masked_multi_cause"; target["traffic_campaign"] = "Q2-enterprise"
+        target["description"] = "Запуск кампании в каталоге"
+        target["traffic_campaign"] = "Q2-enterprise"
     tasks = []
     for i in range(max(weeks - 5, 22)):
         family = rng.choice(list(PRODUCTS))
@@ -352,7 +347,7 @@ def write_dataset(output: Path, seed: int, scenario: str, weeks: int) -> dict:
     truth, choice = truth_rows(seed, scenario, weeks)
     evidence, losses = evidence_rows(truth, seed, scenario, choice)
     releases, backlog = releases_and_backlog(seed, scenario, choice, weeks)
-    dataset_id = "set-" + stable_id("market-watch-catalog-v1", seed, scenario)
+    dataset_id = "set-" + stable_id(evidence, releases, backlog)
     root = output / dataset_id
     root.mkdir(parents=True)
     input_dir = root / "input"; answer_dir = root / "answers"
@@ -390,7 +385,7 @@ def write_dataset(output: Path, seed: int, scenario: str, weeks: int) -> dict:
         sales.append({"week_start": r["week_start"], "product_family": PRODUCTS[r["family"]]["label"], "product_key": r["family"], **catalog_reference(r["family"]), "synthetic": True, "price_origin": "synthetic", "orders_index": round(r["orders"] / max(base_orders[r["family"]], 1) * 100, 1), "orders_index_4w": round(statistics.mean(recent) / max(base_orders[r["family"]], 1) * 100, 1), "base_period": f"{START.isoformat()} + 4 weeks = 100", "channel": "Самостоятельные заказы клиентов", "comment": "", "device": r["device"], "visits": r["visits"], "card_views": r["card_views"], "cart_additions": r["cart_additions"], "checkouts": r["checkouts"], "orders": r["orders"], "revenue_rub": r["revenue"], "our_price_rub": r["unit_price"], "competitor_price_rub": r["competitor_price"]})
     write_xlsx(input_dir / "Продажи.xlsx", {"Продажи": sales, "Релизы": releases, "Бэклог_задачи": backlog})
     # No scenario labels or answer paths in the agent-visible manifest.
-    (input_dir / "manifest.json").write_text(json.dumps({"schema_version": "blind-input.v1", "synthetic": True, "dataset_id": dataset_id, "seed_hash": stable_id(seed), "weeks": weeks, "families": list(PRODUCTS), "catalog": {family: catalog_reference(family) for family in PRODUCTS}, "devices": list(DEVICES), "files": ["metrika.json", "Продажи.xlsx", "releases.json", "backlog.json"]}, ensure_ascii=False, indent=2) + "\n")
+    (input_dir / "manifest.json").write_text(json.dumps({"schema_version": "blind-input.v1", "synthetic": True, "dataset_id": dataset_id, "weeks": weeks, "families": list(PRODUCTS), "catalog": {family: catalog_reference(family) for family in PRODUCTS}, "devices": list(DEVICES), "files": ["metrika.json", "Продажи.xlsx", "releases.json", "backlog.json"]}, ensure_ascii=False, indent=2) + "\n")
     return {"dataset_id": dataset_id, "input": str(input_dir), "answers": str(answer_dir), "truth": str(root / "truth.json"), "scenario": scenario, "loss_min": min(losses) if losses else None, "loss_max": max(losses) if losses else None}
 
 

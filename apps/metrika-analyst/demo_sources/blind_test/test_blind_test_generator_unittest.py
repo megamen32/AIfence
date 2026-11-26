@@ -1,5 +1,6 @@
 import json
 import re
+import statistics
 import tempfile
 import unittest
 import zipfile
@@ -115,7 +116,37 @@ class BlindGeneratorTests(unittest.TestCase):
                 elif scenario == "S13":
                     self.assertTrue(any(o["status"] == "missing" and o["details"].get("availability_status") == "late" and o["details"].get("available_on") for o in evidence["observations"]))
                 else:
-                    self.assertTrue(any(o["details"].get("additional_tracking_loss_pct") == 18 for o in evidence["observations"]))
+                    family = truth["choice"]["family"]
+                    start = g.week_start(truth["choice"]["week"]).isoformat()
+                    actual = {(r["week_start"], r["device"]): r["cart_additions"]
+                              for r in truth["truth"] if r["family"] == family}
+                    retention = {False: [], True: []}
+                    for o in evidence["observations"]:
+                        if o["product_key"] == family and o["metric_key"] == "cart_additions":
+                            date = o["period"]["from"]
+                            retention[date >= start].append(o["value"] / actual[date, o["segment"]])
+                    self.assertLess(statistics.mean(retention[True]), statistics.mean(retention[False]))
+
+    def test_agent_inputs_exclude_seeds_and_scenario_verdicts(self):
+        forbidden = (
+            "seed:", "seed_hash", "context_flag", "checkout_regression_pct",
+            "additional_tracking_loss_pct", "accepted decision", "secondary_causes",
+            "real checkout regression",
+        )
+        seed = 20261127
+        with tempfile.TemporaryDirectory() as tmp:
+            for scenario in ("S6", "S7", "S12", "S13", "S14"):
+                with self.subTest(scenario=scenario):
+                    result = g.write_dataset(Path(tmp), seed, scenario, 28)
+                    folder = Path(result["input"])
+                    docs = [path.read_text() for path in folder.glob("*.json")]
+                    with zipfile.ZipFile(folder / "Продажи.xlsx") as workbook:
+                        docs.extend(workbook.read(name).decode() for name in workbook.namelist()
+                                    if name.startswith("xl/worksheets/"))
+                    for text in docs:
+                        for token in (*forbidden, str(seed)):
+                            self.assertNotIn(token, text)
+
 
 
 if __name__ == "__main__":
