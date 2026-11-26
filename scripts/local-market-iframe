@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Render the local Market Watch Caddy mount and print its Compose override."""
+
+import argparse
+import os
+from pathlib import Path
+import tempfile
+
+
+def replace_pinned(text, old, new, count):
+    if text.count(old) != count:
+        raise SystemExit("The pinned local Caddy configuration changed near " + old)
+    return text.replace(old, new)
+
+
+def write_changed(path, contents):
+    if path.exists() and path.read_bytes() == contents:
+        return
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as tmp:
+        tmp.write(contents)
+        name = Path(tmp.name)
+    try:
+        name.chmod(0o644)
+        name.replace(path)
+    finally:
+        name.unlink(missing_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--standalone", action="store_true",
+                        help="include the services key for a separate Compose file")
+    args = parser.parse_args()
+
+    root = Path(__file__).resolve().parent.parent
+    runtime = root / ".runtime"
+    source = runtime / "airlock"
+    config = {}
+    for line in (source / ".env").read_text().splitlines():
+        key, _, value = line.partition("=")
+        if key in {"TLS_MODE", "DOMAIN", "HTTP_PORT"}:
+            config[key] = value
+    if config.get("TLS_MODE") != "local" or config.get("DOMAIN") != "localhost":
+        raise SystemExit("The Market Watch iframe overlay requires local localhost mode")
+    port = os.environ.get("HTTP_PORT", config.get("HTTP_PORT", "42080"))
+    if not port.isascii() or not port.isdecimal() or not 1 <= int(port) <= 65535:
+        raise SystemExit("Invalid local HTTP_PORT")
+
+    routes = (source / "caddy/routes.caddy").read_text()
+    children = "{args[0]}://*.{$DOMAIN}"
+    dashboard = "{args[0]}://{$DOMAIN}"
+    routes = replace_pinned(routes, f"frame-src 'self' {children};",
+                            f"frame-src 'self' {children} {children}:{port};", 2)
+    routes = replace_pinned(routes, f"frame-ancestors 'self' {dashboard} ",
+                            f"frame-ancestors 'self' {dashboard} {dashboard}:{port} ", 1)
+
+    site = (source / "caddy/Caddyfile.local").read_text()
+    wildcard = "http://*.{$DOMAIN} {\n"
+    site = replace_pinned(site, wildcard, wildcard + "\timport market-iframe.caddy\n", 1)
+    snippet = (root / "platform/market-iframe.caddy").read_bytes()
+
+    target = runtime / "caddy-market-iframe"
+    target.mkdir(mode=0o755, exist_ok=True)
+    write_changed(target / "routes.caddy", routes.encode())
+    write_changed(target / "market-iframe.caddy", snippet)
+    write_changed(target / "Caddyfile.local", site.encode())
+
+    # Compose resolves bind sources relative to the first file, airlock/docker-compose.yml.
+    if args.standalone:
+        print("services:")
+    print("  caddy-local:\n    volumes:\n      - ../caddy-market-iframe:/etc/caddy:ro")
+
+
+if __name__ == "__main__":
+    main()

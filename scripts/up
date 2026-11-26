@@ -70,6 +70,10 @@ if [[ "$(uname -m)" == arm64 || "$(uname -m)" == aarch64 ]]; then
     platform: linux/arm64
 YAML_NATIVE
 fi
+# Render the loopback Market Watch gateway without changing upstream files.
+if grep -qx 'DOMAIN=localhost' .env; then
+  "$ROOT/scripts/local-market-iframe" >> "$RUNTIME/compose.local.yml"
+fi
 # Personal overlays are optional local artifacts, excluded from Git.
 # Verify their exact local image IDs and provenance before selecting them.
 if [[ -s "$RUNTIME/personal-overlay/manifest.json" ]]; then
