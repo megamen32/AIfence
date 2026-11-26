@@ -22,7 +22,7 @@ One native Airlock saved async JavaScript body, not a new app or service. For a 
 }
 ```
 
-The normalized input files must use the repository's `aifence.v1` evidence contract (including research, sales and unit economics when available). Select only authorized sources. Ordinary document IDs are references, not automatically analyzed facts. An optional `previous_snapshot_id` links the preceding investigation for the same product. The script saves `/home/Documents/AIfence-evidence-<run_id>.json`, reads it back and returns its stable file ID/contentId. Repeating the identical run returns the same file without fetching again; intentional new observations require a new run ID. Missing evidence stays unavailable, not zero. The script does not modify prices, send tasks or invent profit estimates.
+The normalized input files must use the repository's `aifence.v1` evidence contract (including research, sales and unit economics when available). Select only authorized sources. Set `source_policy` to `local_project_only` when collecting closed project material. The saved document inherits that restriction from the request or a marked evidence batch, and Product Manager enforces it on import and read. Ordinary document IDs are references, not automatically analyzed facts. An optional `previous_snapshot_id` links the preceding investigation for the same product. The script saves `/home/Documents/AIfence-evidence-<run_id>.json`, reads it back and returns its stable file ID/contentId. Repeating the identical run returns the same file without fetching again; intentional new observations require a new run ID. Missing evidence stays unavailable, not zero. The script does not modify prices, send tasks or invent profit estimates.
 
 ## Product Manager hand-off
 

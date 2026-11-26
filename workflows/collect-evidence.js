@@ -18,8 +18,10 @@ if (!isObject(args)) throw Error("Expected args object");
 const run_id = requireString(args.run_id,"run_id");
 if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(run_id)) throw Error("Invalid run_id");
 const product_key = requireString(args.product_key,"product_key");
+if (args.source_policy !== undefined && args.source_policy !== "local_project_only")
+  throw Error("Invalid evidence source policy");
 const path = home + "/AIfence-evidence-" + run_id + ".json";
-const request = {run_id,product_key,market_query:args.market_query,metrics_query:args.metrics_query,
+const request = {run_id,product_key,...(args.source_policy ? {source_policy:args.source_policy} : {}),market_query:args.market_query,metrics_query:args.metrics_query,
   evidence_file_ids:ids(args.evidence_file_ids,12),document_file_ids:ids(args.document_file_ids,20),
   previous_snapshot_id:args.previous_snapshot_id == null ? null : requireString(args.previous_snapshot_id,"previous_snapshot_id")};
 for (const q of [request.market_query,request.metrics_query]) {
@@ -41,6 +43,7 @@ async function existing() {
       const r=await platform.files({operation:"read",fileId:ref(hit.file).id});
       const doc=JSON.parse(r.text);
       if (doc.schema_version!==version || !same(doc.request,request)) throw Error("Run ID belongs to a different request");
+      if (request.source_policy && doc.source_policy !== request.source_policy) throw Error("Snapshot source policy mismatch");
       return {file:ref(r.file),doc};
     }
     if (!list.nextCursor) return null;
@@ -65,6 +68,7 @@ function batch(b,expected) {
     (expected&&b.source!==expected)||!["ok","partial","unavailable"].includes(b.status)||
     typeof b.as_of!=="string"||!Array.isArray(b.observations)||b.observations.length>200||!Array.isArray(b.warnings))
     throw Error("Invalid evidence batch");
+  if (b.source_policy && b.source_policy !== "local_project_only") throw Error("Unknown evidence source policy");
   const seen=new Set();
   for(const o of b.observations) {
     if(!isObject(o)||typeof o.id!=="string"||!o.id||seen.has(o.id)||
@@ -116,7 +120,8 @@ for(const source of ["research","economics"]) {
     warnings.push(source+": no observed evidence; do not infer facts or measured profit");
 }
 const status=sources.every(s=>s.status==="ok"&&s.batch?.observations?.some(o=>o.status==="observed"))&&!warnings.length?"complete":"partial";
-const doc={schema_version:version,run_id,product_key,collected_at:new Date().toISOString(),request,status,sources,document_refs,previous_snapshot,warnings};
+const localOnly = request.source_policy === "local_project_only" || sources.some(s=>s.batch?.source_policy === "local_project_only");
+const doc={schema_version:version,...(localOnly ? {source_policy:"local_project_only"} : {}),run_id,product_key,collected_at:new Date().toISOString(),request,status,sources,document_refs,previous_snapshot,warnings};
 const data=JSON.stringify(doc,null,2);
 if(data.length>240000) throw Error("Snapshot too large; narrow the queries or evidence files");
 let written;
