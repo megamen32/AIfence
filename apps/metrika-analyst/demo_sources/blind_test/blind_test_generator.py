@@ -15,6 +15,10 @@ import json
 import math
 import random
 import statistics
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -30,6 +34,8 @@ DEVICES = {"desktop": .76, "mobile": .24}
 METRICS = ("visits", "card_views", "cart_additions", "checkouts", "orders", "revenue")
 SCENARIOS = ("S0", "S1", "S2", "S3", "S4")
 START = dt.date(2026, 1, 5)
+MP_ENDPOINT = "https://mc.yandex.ru/collect"
+DEFAULT_COUNTER = "114698578"
 
 
 def stable_id(*values: object, size: int = 16) -> str:
@@ -195,7 +201,7 @@ def write_xlsx(path: Path, sheets: dict[str, list[dict]]) -> None:
     ET.register_namespace("", ns); ET.register_namespace("r", rel_ns)
     files: dict[str, bytes] = {}
     names = list(sheets)
-    workbook = ET.Element(f"{{{ns}}}workbook", {f"{{{rel_ns}}}xmlns:r": rel_ns})
+    workbook = ET.Element(f"{{{ns}}}workbook")
     shs = ET.SubElement(workbook, f"{{{ns}}}sheets")
     for i, name in enumerate(names, 1):
         ET.SubElement(shs, f"{{{ns}}}sheet", {"name": name, "sheetId": str(i), f"{{{rel_ns}}}id": f"rId{i}"})
@@ -278,16 +284,147 @@ def score(root: Path, cards: Path) -> list[dict]:
     return out
 
 
+def build_mp_plan(metrika_path: Path, output_path: Path, seed: int = 0,
+                  counter: str = DEFAULT_COUNTER, max_visits: int = 900) -> dict:
+    """Build a token-free Measurement Protocol plan from the latest evidence week.
+
+    Measurement Protocol accepts recent hits only.  The generated blind weeks are
+    historical, so the plan deliberately re-times a proportional sample into the
+    last eight hours; it never pretends to backfill the weekly timestamps.
+    """
+    evidence = json.loads(metrika_path.read_text(encoding="utf-8"))
+    observations = evidence.get("observations", [])
+    if not observations:
+        raise ValueError("metrika evidence has no observations")
+    latest = max(str(o.get("period", {}).get("from", "")) for o in observations)
+    grouped: dict[tuple[str, str], dict[str, float]] = {}
+    for obs in observations:
+        period = obs.get("period", {})
+        if period.get("from") != latest or obs.get("status") == "missing":
+            continue
+        key = (str(obs.get("product_key", "unknown")), str(obs.get("segment", "all")))
+        value = obs.get("value")
+        if value is None:
+            continue
+        grouped.setdefault(key, {})[str(obs.get("metric_key"))] = float(value)
+    total = sum(max(0.0, v.get("visits", 0.0)) for v in grouped.values())
+    if total <= 0:
+        raise ValueError("latest evidence week has no visits")
+    scale = min(1.0, float(max_visits) / total)
+    rng = random.Random(f"mp:{seed}:{latest}")
+    now = int(time.time())
+    hits: list[str] = []
+    visit_no = 0
+    event_counts = {"pageview": 0, "card_view": 0, "cart_add": 0, "checkout": 0, "purchase": 0}
+    for (family, device), metrics in sorted(grouped.items()):
+        visits = max(0, int(round(metrics.get("visits", 0.0) * scale)))
+        if visits == 0:
+            continue
+        card_rate = min(1.0, metrics.get("card_views", 0.0) / max(metrics.get("visits", 1.0), 1.0))
+        cart_rate = min(1.0, metrics.get("cart_additions", 0.0) / max(metrics.get("card_views", 1.0), 1.0)) if metrics.get("cart_additions") is not None else 0.0
+        checkout_rate = min(1.0, metrics.get("checkouts", 0.0) / max(metrics.get("cart_additions", 1.0), 1.0)) if metrics.get("cart_additions") is not None else 0.0
+        order_rate = min(1.0, metrics.get("orders", 0.0) / max(metrics.get("checkouts", 1.0), 1.0))
+        avg_revenue = metrics.get("revenue", 0.0) / max(metrics.get("orders", 1.0), 1.0)
+        for i in range(visits):
+            visit_no += 1
+            ts = now - 8 * 3600 + int((visit_no / max(total * scale, 1.0)) * (8 * 3600 - 120))
+            cid = str(10**17 + int(hashlib.sha256(f"blind:{seed}:{latest}:{family}:{device}:{i}".encode()).hexdigest()[:15], 16) % (9*10**17))
+            path = "/catalog/" + urllib.parse.quote(family, safe="")
+            common = {"cid": cid, "dl": "https://aifence-demo.example.com" + path,
+                      "dr": "https://www.example.com/", "dt": "AIfence blind synthetic",
+                      "et": ts, "params": json.dumps({"aifence_blind": "yes", "family": family,
+                      "device": device, "week": latest}, ensure_ascii=False, separators=(",", ":"))}
+            hits.append(urllib.parse.urlencode({"t": "pageview", **common}))
+            event_counts["pageview"] += 1
+            if rng.random() < card_rate:
+                hits.append(urllib.parse.urlencode({"t": "event", "ea": "card_view", **common, "et": ts + 2}))
+                event_counts["card_view"] += 1
+            if rng.random() < cart_rate:
+                hits.append(urllib.parse.urlencode({"t": "event", "ea": "cart_add", **common, "et": ts + 5}))
+                event_counts["cart_add"] += 1
+                if rng.random() < checkout_rate:
+                    hits.append(urllib.parse.urlencode({"t": "event", "ea": "checkout", **common, "et": ts + 8}))
+                    event_counts["checkout"] += 1
+                    if rng.random() < order_rate:
+                        hits.append(urllib.parse.urlencode({"t": "event", "ea": "purchase", "tr": round(avg_revenue, 2), "cu": "RUB", **common, "et": ts + 12}))
+                        event_counts["purchase"] += 1
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plan = {"schema_version": "aifence.metrika-mp-plan.v1", "counter": str(counter),
+            "latest_evidence_week": latest, "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "historical_warning": "Re-timed proportional sample; Measurement Protocol does not backfill these historical weeks.",
+            "hit_count": len(hits), "event_counts": event_counts, "hits": hits}
+    output_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return plan
+
+
+def send_mp_plan(plan_path: Path, token: str, counter: str | None = None) -> list[tuple[int, str]]:
+    """Send an explicit plan; token is never written to disk or output."""
+    if not token:
+        raise ValueError("Measurement Protocol token is required")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    target_counter = str(counter or plan.get("counter") or DEFAULT_COUNTER)
+    hits = list(plan.get("hits") or [])
+    results: list[tuple[int, str]] = []
+    batch: list[str] = []
+    size = 0
+    for line in hits:
+        n = len(line.encode("utf-8")) + 1
+        if batch and size + n > 240_000:
+            results.append(_send_mp_batch(batch, target_counter, token))
+            batch, size = [], 0
+        batch.append(line); size += n
+    if batch:
+        results.append(_send_mp_batch(batch, target_counter, token))
+    return results
+
+
+def _send_mp_batch(lines: list[str], counter: str, token: str) -> tuple[int, str]:
+    body = "\n".join(lines).encode("utf-8")
+    request = urllib.request.Request(
+        MP_ENDPOINT + "?" + urllib.parse.urlencode({"tid": counter, "ms": token}),
+        data=body, headers={"Content-Type": "text/plain; charset=UTF-8"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            text = response.read(500).decode("utf-8", "replace")
+            return response.status, text
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(500).decode("utf-8", "replace")
+    except (OSError, urllib.error.URLError) as exc:
+        return 0, f"delivery uncertain: {type(exc).__name__}"
+
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("generate"); g.add_argument("--seed", type=int, required=True); g.add_argument("--scenario", choices=[*SCENARIOS, "all"], default="all"); g.add_argument("--weeks", type=int, default=28); g.add_argument("--output", type=Path, required=True)
     s = sub.add_parser("score"); s.add_argument("--root", type=Path, required=True); s.add_argument("--cards", type=Path, required=True); s.add_argument("--output", type=Path)
+    m = sub.add_parser("mp-plan", help="make a token-free recent Measurement Protocol sample from metrika.json")
+    m.add_argument("--input", type=Path, required=True); m.add_argument("--output", type=Path, required=True)
+    m.add_argument("--seed", type=int, default=0); m.add_argument("--counter", default=DEFAULT_COUNTER); m.add_argument("--max-visits", type=int, default=900)
+    ms = sub.add_parser("mp-send", help="send an already reviewed MP plan; token is read from an environment variable")
+    ms.add_argument("--plan", type=Path, required=True); ms.add_argument("--counter", default=None); ms.add_argument("--token-env", default="YANDEX_METRIKA_TOKEN")
+    ms.add_argument("--yes", action="store_true", help="skip the counter confirmation prompt")
     a = p.parse_args()
     if a.cmd == "generate":
         scenarios = SCENARIOS if a.scenario == "all" else (a.scenario,)
         results = [write_dataset(a.output, a.seed, x, a.weeks) for x in scenarios]
         print(json.dumps(results, ensure_ascii=False, indent=2)); return 0
+    if a.cmd == "mp-plan":
+        plan = build_mp_plan(a.input, a.output, a.seed, a.counter, a.max_visits)
+        print(json.dumps({k: plan[k] for k in ("counter", "latest_evidence_week", "hit_count", "event_counts", "historical_warning")}, ensure_ascii=False, indent=2))
+        return 0
+    if a.cmd == "mp-send":
+        counter = a.counter or json.loads(a.plan.read_text(encoding="utf-8")).get("counter", DEFAULT_COUNTER)
+        if not a.yes and input(f"Type {counter} to confirm the isolated test counter: ").strip() != str(counter):
+            print("Cancelled."); return 1
+        import os
+        token = os.environ.get(a.token_env, "").strip()
+        if not token:
+            raise SystemExit(f"Set {a.token_env} in the environment; it is never stored by this command.")
+        results = send_mp_plan(a.plan, token, counter)
+        print(json.dumps({"counter": str(counter), "batches": [{"status": status, "body": body} for status, body in results]}, ensure_ascii=False, indent=2))
+        return 0 if results and all(status == 200 for status, _ in results) else 2
     rows = score(a.root, a.cards)
     if a.output: a.output.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(rows, ensure_ascii=False, indent=2)); return 0

@@ -23,10 +23,28 @@ Each opaque `set-<hash>/input` contains only generic names:
 - `manifest.json` — no scenario name, answer path or cause hint.
 
 `answers/<scenario>.json` and `truth.json` are outside `input/` and must not be
-mounted into the agent's catalog. The generator never sends to Yandex. Use the
-existing Measurement Protocol helper only after an explicit review of the
-generated `metrika.json`; the blind test itself should stay reproducible and
-offline.
+mounted into the agent's catalog. Generation itself is deterministic and offline.
+For an explicit live-counter smoke test, build a token-free recent plan from the
+latest evidence week:
+
+```sh
+python3 blind_test_generator.py mp-plan \
+  --input /Users/user/AIfence/data/blind-runs/set-<hash>/input/metrika.json \
+  --output /Users/user/AIfence/data/blind-runs/mp-plan.json \
+  --counter 114698578 --seed 20261126 --max-visits 900
+```
+
+Measurement Protocol does not backfill old weekly timestamps, so the plan
+re-times a proportional sample into the last eight hours and labels that
+limitation. After reviewing the plan, send it only with a token held in the
+environment; the command never writes the token:
+
+```sh
+export YANDEX_METRIKA_TOKEN='…'
+python3 blind_test_generator.py mp-send \
+  --plan /Users/user/AIfence/data/blind-runs/mp-plan.json \
+  --counter 114698578 --token-env YANDEX_METRIKA_TOKEN
+```
 
 Scenarios are selected by the seed and contain S0 clean data, S1 missing cart
 events, S2 mobile-only regression, S3 price-versus-competitor regression, and
