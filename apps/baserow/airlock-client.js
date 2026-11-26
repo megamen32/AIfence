@@ -32,3 +32,67 @@
     return fetch.call(this, input, init);
   };
 })();
+
+(() => {
+  if (window.parent === window) return;
+  const narrow = matchMedia("(max-width: 800px)");
+  const onTable = () => /^\/database\/\d+\/table\/\d+(?:\/|$)/.test(location.pathname);
+  const inPane = () => narrow.matches && onTable() && document.documentElement.dataset.airlockEmbedded === "true";
+  const stockToggle = ".sidebar__foot-link .baserow-icon-sidebar";
+  let active = false;
+  let autoCollapsed = false;
+  let applied = false;
+  let scheduled = false;
+
+  const style = document.createElement("style");
+  style.textContent = "html[data-airlock-narrow-grid] .guided-tour-step__container {display:none !important}";
+  document.head.append(style);
+
+  function update() {
+    scheduled = false;
+    const next = inPane();
+    document.documentElement.toggleAttribute("data-airlock-narrow-grid", next);
+    const sidebar = document.querySelector(".layout__col-1");
+    const button = sidebar?.querySelector(stockToggle)?.closest("a");
+    if (!next) {
+      if (autoCollapsed && button && sidebar.offsetWidth < 170) button.click();
+      active = false;
+      autoCollapsed = false;
+      applied = false;
+      return;
+    }
+    active = true;
+    // The layout is server-rendered, but its stock toggle handles events
+    // only after Vue has mounted. Wait for the interactive grid.
+    if (applied || !button || !document.querySelector(".grid-view__cell")) return;
+    applied = true;
+    if (sidebar.offsetWidth >= 170) {
+      autoCollapsed = true;
+      button.click();
+    }
+  }
+
+  function schedule() {
+    if (!scheduled) {
+      scheduled = true;
+      requestAnimationFrame(update);
+    }
+  }
+  document.addEventListener("click", (event) => {
+    if (active && event.isTrusted && event.target.closest?.(".sidebar__foot-link")?.querySelector(stockToggle)) {
+      autoCollapsed = false;
+      applied = true;
+    }
+  }, true);
+  function watch() {
+    new MutationObserver(() => {
+      if ((!applied && inPane()) || active !== inPane()) schedule();
+    }).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ["data-airlock-embedded"] });
+    schedule();
+  }
+  document.addEventListener("DOMContentLoaded", watch, { once: true });
+  narrow.addEventListener("change", schedule);
+  window.addEventListener("popstate", schedule);
+  window.addEventListener("load", schedule, { once: true });
+})();

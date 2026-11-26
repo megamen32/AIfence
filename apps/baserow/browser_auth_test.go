@@ -14,7 +14,7 @@ func TestNativeBrowserBootstrapBeforeNuxt(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, err := io.ReadAll(resp.Body)
-	if err != nil || !strings.Contains(string(raw), `<head><script src="`+browserAuthPath+`"></script><script type=module`) || resp.Header.Get("Content-Length") != "" || resp.Header.Get("ETag") != "" {
+	if err != nil || !strings.Contains(string(raw), `<head><script src="`+browserAuthPath+`"></script><script defer data-airlock-disable-navigation="true" src="/__air/assets/web-ui-v1.js"></script><script type=module`) || resp.Header.Get("Content-Length") != "" || resp.Header.Get("ETag") != "" {
 		t.Fatal("native browser bootstrap not placed ahead of Nuxt")
 	}
 }

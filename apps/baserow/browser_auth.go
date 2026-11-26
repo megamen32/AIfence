@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const browserAuthPath = "/__baserow/airlock-client-v1.js"
+const browserAuthPath = "/__baserow/airlock-client-v2.js"
 
 //go:embed airlock-client.js
 var browserAuthJS []byte
@@ -43,7 +43,7 @@ func addBrowserAuthentication(resp *http.Response) error {
 	if _, err := reader.Discard(n); err != nil {
 		return err
 	}
-	script := `<script src="` + browserAuthPath + `"></script>`
+	script := `<script src="` + browserAuthPath + `"></script><script defer data-airlock-disable-navigation="true" src="/__air/assets/web-ui-v1.js"></script>`
 	resp.Body = composedBody{io.MultiReader(bytes.NewReader(before), strings.NewReader(script), reader), resp.Body}
 	resp.ContentLength = -1
 	resp.Header.Del("Content-Length")
