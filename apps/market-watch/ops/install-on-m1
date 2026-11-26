@@ -74,7 +74,8 @@ change_query=$(printf '{"product_key":"KL4141RCEFS","from":"%s","to":"%s"}' "$to
 import json,sys,pathlib
 state=pathlib.Path(sys.argv[1])
 def result(filename):
-    return json.loads((state/filename).read_text())["data"]["result"]
+    result=json.loads((state/filename).read_text())["data"]["result"]
+    return json.loads(result["output"]) if isinstance(result.get("output"),str) else result
 required={"softline","softmap","softmagazin"}
 prices=result("prices.json")["observations"]
 actual={r["details"]["seller"] for r in prices if r.get("product_key")=="KL4141RCEFS" and r.get("value",0)>0 and r["source_ref"]["url"].startswith("https://") and r["details"]["captured_at"]}
