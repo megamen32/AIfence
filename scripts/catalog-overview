@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Build the PM vendor summary from Market Watch's complete /catalog.csv export."""
+import argparse
+from collections import Counter, defaultdict
+import csv
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import sys
+from urllib.parse import unquote, urlsplit
+
+HOSTS = {
+    'softline': 'store.softline.ru', 'softmagazin': 'www.softmagazin.ru',
+    'softmap': 'softmap.ru', 'allsoft': 'allsoft.ru', 'syssoft': 'www.syssoft.ru',
+}
+# The store category in each product URL identifies its vendor. Only merge
+# known spellings; conflicting vendor assignments for one SKU stay unattributed.
+ALIASES = {
+    'Kaspersky': ('kaspersky', 'kaspersky-lab', 'laboratoriya-kasperskogo'),
+    'Astra Linux': ('astralinux', 'pao-gruppa-astra'),
+    'Dr.Web': ('drweb', 'dr-web', 'doktor-web'),
+    '1С': ('1c',), '1С-Битрикс': ('1c-bitrix', '1s-bitriks'),
+    'МойОфис': ('myoffice',), 'Р7-Офис': ('r7-ofis',),
+    'АСКОН': ('ascon', 'askon'), 'Киберпротект': ('cyberprotect', 'kiberprotekt'),
+    'КриптоПро': ('kriptopro', 'kripto-pro'), 'Код Безопасности': ('kod-bezopasnosti',),
+    'Нанософт': ('nanosoft',), 'КБ Панорама': ('kb-panorama', 'panorama'),
+    'CSoft Development': ('csoft-development',), 'Altova': ('altova',),
+    'EMS': ('ems',), 'Microsoft': ('microsoft',), 'Intel': ('intel',),
+    'Adobe': ('adobe',), 'Aspose': ('aspose',), 'РЕД СОФТ': ('redsoft', 'red-soft'),
+}
+LABELS = {slug: vendor for vendor, slugs in ALIASES.items() for slug in slugs}
+
+
+def vendor_from_url(store, url):
+    parsed = urlsplit(url)
+    if store not in HOSTS or parsed.hostname != HOSTS[store]:
+        raise ValueError(f'Unexpected catalog source or item host for {store!r}')
+    parts = [unquote(part) for part in parsed.path.split('/') if part]
+    if store == 'allsoft':
+        if parts[:2] != ['software', 'vendors']:
+            return None
+        parts = parts[2:]
+    if len(parts) < 2:
+        return None
+    slug = parts[0].casefold()
+    return LABELS.get(slug, slug.replace('-', ' ').capitalize())
+
+
+def aggregate(path):
+    with path.open('rb') as stream:
+        checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+    products = defaultdict(set)
+    sellers = Counter()
+    latest = None
+    with path.open(encoding='utf-8-sig', newline='') as stream:
+        for row in csv.DictReader(stream, delimiter=';'):
+            store, url, sku = (row[key].strip() for key in ('source', 'url', 'sku'))
+            identity = ('sku', sku.casefold()) if sku else (store, url)
+            vendor = vendor_from_url(store, url)
+            group = products[identity]
+            if vendor:
+                group.add(vendor)
+            sellers[store] += 1
+            captured = datetime.fromisoformat(row['captured_at'].replace('Z', '+00:00'))
+            if captured.tzinfo is None:
+                raise ValueError('Capture time requires a timezone')
+            if latest is None or captured > latest:
+                latest = captured
+    if latest is None:
+        raise ValueError('Market Watch returned an empty catalog')
+    counts = Counter(next(iter(group)) if len(group) == 1 else 'Вендор не определён'
+                     for group in products.values())
+    source = {'source_id': 'market-watch', 'locator': f'/catalog.csv#sha256={checksum}'}
+    vendors = [{'vendor': vendor, 'product_count': count, 'source': source}
+               for vendor, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))]
+    print(f'{sum(sellers.values())} offers; {len(products)} product identities; '
+          f'{len(counts)} vendor groups; {len(sellers)} stores', file=sys.stderr)
+    return {'confirmed': True, 'as_of': latest.astimezone(timezone.utc).isoformat(),
+            'total_products': len(products), 'source': source, 'vendors': vendors}
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('export', type=Path)
+    args = parser.parse_args()
+    json.dump(aggregate(args.export), sys.stdout, ensure_ascii=False, separators=(',', ':'))
+    print()
