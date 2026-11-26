@@ -19,7 +19,7 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 	demo.details.Origin = "synthetic_fixture"
 	result := salesBrief([]monitorObservation{demo, quote, alert}, nil, 0)
 	raw, _ := json.Marshal(result)
-	if result.Total != 2 || result.NextOffset != nil {
+	if result.Total != 2 || result.PriceCount != 1 || result.NextOffset != nil {
 		t.Fatal(string(raw))
 	}
 	for _, want := range []string{"−37,5 %", "два окна по 4 недели", "22.12.2025", "24.11.2025", "1,4 %", "orders#19", "Оценки в ₽ за неделю нет", "KL4210RAKDS", "Allsoft", "10.02.2026", "Нет подтверждённой пары магазинов"} {
