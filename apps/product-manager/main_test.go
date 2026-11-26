@@ -13,7 +13,7 @@ import (
 func TestAgentComposition(t *testing.T) {
 	manifest := newAgent().Manifest()
 	// The app description is visible before the model has inspected the detailed instructions.
-	for _, contract := range []string{"console.log(await", "review_sales_and_prices", "imported_price_observations", "опусти request_confirmation"} {
+	for _, contract := range []string{"return await", "review_sales_and_prices", "imported_price_observations", "опусти request_confirmation"} {
 		if !strings.Contains(manifest.Description, contract) {
 			t.Fatalf("visible description omits %q", contract)
 		}
@@ -55,7 +55,7 @@ func TestAgentComposition(t *testing.T) {
 	if !slices.ContainsFunc(manifest.Instructions, func(instruction wire.InstructionDef) bool {
 		return strings.HasPrefix(instruction.Text, "Начинай разрешённые чтения сразу") &&
 			strings.Contains(instruction.Text, "run_js с полями code и description") &&
-			strings.Contains(instruction.Text, "console.log(await apps.product_manager.tools.review_sales_and_prices({}))") &&
+			strings.Contains(instruction.Text, "return await apps.product_manager.tools.review_sales_and_prices({});") &&
 			strings.Contains(instruction.Text, "«Создать эту задачу»") &&
 			strings.Contains(instruction.Text, "Не проси ответить «да»") &&
 			!strings.Contains(instruction.Text, "fixtures/")
