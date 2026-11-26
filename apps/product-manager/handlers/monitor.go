@@ -116,6 +116,14 @@ func monitorCell(o monitorObservation) (column int, cell views.MonitorCell) {
 }
 
 func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, records []decision.Record, selected, pinned, alert string, autoOpen, demo bool) (*views.Monitor, error) {
+	rows, err := h.monitorRows(ctx, snapshots)
+	if err != nil {
+		return nil, err
+	}
+	return monitorView(separateMonitorRows(rows, demo), records, selected, pinned, alert, autoOpen), nil
+}
+
+func (h *Handler) monitorRows(ctx context.Context, snapshots []evidence.Summary) ([]monitorObservation, error) {
 	ids, err := h.svc.Evidence.MonitorSnapshotIDs(ctx, snapshots)
 	if err != nil {
 		return nil, err
@@ -128,7 +136,7 @@ func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, rec
 		}
 		rows = append(rows, data...)
 	}
-	return monitorView(separateMonitorRows(rows, demo), records, selected, pinned, alert, autoOpen), nil
+	return rows, nil
 }
 
 func (h *Handler) readMonitorSnapshot(ctx context.Context, snapshotID string) ([]monitorObservation, error) {
