@@ -24,6 +24,7 @@ DATA.mkdir(exist_ok=True)
 WORKBOOK_ID = "1ieTD31tRX6m021Kw6Nz-o25V9K1pk4ZN"
 WORKBOOK_NAME = "Датасет_ИИ-помощник_PM_v17.xlsx"
 COUNTER_ID = 114698578
+HOLDOUT_SHEETS = {"Эталонный_кейс"}  # organizers' answer key: never agent input
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
       "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
@@ -65,74 +66,73 @@ def evidence(source: str, observations: list[dict], warnings: list[str]) -> dict
             "status": "ok", "observations": observations, "warnings": warnings}
 
 
-def original_observations() -> list[dict]:
-    """Canonical KPI slice from the Softline workbook's benchmark case.
+SALES_SHEET = "Продажи"
+SALES_PRODUCT_KEYS = {"Kaspersky Endpoint Security": "kaspersky_endpoint_security",
+                      "Astra Linux Special Edition": "astra_linux_special_edition"}
+SALES_CAVEATS = ["orders_index is an index (base period 04.05.2026-28.06.2026 = 100), not a count of orders or revenue.",
+                 "Only self-service orders (Самостоятельные заказы клиентов) are included."]
 
-    Daily rows are deliberately kept as period aggregates here.  The SQLite
-    ingest also records the workbook sheet/row provenance so the complete
-    workbook can be dropped in later without changing the API.
+
+def sales_index_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
+    """Weekly orders index per product family from the workbook sheet «Продажи».
+
+    One observation per week per family; the period spans seven days from
+    week_start.  Values are copied from the sheet, never derived or interpreted here.
     """
-    sid = "softline-workbook-imported"
+    rows = sheets.get(SALES_SHEET, [])
+    if not rows:
+        return []
+    pos = {name: i for i, name in enumerate(rows[0])}
+
+    def cell(row: list[str], name: str) -> str:
+        i = pos[name]
+        return row[i].strip() if i < len(row) else ""
+
     out: list[dict] = []
-    periods = [("2026-09-14", "2026-09-20", 166, 90), ("2026-10-05", "2026-10-11", 112, 87),
-               ("2026-10-12", "2026-10-18", 113, 88), ("2026-10-19", "2026-10-25", 115, 87)]
-    for start, end, kes, astra in periods:
-        out += [
-            obs("kaspersky_endpoint_security", "orders", kes, "count", start, end, sid,
-                "Эталонный_кейс!Kaspersky Endpoint Security; order_index"),
-            obs("astra_control", "orders", astra, "count", start, end, sid,
-                "Эталонный_кейс!Astra Control; order_index"),
-            obs("kaspersky_endpoint_security", "product_views", kes * 8, "count", start, end, sid,
-                "Метрики_данные!product_views; derived from benchmark order index", details={"derived": True}),
-            obs("astra_control", "product_views", astra * 7, "count", start, end, sid,
-                "Метрики_данные!product_views; derived from benchmark order index", details={"derived": True}),
-            obs("store", "visits", 18400, "count", start, end, sid, "Метрики_данные!store.visits"),
-            obs("store", "revenue", 684000, "RUB", start, end, sid, "Метрики_данные!store.revenue", details={"currency": "RUB"}),
-        ]
-    # The workbook explicitly flags this as an instrumentation gap.  It must
-    # remain unknown, never become zero in a funnel calculation.
-    out.append(obs("kaspersky_endpoint_security", "add_to_cart", None, "count", "2026-09-14", "2026-10-25", sid,
-                    "Бэклог_задачи!T-08; KES cart tracking gap", "missing", caveats=[
-                        "Kaspersky cart additions are not tracked in the source workbook.",
-                        "Unknown is not zero; do not calculate cart conversion."], details={"tracking_gap": "T-08"}))
-    out += [
-        obs("store", "goal_login", 29, "count", "2026-09-29", "2026-10-05", sid, "Исследования!R-08"),
-        obs("store", "goal_kes_configurator", 17, "count", "2026-10-01", "2026-10-07", sid, "Исследования!R-09"),
-        obs("store", "goal_email", 11, "count", "2026-10-08", "2026-10-14", sid, "Исследования!R-10"),
-    ]
+    for row_no, row in enumerate(rows[1:], 2):
+        week, family = cell(row, "week_start"), cell(row, "product_family")
+        if not week or not family:
+            continue
+        product_key = SALES_PRODUCT_KEYS.get(family)
+        if product_key is None:
+            raise ValueError(f"unmapped product family in {SALES_SHEET}!row {row_no}: {family}")
+        start = dt.date.fromisoformat(week)
+        raw = cell(row, "orders_index")
+        value = float(raw.replace(",", ".")) if raw else None
+        caveats = list(SALES_CAVEATS)
+        comment = cell(row, "comment")
+        if comment:
+            caveats.append(comment)
+        details = {"workbook_sheet": SALES_SHEET, "workbook_row": row_no, "product_family": family,
+                   "base_period": cell(row, "base_period"), "channel": cell(row, "channel"),
+                   "orders_index_4w": cell(row, "orders_index_4w"), "synthetic": False}
+        out.append(obs(product_key, "orders_index", value, "index", start.isoformat(),
+                       (start + dt.timedelta(days=6)).isoformat(), "softline-workbook-imported",
+                       f"{SALES_SHEET}!row {row_no}", "observed" if value is not None else "missing",
+                       "self_service", caveats, details))
     return out
 
 
 SCENARIOS = {
     "kes_regression": {
-        "title": "Регресс Kaspersky после релиза",
-        "description": "Падение order index после изменения конфигуратора 05.10; Astra — контроль.",
-        "expected_signal": "KES orders -32.5%, Astra -3.3%; проверить R-09 и релиз.",
-        "risk": "causal_inference",
+        "title": "Сценарий A: индекс заказов по семействам",
+        "description": "Синтетический ряд заказов двух семейств в двух окнах.",
     },
     "tracking_gap": {
-        "title": "Слепая зона корзины KES",
-        "description": "Событие add_to_cart отсутствует; пропуск не равен нулевым добавлениям.",
-        "expected_signal": "missing, без расчёта cart conversion",
-        "risk": "unknown_is_not_zero",
+        "title": "Сценарий B: метрика корзины",
+        "description": "Синтетический ряд добавлений в корзину за окно.",
     },
     "mobile_regression": {
-        "title": "Регресс мобильного checkout",
-        "description": "Снижение checkout rate только на mobile после релиза.",
-        "expected_signal": "mobile -21.4%, desktop +1.8%",
-        "risk": "segment_confounding",
+        "title": "Сценарий C: checkout по сегментам",
+        "description": "Синтетический checkout rate по устройствам в двух окнах.",
     },
     "recommendation_ctr": {
-        "title": "Рекомендации показываются, но не кликаются",
-        "description": "Показы растут, CTR падает; проверить релевантность и место блока.",
-        "expected_signal": "CTR 8.1% -> 3.2%",
-        "risk": "denominator_drift",
+        "title": "Сценарий D: блок рекомендаций",
+        "description": "Синтетические показы и клики блока в двух окнах.",
     },
     "false_anomaly": {
-        "title": "Ложная аномалия из-за неполного дня",
-        "description": "Последний день ещё не закрыт; агент обязан отложить вывод.",
-        "expected_signal": "partial day, status delayed",
-        "risk": "data_lag",
+        "title": "Сценарий E: последний день",
+        "description": "Синтетическое значение заказов за последний день периода.",
     },
 }
 
@@ -150,7 +150,7 @@ def sandbox_observations() -> list[dict]:
     add("kes_regression", "astra_control", "orders", 90, "count", "2026-09-14", "2026-09-20")
     add("kes_regression", "astra_control", "orders", 87, "count", "2026-10-05", "2026-10-11")
     add("tracking_gap", "kaspersky_endpoint_security", "add_to_cart", None, "count", "2026-10-05", "2026-10-11", status="missing",
-        caveats=["Synthetic scenario preserves the T-08 tracking gap; unknown is not zero."])
+        caveats=["Synthetic scenario: no value recorded for this window."])
     add("mobile_regression", "store", "checkout_rate", 0.42, "ratio", "2026-10-05", "2026-10-11", "mobile")
     add("mobile_regression", "store", "checkout_rate", 0.33, "ratio", "2026-10-12", "2026-10-18", "mobile")
     add("mobile_regression", "store", "checkout_rate", 0.55, "ratio", "2026-10-05", "2026-10-11", "desktop")
@@ -160,7 +160,7 @@ def sandbox_observations() -> list[dict]:
     add("recommendation_ctr", "store", "lk_reco_shown", 1250, "count", "2026-10-12", "2026-10-18")
     add("recommendation_ctr", "store", "lk_reco_click", 40, "count", "2026-10-12", "2026-10-18")
     add("false_anomaly", "store", "orders", None, "count", "2026-10-26", "2026-10-26", status="missing",
-        caveats=["Current day is incomplete; defer anomaly judgment until the day closes."])
+        caveats=["Period is not closed at snapshot time."])
     return out
 
 
@@ -233,10 +233,10 @@ def workbook_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
 def build_db(workbook: Path | None = None) -> dict:
     DATA.mkdir(exist_ok=True)
     db_path = DATA / "aifence_sources.sqlite3"
-    if db_path.exists():
-        db_path.unlink()
-    con = sqlite3.connect(db_path)
+    con = sqlite3.connect(db_path)  # rebuild in place: tables are dropped, the file is not deleted
     con.executescript("""
+      drop table if exists source_catalog; drop table if exists raw_rows;
+      drop table if exists observations; drop table if exists scenarios;
       create table source_catalog(source_id text primary key, source_kind text not null, label text not null,
         immutable integer not null, provenance_json text not null);
       create table raw_rows(source_id text not null, sheet_name text not null, row_number integer not null,
@@ -245,24 +245,28 @@ def build_db(workbook: Path | None = None) -> dict:
         product_key text not null, metric_key text not null, value real, unit text not null,
         date_from text not null, date_to text not null, segment text not null, status text not null,
         caveats_json text not null, locator text not null, details_json text not null);
-      create table scenarios(scenario_id text primary key, title text not null, description text not null,
-        expected_signal text not null, risk text not null);
+      create table scenarios(scenario_id text primary key, title text not null, description text not null);
     """)
     workbook_rows = 0
+    skipped_refs = 0
     sheet_counts: dict[str, int] = {}
     sheets: dict[str, list[list[str]]] = {}
     if workbook and workbook.exists():
-        sheets = _xlsx_values(workbook)
+        sheets = {k: v for k, v in _xlsx_values(workbook).items() if k not in HOLDOUT_SHEETS}
         for sheet, rows in sheets.items():
             sheet_counts[sheet] = len(rows)
             for n, row in enumerate(rows, 1):
+                if any(h in cell for h in HOLDOUT_SHEETS for cell in row):
+                    skipped_refs += 1  # rows that name the answer-key sheet are not agent input
+                    continue
                 con.execute("insert into raw_rows values (?,?,?,?)",
                             ("softline-workbook-imported", sheet, n, json.dumps(row, ensure_ascii=False)))
                 workbook_rows += 1
     provenance = {"kind": "imported_historical", "immutable": True, "workbook_name": WORKBOOK_NAME,
                   "workbook_id": WORKBOOK_ID, "sheet_counts": sheet_counts,
                   "complete_workbook_available": bool(workbook and workbook.exists()),
-                  "snapshot_note": "Benchmark KPI slice retained; workbook rows are ingested when --workbook is supplied."}
+                  "holdout_reference_rows_skipped": skipped_refs,
+                  "snapshot_note": "Workbook rows and the weekly sales index are ingested when --workbook is supplied; holdout sheet excluded."}
     con.execute("insert into source_catalog values (?,?,?,?,?)",
                 ("softline-workbook-imported", "imported_historical", "Softline workbook — immutable original", 1,
                  json.dumps(provenance, ensure_ascii=False)))
@@ -272,9 +276,10 @@ def build_db(workbook: Path | None = None) -> dict:
                 ("aifence-sandbox-synthetic", "synthetic_fixture", "AIfence sandbox scenarios", 1,
                  json.dumps(sandbox_prov, ensure_ascii=False)))
     for sid, data in SCENARIOS.items():
-        con.execute("insert into scenarios values (?,?,?,?,?)", (sid, data["title"], data["description"], data["expected_signal"], data["risk"]))
+        con.execute("insert into scenarios values (?,?,?)", (sid, data["title"], data["description"]))
     imported = workbook_observations(sheets)
-    for item in imported + original_observations() + sandbox_observations():
+    sales = sales_index_observations(sheets)
+    for item in imported + sales + sandbox_observations():
         source_id = item["source_ref"]["source_id"]
         details = item.get("details") or {}
         con.execute("insert into observations values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
@@ -283,7 +288,7 @@ def build_db(workbook: Path | None = None) -> dict:
             json.dumps(item.get("caveats", []), ensure_ascii=False), item["source_ref"]["locator"], json.dumps(details, ensure_ascii=False)))
     con.commit()
     con.close()
-    original = evidence("original", imported + original_observations(), [
+    original = evidence("original", imported + sales, [
         "Imported historical source: preserve as evidence; no live fallback.",
         "Source workbook: " + WORKBOOK_NAME + " (Drive file " + WORKBOOK_ID + ").",
         "Kaspersky cart additions are unknown because T-08 tracking is absent; unknown is not zero.",

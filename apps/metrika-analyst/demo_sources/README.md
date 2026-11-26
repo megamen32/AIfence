@@ -6,8 +6,8 @@ MCP (`query_metrics`, `compare_periods`, `check_metrika`):
 
 | Режим | Источник | Для чего |
 | --- | --- | --- |
-| `original` | `softline-workbook-imported` | Неизменяемая выгрузка исходного Softline workbook. В SQLite сохраняются все листы и строки с `sheet/row` provenance; `Метрики_данные` превращаются в evidence-v1. |
-| `sandbox` | `aifence-sandbox-synthetic` | Изолированные проблемные сценарии для показа аналитики. Они помечены `synthetic=true` и никогда не смешиваются с original. |
+| `original` | `softline-workbook-imported` | Неизменяемая выгрузка исходного Softline workbook. Строки `Метрики_данные` и недельный индекс заказов из `Продажи` превращаются в evidence-v1 с `sheet/row` provenance. Лист с эталонным кейсом организаторов исключён из всех артефактов и не является входом агента. |
+| `sandbox` | `aifence-sandbox-synthetic` | Изолированные синтетические сценарии. Они помечены `synthetic=true` и никогда не смешиваются с original. |
 
 ## Сборка
 
@@ -19,20 +19,46 @@ python3 demo_sources/aifence_demo_sources.py build \
   --workbook /Users/user/AIfence/data/softline_dataset_v17.xlsx
 ```
 
-Результат появляется в `demo_sources/data/`:
+Результат появляется в `demo_sources/data/` (каталог не коммитится):
 
-- `original-evidence.json` — все 3 698 строк `Метрики_данные` плюс контрольный срез `Эталонный_кейс`;
-- `sandbox-evidence.json` — пять сценариев;
-- `aifence_sources.sqlite3` — каталог источников, raw-строки всех девяти листов и наблюдения;
+- `original-evidence.json` — наблюдения из `Метрики_данные` и недельный индекс заказов из `Продажи` (58 наблюдений: 29 недель × 2 семейства, locator `Продажи!row N`);
+- `sandbox-evidence.json` — пять синтетических сценариев;
+- `aifence_sources.sqlite3` — каталог источников, raw-строки всех листов кроме исключённого, наблюдения и сценарии;
 - `source-manifest.json` — карта источников, provenance и сценариев.
 
 Для быстрой проверки:
 
 ```sh
 python3 demo_sources/aifence_demo_sources.py list-sources
+python3 demo_sources/aifence_demo_sources.py query --source original
 python3 demo_sources/aifence_demo_sources.py query --source sandbox --scenario kes_regression
 python3 demo_sources/aifence_demo_sources.py replay-plan
 ```
+
+## Тесты
+
+```sh
+cd /Users/user/AIfence/apps/metrika-analyst
+python3 -m unittest discover -s demo_sources -p 'test_*.py' -v
+```
+
+Тест пересобирает источники из workbook (путь можно переопределить переменной
+`AIFENCE_WORKBOOK`) и проверяет, что лист эталонного кейса не попадает ни в один
+артефакт, что средние недельного индекса по окнам совпадают с эталонными значениями
+в пределах 0.01, и что служебные ожидания сценариев не попадают в файлы, которые
+читает агент.
+
+## Как сравнивать периоды
+
+Сравнивайте окна из нескольких недель, а не одну неделю с одной. Недельный индекс
+заказов шумный: отдельные недели могут отличаться в несколько раз, поэтому выводы
+строятся по средним за несколько недель и по контрольному семейству. Например,
+для Kaspersky Endpoint Security сравниваются 13 недель с 29.06 по 21.09.2026 и
+7 недель с 05.10 по 16.11.2026, а Astra Linux Special Edition используется как
+контроль на тех же окнах.
+
+Индекс заказов не равен количеству заказов или выручке, и в данных только
+самостоятельные заказы клиентов. Комментарии листа `Продажи` сохраняются как caveat.
 
 ## Подключение к существующему MCP-приложению
 
@@ -68,9 +94,6 @@ replay/smoke-событий. Исторические агрегаты нель�
 
 ## Сценарии
 
-- `kes_regression` — устойчивое падение KES при почти стабильной Astra;
-- `tracking_gap` — пропущенная корзина KES, unknown ≠ zero;
-- `mobile_regression` — сегментный провал checkout;
-- `recommendation_ctr` — рост показов при падении CTR;
-- `false_anomaly` — неполный последний день, вывод откладывается.
-
+Идентификаторы: `kes_regression`, `tracking_gap`, `mobile_regression`,
+`recommendation_ctr`, `false_anomaly`. Описания намеренно нейтральны и не содержат
+ожидаемых выводов; агент должен проверить данные сам.
