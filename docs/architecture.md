@@ -4,7 +4,7 @@ Goal: increase store profit/margin by locating a supported opportunity, checking
 
 ## Three products, not five services
 
-**Market Watch**: independent competitive intelligence. Add a product and competitor/source; read matched offers/features with date, source and confidence; compare changes. MVP: two or three approved public sites, small comparable product sample, no universal crawler. Prefer HTML/API/structured data with browser for dynamic pages; obey access conditions, rate limits, robots and authorization. Keep old snapshots; no hallucinated matches or bypass of access restrictions.
+**Market Watch**: independent competitive intelligence. Add a product and competitor/source; read matched offers/features with date, source and confidence; compare changes. MVP: three approved public stores, a complete discovery inventory, and exact-SKU comparisons on observed variants. Each source uses its own configuration or family-page adapter. Prefer HTML/API/structured data with browser for dynamic pages; obey access conditions, rate limits, robots and authorization. Keep old snapshots; no hallucinated matches or bypass of access restrictions.
 
 **Metrika Analyst**: independent data analyst. Read authorized Reports API, test on permitted test counter; import historical aggregates separately, settings define goals/period/segment/threshold and known breaks. Calculate metrics, comparable windows, sample sizes and missing data. Return bounded structured observations, not prose-only reports.
 
