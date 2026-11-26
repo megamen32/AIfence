@@ -1,0 +1,85 @@
+#!/bin/bash
+# One first install, scoped to the local Market Watch. launchd serializes runs.
+set -eu
+umask 077
+app="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$app"
+runtime="$(cd ../../.runtime && pwd)"
+state="$runtime/market-first-install"
+mkdir -p "$state"
+[[ -f "$state/verified" ]] && exit 0
+origin=http://localhost:42080
+air="$runtime/bin/market-air"
+opts=(--remote default --target production --url "$origin")
+selected=("${opts[@]}" --agent market-watch)
+phase() { printf '%s\n' "$1" >"$state/phase.tmp"; mv "$state/phase.tmp" "$state/phase"; }
+if ! /usr/bin/curl -fsS --max-time 5 "$origin/auth/status" 2>/dev/null | /usr/bin/python3 -c 'import json,sys;sys.exit(json.load(sys.stdin).get("activated") is not True)' 2>/dev/null; then
+    phase waiting-for-activation
+    exit 0
+fi
+if ! "$air" status "${selected[@]}" --json >"$state/status.json" 2>"$state/cli.log"; then
+    err=$(/usr/bin/python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("error",{}).get("message",""))' "$state/status.json")
+    if [[ "$err" == *'not logged in'* || "$err" == *'login expired'* ]]; then
+        phase waiting-for-sdk-approval
+        if "$air" login "$origin" --check --json >/dev/null 2>&1; then exit 0; fi
+        if [[ ! -e "$state/approval-presented" ]]; then
+            touch "$state/approval-presented"
+            /usr/bin/open -a Terminal "$app/ops/approve-on-m1.command"
+        fi
+        exit 0
+    fi
+    if [[ "$err" != *'agent "market-watch" not found in http://localhost:42080'* ]]; then
+        phase inspect-local-status
+        exit 1
+    fi
+elif [[ ! -e "$state/submitted" ]]; then
+    phase existing-app-needs-review
+    exit 1
+fi
+if [[ ! -e "$state/build-passed" ]]; then
+    phase waiting-for-official-build
+    exit 0
+fi
+if [[ ! -e "$state/submitted" ]]; then
+    phase submitting
+    # Record intent before sending; interrupted submissions are reconciled using SDK status.
+    touch "$state/submitted"
+    "$air" deploy "${opts[@]}" --create --name 'Market Watch' --slug market-watch -m 'Install local Market Watch' --json >"$state/submission.json" 2>"$state/submit.log" || { phase inspect-submission; exit 1; }
+fi
+if [[ ! -e "$state/remote-built" ]]; then
+    phase observing-build
+    "$air" deploy status "${selected[@]}" --wait --timeout 2m --json >"$state/build.json" 2>"$state/build.log" || exit 1
+    /usr/bin/python3 -c 'import json,sys;d=json.load(open(sys.argv[1]))["data"];sys.exit((d.get("build") or {}).get("status")!="complete")' "$state/build.json"
+    touch "$state/remote-built"
+fi
+if ! "$air" tools invoke catalog_status "${selected[@]}" --json >"$state/counts.json" 2>"$state/tools.log"; then
+    phase starting-runtime
+    if [[ ! -e "$state/start-requested" ]]; then
+        touch "$state/start-requested"
+        "$air" start "${selected[@]}" --wait --timeout 2m --json >"$state/start.json" 2>"$state/start.log" || exit 1
+    fi
+    exit 0
+fi
+phase importing
+"$runtime/bin/importcatalog" -root "$runtime/market-catalog" -air "$air" -app-dir "$app" -url "$origin" -checkpoint "$runtime/market-catalog/local-market-watch.uploaded" >"$state/import.log" 2>&1
+phase checking-prices
+sku='{"product_key":"KL4141RCEFS"}'
+"$air" tools invoke refresh_market "${selected[@]}" --input "$sku" --json >"$state/refresh.json" 2>"$state/refresh.log" || exit 1
+"$air" tools invoke list_offers "${selected[@]}" --input "$sku" --json >"$state/prices.json" 2>"$state/prices.log"
+"$air" tools invoke catalog_status "${selected[@]}" --json >"$state/counts.json" 2>"$state/tools.log"
+today=$(/bin/date -u +%Y-%m-%d)
+change_query=$(printf '{"product_key":"KL4141RCEFS","from":"%s","to":"%s"}' "$today" "$today")
+"$air" tools invoke market_changes "${selected[@]}" --input "$change_query" --json >"$state/changes.json" 2>"$state/changes.log"
+/usr/bin/python3 - "$state" <<'PY'
+import json,sys,pathlib
+state=pathlib.Path(sys.argv[1])
+def result(filename):
+    return json.loads((state/filename).read_text())["data"]["result"]
+required={"softline","softmap","softmagazin"}
+prices=result("prices.json")["observations"]
+actual={r["details"]["seller"] for r in prices if r.get("product_key")=="KL4141RCEFS" and r.get("value",0)>0 and r["source_ref"]["url"].startswith("https://") and r["details"]["captured_at"]}
+counts={r["source"] for r in result("counts.json")["sources"] if r["observed_offers"]>0}
+if not required.issubset(actual & counts): raise SystemExit("MCP must return observed prices and nonempty indexes for all three stores")
+PY
+touch "$state/verified"
+phase verified
