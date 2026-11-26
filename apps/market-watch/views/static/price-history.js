@@ -4,6 +4,12 @@
   const svgNS = "http://www.w3.org/2000/svg";
   const observationGap = 6 * 60 * 60 * 1000;
   const number = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
+  const minorPrice = new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });
+  function money(value) {
+    return Number.isInteger(value) ? number.format(value) : minorPrice.format(value);
+  }
   const dates = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short" });
   const times = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
   const stamp = new Intl.DateTimeFormat("ru-RU", {
@@ -39,6 +45,27 @@
     return time - prev.t <= next.t - time ? prev : next;
   }
   class MarketPriceHistory extends HTMLElement {
+    // Calculate ticks in minor currency units so small spreads retain their full precision.
+    static priceScale(min, max) {
+      const low = Math.floor(min * 100 + 1e-7);
+      const high = Math.ceil(max * 100 - 1e-7);
+      const spread = high - low;
+      const padding = spread > 0 ? Math.max(1, Math.round(spread / 10)) : Math.max(2, Math.round(high / 200));
+      const lower = Math.max(0, low - padding);
+      const upper = high + padding;
+      const desired = Math.max(1, (upper - lower) / 5);
+      const base = 10 ** Math.floor(Math.log10(desired));
+      const step = [1, 2, 5, 10].map(factor => factor * base).find(candidate => candidate >= desired);
+      const first = Math.floor(lower / step) * step;
+      const last = Math.ceil(upper / step) * step;
+      const ticks = [];
+      const formatter = step < 100 ? minorPrice : number;
+      for (let i = 0; i <= Math.round((last - first) / step); i++) {
+        const value = (first + i * step) / 100;
+        ticks.push({ value, label: formatter.format(value) });
+      }
+      return { min: first / 100, max: last / 100, ticks };
+    }
     connectedCallback() {
       if (this.chart) { this.observe(); return; }
       let input;
@@ -74,6 +101,11 @@
       this.detail = el("div", "mw-chart-detail");
       this.series.forEach((s, i) => {
         const button = el("button", "mw-chart-key", s.label);
+        const last = s.points[s.points.length - 1];
+        const price = el("strong", "mw-key-price", money(last.v) + " " + this.unit);
+        price.title = "Последнее наблюдение " + stamp.format(last.t);
+        button.append(price);
+        button.setAttribute("aria-label", s.label + ", последнее наблюдение " + price.textContent);
         button.type = "button";
         button.dataset.store = s.store || "";
         button.dataset.index = String(i % 3);
@@ -128,18 +160,15 @@
       const points = active.flatMap(s => s.points);
       let min = Infinity, max = -Infinity;
       for (const p of points) { min = Math.min(min, p.v); max = Math.max(max, p.v); }
-      const pad = Math.max((max-min)*.12, max*.015, .01);
-      const lower = Math.max(0, min-pad), upper = max+pad;
-      const space = Math.pow(10,Math.floor(Math.log10((upper-lower)/3)));
-      const step = [1,2,5,10].map(n => n*space).find(n => (upper-lower)/n <= 4);
-      const axisMin = Math.max(0,Math.floor(lower/step)*step), axisMax = Math.ceil(upper/step)*step;
-      this.left = Math.max(42,number.format(axisMax).length*7+12); this.right = 11;
+      const axis = MarketPriceHistory.priceScale(min, max);
+      this.left = Math.max(42, ...axis.ticks.map(tick => tick.label.length * 7 + 12));
+      this.right = 11;
       const x = t => this.left + (t-this.leftTime) / this.duration * (this.width-this.left-this.right);
-      const y = v => 137-(v-axisMin)/(axisMax-axisMin)*117;
-      for (let i = 0; i <= Math.round((axisMax-axisMin)/step); i++) {
-        const value = axisMin + i*step, pos = y(value);
+      const y = v => 137 - (v - axis.min) / (axis.max - axis.min) * 117;
+      for (const tick of axis.ticks) {
+        const pos = y(tick.value);
         this.chart.append(svg("line",{x1:this.left,y1:pos,x2:this.width-this.right,y2:pos,class:"mw-gridline"}));
-        this.chart.append(svg("text",{x:this.left-7,y:pos+4,"text-anchor":"end"},number.format(value)));
+        this.chart.append(svg("text",{x:this.left-7,y:pos+4,"text-anchor":"end"},tick.label));
       }
       const clock = this.duration <= 24*3600000 ? times : dates;
       if (this.ticks.length === 1) {
@@ -158,12 +187,12 @@
           path += (prev && p.t - prev.t <= observationGap ? " L" : " M")+x(p.t).toFixed(2)+","+y(p.v).toFixed(2);
           prev = p;
         }
-        group.append(svg("path", {d:path,fill:"none","stroke-width":1.65}));
+        group.append(svg("path", {d:path,fill:"none","stroke-width":2.2}));
         const stride = Math.max(1,Math.floor(s.points.length/300));
         s.points.forEach((p,n) => {
           if (n % stride && n !== s.points.length-1 && p.t-s.points[n-1].t <= observationGap &&
             s.points[n+1].t-p.t <= observationGap) return;
-          group.append(svg("circle",{cx:x(p.t),cy:y(p.v),r: this.ticks.length < 4 ? 3.8 : 2.3}));
+          group.append(svg("circle",{cx:x(p.t),cy:y(p.v),r: this.ticks.length < 20 ? 4.3 : 3.0}));
         });
         this.chart.append(group);
       });
@@ -204,7 +233,7 @@
         if (Math.abs(p.t - tick.t) > observationGap/2) {
           row.append(el("span","mw-chart-unobserved","Нет замера"));
         } else {
-          const amount = el(p.url ? "a" : "b", "mw-chart-value", number.format(p.v)+" "+this.unit);
+          const amount = el(p.url ? "a" : "b", "mw-chart-value", money(p.v)+" "+this.unit);
           amount.title = "Наблюдение "+stamp.format(p.t);
           if (p.url) { amount.href = p.url; amount.target = "_blank"; amount.rel = "noopener noreferrer"; }
           row.append(amount);

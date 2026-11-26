@@ -219,10 +219,11 @@ market-price-history { display:block; min-width:0; color:var(--mw-fg,#202938); f
 .mw-chart-series,.mw-chart-key { --series-color:#3d6fa0; }
 .mw-chart-series[data-index="1"],.mw-chart-key[data-index="1"] { --series-color:#97682b; }
 .mw-chart-series[data-index="2"],.mw-chart-key[data-index="2"] { --series-color:#70669a; }
-.mw-chart-series[data-store="softmap"],.mw-chart-key[data-store="softmap"] { --series-color:#377a68; }
-.mw-chart-series[data-store="softline"],.mw-chart-key[data-store="softline"] { --series-color:#456fa0; }
-.mw-chart-series[data-store="softmagazin"],.mw-chart-key[data-store="softmagazin"] { --series-color:#9a6536; }
-.mw-chart-key::before { content:""; width:9px; height:3px; background:var(--series-color); border-radius:2px; }
+.mw-chart-series[data-store="softmap"],.mw-chart-key[data-store="softmap"] { --series-color:light-dark(#257963,#59b59a); }
+.mw-chart-series[data-store="softline"],.mw-chart-key[data-store="softline"] { --series-color:light-dark(#316fa6,#78b0ea); }
+.mw-chart-series[data-store="softmagazin"],.mw-chart-key[data-store="softmagazin"] { --series-color:light-dark(#93581c,#dda369); }
+.mw-chart-key::before { content:""; width:12px; height:4px; background:var(--series-color); border-radius:2px; }
+.mw-key-price { font-variant-numeric:tabular-nums; white-space:nowrap; }
 .mw-chart-key[aria-pressed="false"] { opacity:.55; text-decoration:line-through; }
 .mw-chart-key:focus-visible,.mw-chart-range:focus-visible,.mw-chart-value:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
 .mw-chart-plot { display:block; width:100%; overflow:visible; touch-action:pan-y; cursor:crosshair; }
