@@ -107,9 +107,10 @@ type Row struct {
 }
 type Result struct {
 	Summary
-	Total    int      `json:"total_matched"`
-	Rows     []Row    `json:"rows"`
-	Warnings []string `json:"warnings"`
+	ImportedAt *time.Time `json:"imported_at,omitempty"`
+	Total      int        `json:"total_matched"`
+	Rows       []Row      `json:"rows"`
+	Warnings   []string   `json:"warnings"`
 }
 
 func human(ctx context.Context) (uuid.UUID, error) {
@@ -260,7 +261,7 @@ func (s *Service) Read(ctx context.Context, q Query) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	raw, err := db.New(s.db).GetEvidence(ctx, db.GetEvidenceParams{UserID: u, SnapshotID: q.SnapshotID})
+	stored, err := db.New(s.db).GetEvidence(ctx, db.GetEvidenceParams{UserID: u, SnapshotID: q.SnapshotID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return Result{}, errors.New("снимок не найден")
 	}
@@ -268,13 +269,18 @@ func (s *Service) Read(ctx context.Context, q Query) (Result, error) {
 		return Result{}, err
 	}
 	var d Document
-	if err = json.Unmarshal(raw, &d); err != nil {
+	if err = json.Unmarshal(stored.Document, &d); err != nil {
 		return Result{}, err
 	}
 	if err := s.checkVisibility(ctx, d.SourcePolicy); err != nil {
 		return Result{}, err
 	}
-	return selectRows(d, q)
+	result, err := selectRows(d, q)
+	if err != nil {
+		return Result{}, err
+	}
+	result.ImportedAt = &stored.ImportedAt
+	return result, nil
 }
 func selectRows(d Document, q Query) (Result, error) {
 	if q.Offset < 0 || q.Limit < 0 || q.Limit > 100 {
