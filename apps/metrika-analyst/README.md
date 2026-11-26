@@ -177,8 +177,9 @@ Airlock сохраняет реального инициатора дочерн�
 blind tools. Обычные инструменты используют хеш содержимого выбранного ряда.
 Cron-canary хранит время отдельно от пользовательских записей.
 
-Поля доступны в `decisions[]` native job, кандидатах discover/scan, в верхнем
-уровне collect и в `details` соответствующей строки `watchdog.alert`. Масштаб
+Native job записывает время в БД и сохраняет прежний контракт
+`watchdog_run@v1`. Поля доступны в кандидатах discover/scan, на верхнем уровне
+collect и в `details` соответствующей строки `watchdog.alert`. Масштаб
 сигнала берите из `magnitude.relative_change_pct` в строке или кандидате и
 `first_alert_magnitude.relative_change_pct` на верхнем уровне collect.
 `as_of` и `period` описывают данные. Старые job receipts сохраняют прежний

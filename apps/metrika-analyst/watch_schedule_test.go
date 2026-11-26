@@ -32,8 +32,27 @@ func watchdogCaller(ctx context.Context, human bool, surface, execution string) 
 
 func TestWatchdogScheduledCanary(t *testing.T) {
 	register := testFirstSeen(t)
-	s := privateWatch{canary: func(context.Context) bool { return true }, canaryRecord: register}
-	var first watchdogDecision
+	var first watchDetection
+	recorded := 0
+	s := privateWatch{canary: func(context.Context) bool { return true }, canaryRecord: func(ctx context.Context, dataset string, ids []string) (map[string]watchDetection, error) {
+		recorded++
+		if len(ids) != 1 {
+			t.Fatal("only the confirmed alert must be registered")
+		}
+		got, err := register(ctx, dataset, ids)
+		if err != nil {
+			return nil, err
+		}
+		alert := got[ids[0]]
+		if alert.DetectedAt == "" || alert.DetectedSource != "agent_observed" {
+			t.Fatal("confirmed alert must have a persisted detection")
+		}
+		if recorded > 1 && alert != first {
+			t.Fatal("manual and scheduled canary changed the first detection")
+		}
+		first = alert
+		return got, nil
+	}}
 	for _, human := range []bool{false, true} {
 		surface := "schedule"
 		if human {
@@ -45,15 +64,9 @@ func TestWatchdogScheduledCanary(t *testing.T) {
 			got.Decisions[1].Alert == nil || !*got.Decisions[1].Alert || got.Decisions[2].Alert != nil || got.NextJobID != "" {
 			t.Fatalf("unexpected canary result: %v", err)
 		}
-		alert := got.Decisions[1]
-		if alert.SignalID == "" || alert.DetectedAt == "" || alert.DetectedSource != "agent_observed" ||
-			alert.Magnitude == nil || got.Decisions[0].DetectedAt != "" || got.Decisions[2].DetectedAt != "" {
-			t.Fatal("only confirmed alerts get a persisted detection")
-		}
-		if human && (first.watchDetection != alert.watchDetection || first.SignalID != alert.SignalID) {
-			t.Fatal("manual and scheduled canary changed the first detection")
-		}
-		first = alert
+	}
+	if recorded != 2 {
+		t.Fatalf("first-seen storage called %d times, want 2", recorded)
 	}
 	app := watchdogCaller(t.Context(), false, "schedule", "job")
 	if _, err := s.runJob(app, agentsdk.JobContext{}, watchdogInput{Mode: "owner"}); err == nil {
@@ -71,6 +84,10 @@ func TestWatchdogNativeManifestAndScope(t *testing.T) {
 	if len(m.JobHandlers) != 1 || m.JobHandlers[0].Name != watchJobName || m.JobHandlers[0].MaxConcurrency != 1 ||
 		len(m.JobCrons) != 1 || m.JobCrons[0].Slug != watchCron || m.JobCrons[0].HandlerName != watchJobName {
 		t.Fatal("missing native job or daily cron")
+	}
+	const deployedV1 = "dffd8abb6ed5216f96ee5bfc11b022732bcbec662f11b89d96a21121fde7e796"
+	if got := m.JobHandlers[0]; got.Version != 1 || got.OutputSchemaHash != deployedV1 {
+		t.Fatalf("watchdog_run@v1 output schema changed: version=%d hash=%s", got.Version, got.OutputSchemaHash)
 	}
 	ctx := watchdogCaller(t.Context(), true, "chat", "request")
 	owner := uuid.MustParse("00000000-0000-0000-0000-000000000001")

@@ -24,13 +24,11 @@ type watchdogInput struct {
 	Mode string `json:"mode" enum:"canary,owner"`
 }
 
+// These wire types are immutable for watchdog_run@v1.
 type watchdogDecision struct {
-	watchDetection
-	SignalID  string                `json:"signal_id,omitempty"`
-	Magnitude *WatchSignalMagnitude `json:"magnitude,omitempty"`
-	WeekFrom  string                `json:"week_from"`
-	Alert     *bool                 `json:"alert"`
-	Reason    string                `json:"reason"`
+	WeekFrom string `json:"week_from"`
+	Alert    *bool  `json:"alert"`
+	Reason   string `json:"reason"`
 }
 
 type watchdogResult struct {
@@ -81,12 +79,7 @@ func watchSummary(batch SignalBatch) watchdogResult {
 	out := watchdogResult{Status: batch.Status, Decisions: []watchdogDecision{}}
 	for _, item := range batch.Observations {
 		reason, _ := item.Details["reason"].(string)
-		decision := watchdogDecision{WeekFrom: item.Period.From, Alert: item.Value, Reason: reason}
-		if item.Value != nil && *item.Value {
-			decision.SignalID, decision.Magnitude = item.ID, signalMagnitude(item)
-			decision.watchDetection = signalDetection(item)
-		}
-		out.Decisions = append(out.Decisions, decision)
+		out.Decisions = append(out.Decisions, watchdogDecision{WeekFrom: item.Period.From, Alert: item.Value, Reason: reason})
 	}
 	return out
 }
