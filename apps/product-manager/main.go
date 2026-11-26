@@ -6,6 +6,7 @@ import (
 	"agent/internal/evidence"
 	privateui "agent/internal/handlers"
 	"agent/internal/product"
+	"agent/internal/sourcewatch"
 	"agent/views"
 
 	"github.com/airlockrun/agentsdk"
@@ -26,6 +27,11 @@ func newAgent() *agentsdk.Agent {
 	h := handlers.New(p, a).WithCatalogOverview(registerCatalogOverview(a).Panel)
 	registerPathCheck(a)
 	registerMarketIntelligence(a, e)
+	watch := sourcewatch.Register(a)
+	watchUI := handlers.SourceWatches{Service: watch}
+	a.RegisterTool(tool.Typed[sourcewatch.Window, sourcewatch.WatchState]("start_source_watch").Description("Enable an owner-scoped weekly check. Use compare_periods for a store metric plus compare_demand for a Wordstat phrase, list_offers for a market SKU, or both. Supply approved binding UUIDs, the percent drop threshold and the initial UTC Monday. Optional demand_drop_pct also triggers on falling search demand. Runs until stopped.").Execute(watch.Start).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[sourcewatch.WatchRef, sourcewatch.WatchRef]("stop_source_watch").Description("Stop the owner's weekly check by watch ID.").Execute(watch.Stop).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[struct{}, sourcewatch.SummaryList]("list_source_watches").Description("List this owner's watch IDs, active state and latest outcomes.").Execute(watch.Summaries).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[evidence.Empty, evidence.Index]("list_evidence").Description("List immutable evidence snapshots imported by this user, newest first.").Execute(e.List).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[evidence.Query, evidence.Result]("read_evidence").Description("Read observations with source locators. Filter by source, IDs or page with offset and limit; total_matched includes all matching rows.").Execute(e.Read).Build(), agentsdk.AccessUser)
 	a.RegisterTool(salesReviewTool(a, h), agentsdk.AccessUser)
@@ -43,6 +49,8 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterTool(tool.Typed[evidence.Empty, product.Focus]("get_product_focus").Description("Read your current Product Manager panel selection.").Execute(p.GetFocus).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[product.Focus, product.Focus]("set_product_focus").Description("Focus your Product Manager panel on a product established from evidence or explicitly named by the user. Supply its product_key, or the saved hypothesis_id.").Execute(p.SetFocus).Build(), agentsdk.AccessUser)
 	for _, r := range []*agentsdk.Route{
+		{Method: "GET", Path: "/source-watch", Handler: watchUI.Page, Description: "Ваши еженедельные проверки источников"},
+		{Method: "POST", Path: "/source-watch", Handler: watchUI.Update, Description: "Включить или остановить еженедельную проверку источников"},
 		{Method: "POST", Path: "/investigate", Handler: investigatePage(p), Description: "Разобрать изменение самостоятельных заказов"},
 		{Method: "GET", Path: "/", Handler: h.Home, Description: "Гипотезы, источники и локальный бэклог"},
 		{Method: "GET", Path: "/private-review", Handler: privateui.PrivateReviewPage(a.DB()), Description: "Закрытые решения и снимки"},
