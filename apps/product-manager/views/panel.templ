@@ -1,6 +1,9 @@
 package views
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 func countLabel(n int) string {
 	s := strconv.Itoa(n)
@@ -8,6 +11,21 @@ func countLabel(n int) string {
 		s = s[:i] + " " + s[i:]
 	}
 	return s
+}
+
+func catalogToneLabel(tone string) string {
+	switch {
+	case strings.Contains(tone, "delta-down"):
+		return "ниже контроля"
+	case strings.Contains(tone, "delta-up"):
+		return "выше контроля"
+	case strings.Contains(tone, "control-context"):
+		return "контроль"
+	case strings.Contains(tone, "signal-associated"):
+		return "есть сигнал"
+	default:
+		return ""
+	}
 }
 
 templ Panel(v HomeView) {
@@ -176,6 +194,12 @@ templ catalogPanel(m *Monitor) {
 templ catalogRectangle(tile CatalogTile) {
 	<rect class={ "catalog-tile", tile.Tone } x={ tile.X } y={ tile.Y } width={ tile.W } height={ tile.H }><title>{ tile.Label }</title></rect>
 	if tile.ShowLabel {
-		<text x={ tile.LX } y={ tile.LY } aria-hidden="true">{ tile.Name }</text>
+		<text class="catalog-name" x={ tile.LX } y={ tile.LY } aria-hidden="true">
+			{ tile.Name }
+			<tspan class="catalog-value" x={ tile.LX } dy="17">{ tile.Value }</tspan>
+		if meaning := catalogToneLabel(tile.Tone); meaning != "" {
+			<tspan class="catalog-meaning" x={ tile.LX } dy="15">{ meaning }</tspan>
+		}
+		</text>
 	}
 }

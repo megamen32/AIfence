@@ -54,6 +54,9 @@ templ MonitorPanel(m *Monitor) {
 							if p.Change != "" {
 								<small title={ p.Comparison }>{ p.Change }</small>
 							}
+							if p.Comparison != "" {
+								<small class="dashboard-alert-period">{ p.Comparison }</small>
+							}
 						</span>
 					</a>
 					@coverageBar(p.Coverage)
