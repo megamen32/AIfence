@@ -114,16 +114,14 @@ func (s *service) ui(w http.ResponseWriter, r *http.Request) error {
 					p.Out.Header.Del(h)
 				}
 			}
-			p.Out.Header.Del("Authorization")
-			p.Out.Header.Del("Cookie")
-			p.Out.Header.Set("Authorization", "JWT "+session.Access)
-			p.Out.AddCookie(&http.Cookie{Name: "jwt_token", Value: session.Refresh})
-			if session.Signed != "" {
-				p.Out.AddCookie(&http.Cookie{Name: "user_session", Value: session.Signed})
-			}
+			setNativeAuthentication(p.Out, session)
 
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			s.provision.acceptRotation(r.Context(), session, resp.Cookies())
+			if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") || strings.HasPrefix(r.URL.Path, "/api/") {
+				resp.Header.Set("Cache-Control", "private, no-store")
+			}
 			resp.Header.Del("X-Frame-Options")
 			resp.Header.Del("Set-Cookie")
 			parent := dashboardOrigin(appOrigin)
