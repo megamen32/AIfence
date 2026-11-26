@@ -13,9 +13,9 @@ One native Airlock saved async JavaScript body, not a new app or service. For a 
   "description": "Collect and save product investigation evidence",
   "args": {
     "run_id": "synthetic-a-20261126-1",
-    "product_key": "synthetic:keyboard-a",
-    "market_query": {"product_key": "synthetic:keyboard-a", "limit": 8},
-    "metrics_query": {"product_key":"synthetic:keyboard-a","metric_keys":["checkout_rate"],"baseline_from":"2026-10-01","baseline_to":"2026-10-07","current_from":"2026-10-08","current_to":"2026-10-14","segment":"all"},
+    "product_key": "KL4141RCEFR",
+    "market_query": {"product_key": "KL4141RCEFR", "limit": 8},
+    "metrics_query": {"product_key":"KL4141RCEFR","metric_keys":["checkout_rate"],"baseline_from":"2026-10-01","baseline_to":"2026-10-07","current_from":"2026-10-08","current_to":"2026-10-14","segment":"all"},
     "evidence_file_ids": [],
     "document_file_ids": []
   }

@@ -7,7 +7,7 @@
     {
       "id": "fixture-m1",
       "kind": "metric",
-      "product_key": "synthetic:product-a",
+      "product_key": "KL4141RCEFR",
       "metric_key": "checkout_rate",
       "value": 0.4,
       "unit": "ratio",
@@ -24,12 +24,18 @@
         "locator": "row 1"
       },
       "status": "observed",
-      "caveats": []
+      "caveats": [],
+      "details": {
+        "synthetic": true,
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
+      }
     },
     {
       "id": "fixture-m2",
       "kind": "metric",
-      "product_key": "synthetic:product-a",
+      "product_key": "KL4141RCEFR",
       "metric_key": "add_to_cart",
       "value": null,
       "unit": "count",
@@ -44,7 +50,13 @@
       "status": "missing",
       "caveats": [
         "No event instrumentation in this synthetic period"
-      ]
+      ],
+      "details": {
+        "synthetic": true,
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
+      }
     }
   ],
   "warnings": [

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {test} from 'node:test';
 const body=fs.readFileSync(new URL('./collect-evidence.js',import.meta.url),'utf8');
 const invoke=new (Object.getPrototypeOf(async function(){}).constructor)('args','platform','apps',body);
-const key='synthetic:keyboard-a';
+const key='KL4141RCEFR';
 function batch(source) {return {schema_version:'aifence.v1',source,as_of:'2026-11-01T00:00:00Z',status:'ok',warnings:[],observations:[{id:source+'-1',kind:'metric',product_key:key,metric_key:'example',value:10,unit:'count',period:{from:'2026-10-01',to:'2026-10-31'},source_ref:{source_id:'synthetic',locator:'row 1'},status:'observed'}]};}
 function setup({marketFails=false,metricsFail=false,lostAck=false,denyWrite=false,corrupt=false}={}) {
  const store=new Map();let seq=0,calls=0,writes=0;
