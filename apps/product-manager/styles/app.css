@@ -248,3 +248,87 @@ h3{font-size:1.03rem;font-weight:650;letter-spacing:-.015em;margin-bottom:.6rem}
 .market-price-extra {margin:.55rem 0;font-size:.82rem}
 .market-price-extra summary {color:var(--muted);cursor:pointer}
 .market-price-extra[open] summary {margin-bottom:.35rem}
+
+/* Right-side dashboard. DaisyUI supplies theme contrast in either mode. */
+.pm-frame {
+  --paper:var(--color-base-100); --ink:var(--color-base-content);
+  --rule:var(--color-base-300); --muted:color-mix(in srgb,var(--ink) 66%,var(--paper));
+  --blue:var(--color-primary); --coral:var(--color-error); --okay:var(--color-success);
+  --raised:var(--color-base-200); --warn:var(--color-warning);
+  max-width:52rem;margin-inline:auto;color:var(--ink);background:var(--paper);
+  border:1px solid var(--rule);border-radius:.8rem;font:13px/1.4 Inter,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+}
+.dashboard-top,.dashboard-tabs {display:flex;align-items:center;gap:.5rem;padding:.65rem .85rem;border-bottom:1px solid var(--rule)}
+.dashboard-top {justify-content:space-between}
+.dashboard-top strong {font-weight:680;font-size:.96rem}
+.dashboard-modes {display:flex;gap:.2rem;font-size:.72rem}
+.dashboard-modes a,.dashboard-tabs a {padding:.35rem .5rem;border-radius:.35rem;white-space:nowrap;color:var(--muted)}
+.dashboard-modes [aria-current=page],.dashboard-tabs [aria-current=page] {background:var(--raised);color:var(--ink);font-weight:650}
+.dashboard-tabs {overflow-x:auto;scrollbar-width:thin;font-size:.82rem;padding-block:.45rem}
+.dashboard-mode-note {background:color-mix(in srgb,var(--warn) 17%,var(--paper));padding:.35rem .85rem;font-size:.73rem}
+.dashboard-body {padding:clamp(.65rem,2.3vw,1.05rem);min-width:0}
+.dashboard-status {display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.8fr);align-items:start;gap:.25rem .6rem;margin:0 0 1rem;border-bottom:1px solid var(--rule);padding:0 0 .65rem}
+.dashboard-status div {min-width:0}
+.dashboard-status dt {font-size:.68rem;color:var(--muted)}
+.dashboard-status dd {margin-top:.1rem;font-weight:700;font-size:clamp(.8rem,2.8vw,1.2rem);overflow-wrap:anywhere}
+.dashboard-status div:last-child dd {font-size:.75rem;font-weight:550}
+.dashboard-status .dashboard-alarm {color:var(--coral)}
+.dashboard-heading {display:flex;align-items:baseline;justify-content:space-between;gap:.35rem .7rem;flex-wrap:wrap;margin-bottom:.45rem}
+.dashboard-heading h2,.dashboard-screen h2 {font-size:1.08rem;font-weight:670;letter-spacing:-.02em;margin:0}
+.dashboard-heading small,.dashboard-empty,.dashboard-legend {color:var(--muted);font-size:.75rem}
+.dashboard-search {display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;margin:.35rem 0 .65rem}
+.dashboard-search label {width:100%;font-size:.74rem;color:var(--muted)}
+.dashboard-search .input {min-width:8rem;flex:1;max-width:unset;height:2rem;font-size:.82rem}
+.dashboard-search .btn {min-height:2rem}
+.dashboard-legend {display:flex;justify-content:space-between;flex-wrap:wrap;gap:.25rem;margin:.5rem 0}
+.catalog-treemap {display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:.55rem;background:var(--paper);overflow:hidden}
+.catalog-treemap a:focus-visible rect,.catalog-treemap a:hover rect {stroke:var(--blue);stroke-width:3}
+.catalog-tile {fill:var(--raised);stroke:var(--paper);stroke-width:1.2}
+.catalog-tile.signal-associated {stroke:var(--blue);stroke-width:3}
+.catalog-treemap text {fill:var(--ink);font-size:13px;font-weight:620;pointer-events:none}
+.dashboard-exceptions {margin-top:1.1rem}
+.dashboard-alert {border:1px solid var(--rule);border-inline-start:3px solid var(--coral);border-radius:.44rem;margin:.45rem 0;padding:.5rem .6rem}
+.dashboard-alert-link {display:flex;justify-content:space-between;gap:.55rem}
+.dashboard-alert-link>span,.dashboard-alert-time,.dashboard-alert-cost small,.dashboard-fresh {display:block}
+.dashboard-alert-link strong {font-weight:690}
+.dashboard-alert-time,.dashboard-alert-cost small,.dashboard-fresh {font-size:.7rem;color:var(--muted)}
+.dashboard-alert-cost {text-align:end;flex:none}
+.dashboard-alert-cost strong {color:var(--coral)}
+.dashboard-fresh {color:var(--muted)}
+.dashboard-coverage {display:flex;gap:.25rem;flex-wrap:wrap;margin:.38rem 0 0;font-size:.66rem;color:var(--muted)}
+.dashboard-coverage span {background:var(--raised);border-top:2px solid var(--rule);padding:.13rem .34rem;border-radius:.12rem}
+.dashboard-coverage .coverage-yes {border-color:var(--okay)}
+.dashboard-history {margin:.65rem 0 0;font-size:.78rem;color:var(--muted)}
+.dashboard-history summary {cursor:pointer}
+.dashboard-history a {margin:.25rem 0}
+.dashboard-screen {display:grid;gap:.65rem}
+.pm-frame .monitor-investigation {margin:0}
+.pm-frame .investigation-title h2 {font-size:clamp(1.05rem,4vw,1.42rem);font-weight:720;line-height:1.25;margin:.15rem 0}
+.pm-frame .dashboard-lifecycle {display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.28rem;margin:.65rem 0;font-size:.61rem;color:var(--muted)}
+.dashboard-lifecycle li {border-top:4px solid var(--rule);padding:.22rem 0;overflow-wrap:anywhere}
+.dashboard-lifecycle .lifecycle-done {border-color:color-mix(in srgb,var(--blue) 58%,var(--paper))}
+.dashboard-lifecycle .lifecycle-current {border-color:var(--blue);color:var(--ink);font-weight:650}
+.pm-frame .trend-control {stroke:var(--muted)}
+.pm-frame .trend-control-dot {fill:var(--muted)}
+.trend-counterfactual {fill:none;stroke:var(--coral);stroke-width:1.5;stroke-dasharray:5 4}
+.trend-keys .counterfactual-key::before {background:none;border:1px dashed var(--coral)}
+.pm-frame .monitor-film {display:grid;grid-auto-flow:column;grid-auto-columns:minmax(10rem,1fr);grid-template-columns:none;overflow:auto;padding:2px 2px .4rem}
+.pm-frame .purchase-frame.failed {border-color:var(--coral)}
+.pm-frame .purchase-frame.verified {border-color:var(--okay)}
+.measurement-confirmed {background:color-mix(in srgb,var(--okay) 14%,var(--paper));padding:.7rem;border-radius:.42rem}
+.dashboard-task {border-top:1px solid var(--rule);padding-top:.8rem;margin-top:.8rem}
+.dashboard-task h3 {margin-bottom:.4rem}
+.dashboard-task form,.dashboard-task p {margin:.5rem 0}
+@media(max-width:420px) {
+ .dashboard-body {padding:.6rem}
+ .dashboard-search .btn {padding-inline:.46rem;font-size:.72rem}
+ .dashboard-status {gap:.18rem}
+ .dashboard-status dt {font-size:.62rem}
+ .dashboard-status div:last-child dd {font-size:.65rem}
+ .dashboard-tabs a {padding:.32rem .4rem;font-size:.72rem}
+}
+.catalog-tile.delta-down {fill:color-mix(in srgb,var(--coral) 22%,var(--paper));stroke:var(--coral)}
+.catalog-tile.delta-down-high {fill:color-mix(in srgb,var(--coral) 42%,var(--paper));stroke:var(--coral)}
+.catalog-tile.delta-up {fill:color-mix(in srgb,var(--okay) 24%,var(--paper));stroke:var(--okay)}
+.catalog-tile.control-context {stroke:var(--muted);stroke-width:2;stroke-dasharray:4 3}

@@ -1,0 +1,181 @@
+package views
+
+import "strconv"
+
+func countLabel(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s)-3; i > 0; i -= 3 {
+		s = s[:i] + " " + s[i:]
+	}
+	return s
+}
+
+templ Panel(v HomeView) {
+	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
+		<header class="dashboard-top">
+			<strong>Product Manager</strong>
+			<nav class="dashboard-modes" aria-label="Режим данных">
+				<a href={ v.RealURL } aria-current={ active(v.Mode == "real") }>Рабочий</a>
+				<a href={ v.DemoURL } aria-current={ active(v.Mode == "demo") }>Деморежим</a>
+			</nav>
+		</header>
+		<nav class="dashboard-tabs" aria-label="Экраны">
+			for _, tab := range v.Tabs {
+				<a href={ tab.URL } aria-current={ active(tab.Active) }>{ tab.Label }</a>
+			}
+		</nav>
+		if v.Mode == "demo" {
+			<p class="dashboard-mode-note">Деморежим · синтетические сигналы</p>
+		}
+		<div class="dashboard-body">
+			if v.Tab == "overview" && v.Monitor != nil {
+				@MonitorPanel(v.Monitor)
+			} else if v.Card != nil {
+				@caseScreen(v.Tab, v.Card, v.Detail)
+			} else if v.Monitor != nil && v.Monitor.Selected != nil {
+				@caseScreen(v.Tab, v.Monitor.Selected, nil)
+			} else {
+				<p class="dashboard-empty">Выберите открытое исключение в обзоре.</p>
+			}
+			if v.Monitor != nil && len(v.Monitor.Records) > 0 && v.Tab == "overview" {
+				<details class="dashboard-history">
+					<summary>Сохранённые гипотезы</summary>
+					for _, link := range v.Monitor.Records {
+						@navLink(link)
+					}
+				</details>
+			}
+		</div>
+	</section>
+}
+
+templ caseScreen(tab string, item *Investigation, decision *Decision) {
+	switch tab {
+	case "path":
+		@purchasePanel(item)
+	case "after":
+		@afterPanel(item, decision)
+	default:
+		if item.Prices != nil {
+			@pricePanel(item.Prices)
+		}
+		if item.Prices == nil || item.Chart.Target != "" {
+			@investigationPanel(item)
+		}
+		if decision != nil {
+			@decisionActions(decision)
+		}
+	}
+}
+
+templ decisionActions(d *Decision) {
+	<section class="dashboard-task" id="hypothesis-actions">
+		<h3>Задача в бэклоге</h3>
+		if d.TaskID != "" {
+			<a class="text-link" href={ d.TaskURL }>{ d.TaskID }</a>
+			<small>{ d.TaskTag }</small>
+		} else {
+			@editForm(d)
+			<form method="post" action="./approve">
+				<input type="hidden" name="id" value={ d.ID }/>
+				<input type="hidden" name="version" value={ d.Version }/>
+				<button type="submit" name="confirmed" value="yes" class="btn btn-primary">Создать эту задачу</button>
+			</form>
+		}
+		if d.Action != "" {
+			<p>{ d.Action }</p>
+		}
+	</section>
+}
+
+func lifecycleStep(status string) int {
+	switch status {
+	case "proposed":
+		return 1
+	case "approved":
+		return 2
+	case "in_backlog", "awaiting_release":
+		return 3
+	case "awaiting_measurement", "insufficient_data":
+		return 4
+	case "supported", "rejected":
+		return 5
+	default:
+		return 0
+	}
+}
+
+templ panelLifecycle(status string) {
+	<ol class="dashboard-lifecycle" aria-label="Стадия гипотезы">
+		for i, label := range []string{"Найдено", "Исследуем", "Обосновано", "В разработке", "Замеряем", "Решение"} {
+			<li class={ templ.KV("lifecycle-done", i < lifecycleStep(status)), templ.KV("lifecycle-current", i == lifecycleStep(status)) }>{ label }</li>
+		}
+	</ol>
+}
+
+templ coverageBar(items []CoverageItem) {
+	<div class="dashboard-coverage" aria-label="Покрытие источников">
+		for _, item := range items {
+			if item.Available {
+				<span class="coverage-yes" title={ item.Name + ": есть наблюдение" }>{ item.Name }</span>
+			} else {
+				<span title={ item.Name + ": нет наблюдения" }>{ item.Name }</span>
+			}
+		}
+	</div>
+}
+
+templ catalogPanel(m *Monitor) {
+	<section class="dashboard-catalog" aria-label="Карта каталога">
+		<div class="dashboard-heading">
+			<h2>Карта каталога</h2>
+			if m.Catalog != nil {
+				<small>{ m.Catalog.Group }</small>
+			}
+		</div>
+		<form action="./" method="get" class="dashboard-search">
+			<input type="hidden" name="mode" value={ m.Mode }/>
+			<label for="catalog-search">Товар или вендор</label>
+			<input id="catalog-search" name="q" type="search" class="input" placeholder="Название или артикул" value={ m.Search }/>
+			if m.MarketURL != "" {
+				<button class="btn btn-sm btn-primary" type="submit" name="tab" value="catalog" formaction={ m.MarketURL } formtarget="_blank">Найти товар</button>
+			}
+			<button class="btn btn-sm" type="submit" name="tab" value="overview">Фильтр карты</button>
+		</form>
+		if m.Catalog == nil {
+			<p class="dashboard-empty">Ожидается полный снимок Market Watch.</p>
+		} else if len(m.Catalog.Tiles) == 0 {
+			if m.Catalog.Partial {
+				<p class="dashboard-empty">Разбивка полного каталога пока недоступна.</p>
+			} else {
+				<p class="dashboard-empty">По этому фильтру нет групп каталога.</p>
+			}
+		} else {
+			<div class="dashboard-legend"><small>Площадь: { m.Catalog.Weight }</small><small>Цвет: отклонение товара от контроля. Серый — неизвестно.</small></div>
+			<svg viewBox="0 0 640 280" class="catalog-treemap" role="group" aria-label="Карта групп каталога">
+				for _, tile := range m.Catalog.Tiles {
+					if tile.URL != "" {
+						<a href={ tile.URL } aria-label={ tile.Label }>@catalogRectangle(tile)</a>
+					} else {
+						<g>@catalogRectangle(tile)</g>
+					}
+				}
+			</svg>
+		}
+		if len(m.Matches) != 0 {
+			<details open class="dashboard-history">
+				<summary>Семейства с наблюдениями</summary>
+				for _, result := range m.Matches {
+					<a href={ result.URL } class="text-link">{ result.Label }</a>
+				}
+			</details>
+		}
+	</section>
+}
+
+templ catalogRectangle(tile CatalogTile) {
+	<rect class={ "catalog-tile", tile.Tone } x={ tile.X } y={ tile.Y } width={ tile.W } height={ tile.H }><title>{ tile.Label }</title></rect>
+	if tile.ShowLabel {
+		<text x={ tile.LX } y={ tile.LY } aria-hidden="true">{ tile.Name }</text>
+	}
+}

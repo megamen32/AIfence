@@ -35,25 +35,14 @@ templ LiveBoard(v HomeView) {
 }
 
 templ Board(v HomeView) {
-	if v.Card != nil {
-		<div class="pm-monitor">
-			@investigationPanel(v.Card)
-		</div>
+	if len(v.Tabs) != 0 {
+		@Panel(v)
+	} else {
+		@sourceBoard(v)
 	}
-	if v.Monitor != nil {
-		@MonitorPanel(v.Monitor)
-		if len(v.Records) > 0 || len(v.Snapshots) > 0 {
-			<details class="notes">
-				<summary>Гипотезы и снимки данных</summary>
-				for _, link := range v.Records {
-					@navLink(link)
-				}
-				for _, link := range v.Snapshots {
-					@navLink(link)
-				}
-			</details>
-		}
-	}
+}
+
+templ sourceBoard(v HomeView) {
 	if v.Monitor == nil || v.Detail != nil {
 	<div class="pm-board">
 		<nav class="pm-index" aria-label="Навигация">

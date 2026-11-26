@@ -25,6 +25,8 @@ type Decision struct {
 }
 type HomeView struct {
 	Monitor                                           *Monitor
+	Tab, Mode, RealURL, DemoURL                       string
+	Tabs                                              []Link
 	Card                                              *Investigation
 	Records, Snapshots, Filters                       []Link
 	Detail                                            *Decision
@@ -36,9 +38,13 @@ type HomeView struct {
 }
 
 type Monitor struct {
-	Products []MonitorProduct
-	Pulse    []PulseItem
-	Selected *Investigation
+	Catalog                                 *CatalogMap
+	Search, Group, Updated, Mode, MarketURL string
+	Matches, Records, Diagnostics           []Link
+	ReviewCount                             int
+	Products                                []MonitorProduct
+	Pulse                                   []PulseItem
+	Selected                                *Investigation
 }
 
 type MonitorProduct struct {
@@ -49,10 +55,15 @@ type MonitorProduct struct {
 type MonitorCell struct{ Label, Tone string }
 
 type PulseItem struct {
-	Product, URL, Week, Detected, Change, Comparison, Origin string
+	Product, URL, Week, Detected, Change, Comparison, Origin                                     string
+	FirstDetected, Freshness, Weekly, WeeklyBasis, ProductKey, ControlKey, Vendor, ControlVendor string
+	Amount, Delta                                                                                *float64
+	Coverage                                                                                     []CoverageItem
 }
 
 type Investigation struct {
+	Title, Mode, Status, Weekly, WeeklyBasis, FirstDetected                       string
+	Coverage                                                                      []CoverageItem
 	Magnitude                                                                     *SignalMagnitude
 	Prices                                                                        *MarketPrices
 	Product, BackURL, Origin, Detected, Week, Control, Scale, Cost, SnapshotURL   string
@@ -64,9 +75,10 @@ type Investigation struct {
 	RecordURL, Orders, Margin, CostError, ProductKey, SnapshotID, CardID, AlertID string
 }
 
-type BrowserFrame struct{ Device, Step, Verdict, Image, SourceURL string }
+type BrowserFrame struct{ Device, Step, Verdict, Image, SourceURL, Tone string }
 
 type Chart struct {
+	Counterfactual                                                  string
 	Target, Control, Fill, First, Last, Min, Max, ReleaseX, Caption string
 	Dots                                                            []ChartDot
 }
@@ -87,3 +99,21 @@ type PriceGroup struct {
 type PriceOffer struct{ Seller, Price, Date, URL string }
 
 type SignalMagnitude struct{ Change, Caption, Before, After, Baseline, Current string }
+
+type CoverageItem struct {
+	Name      string
+	Available bool
+}
+
+type CatalogMap struct {
+	Count, Date, Group, Weight, Filter string
+	Partial                            bool
+	VendorURL, CategoryURL             string
+	Tiles                              []CatalogTile
+}
+
+type CatalogTile struct {
+	Name, Label, Value, Tone, URL string
+	X, Y, W, H, LX, LY            string
+	ShowLabel                     bool
+}

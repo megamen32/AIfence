@@ -28,15 +28,18 @@ type monitorObservation struct {
 }
 
 type monitorDetails struct {
-	Origin     string `json:"origin"`
-	Synthetic  bool   `json:"synthetic"`
-	Detected   string `json:"detected_at"`
-	Metric     string `json:"metric_key"`
-	Scenario   string `json:"scenario_id"`
-	Control    string `json:"control_product_key"`
-	Stage      string `json:"stage"`
-	Reason     string `json:"reason"`
-	Screenshot string `json:"screenshot_path"`
+	Origin        string `json:"origin"`
+	Synthetic     bool   `json:"synthetic"`
+	Detected      string `json:"detected_at"`
+	FirstDetected string `json:"first_detected_at"`
+	Metric        string `json:"metric_key"`
+	Scenario      string `json:"scenario_id"`
+	Control       string `json:"control_product_key"`
+	Stage         string `json:"stage"`
+	Reason        string `json:"reason"`
+	Screenshot    string `json:"screenshot_path"`
+	Vendor        string `json:"vendor"`
+	ControlVendor string `json:"control_vendor"`
 }
 
 func originText(d monitorDetails) string {
@@ -112,7 +115,7 @@ func monitorCell(o monitorObservation) (column int, cell views.MonitorCell) {
 	return -1, cell
 }
 
-func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, records []decision.Record, selected, pinned, alert string, autoOpen bool) (*views.Monitor, error) {
+func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, records []decision.Record, selected, pinned, alert string, autoOpen, demo bool) (*views.Monitor, error) {
 	// Look at recent owner snapshots; a pinned older source is still reachable.
 	ids := []string{}
 	if pinned != "" {
@@ -135,7 +138,7 @@ func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, rec
 			rows = append(rows, o)
 		}
 	}
-	return monitorView(rows, records, selected, pinned, alert, autoOpen), nil
+	return monitorView(separateMonitorRows(rows, demo), records, selected, pinned, alert, autoOpen), nil
 }
 
 func monitorView(rows []monitorObservation, records []decision.Record, selected, pinned, alert string, autoOpen bool) *views.Monitor {
@@ -143,13 +146,42 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 	fresh, active := watchdogState(rows)
 	if autoOpen && selected == "" {
 		for _, row := range active {
-			if legacyFixtureFamily(row.Product) == "" && !educationalObservation(row.Row, row.details) {
+			if legacyFixtureFamily(row.Product) == "" && !educationalObservation(row.Row, row.details) &&
+				firstSignalLabel(row, rows) != "" {
 				selected, pinned, alert = row.Product, row.snapshot, row.ID
 				break
 			}
 		}
 	}
 	m := &views.Monitor{}
+	for _, rec := range records {
+		for _, row := range rows {
+			if row.snapshot == rec.EvidenceSnapshotID && row.Product == rec.Hypothesis.ProductKey &&
+				slices.Contains(rec.Hypothesis.SignalIDs, row.ID) {
+				m.Records = append(m.Records, views.Link{
+					Label: observedProductName(row.Product, row), URL: href("id", rec.Hypothesis.ID),
+					Detail: label(statusTitles, rec.Hypothesis.Status),
+				})
+				switch rec.Hypothesis.Status {
+				case "supported", "rejected":
+				default:
+					m.ReviewCount++
+				}
+				break
+			}
+		}
+	}
+	for _, row := range rows {
+		if row.received != nil && !row.received.IsZero() {
+			stamp := row.received.UTC().Format(time.RFC3339)
+			if stamp > m.Updated {
+				m.Updated = stamp
+			}
+		}
+	}
+	if t, err := time.Parse(time.RFC3339, m.Updated); err == nil {
+		m.Updated = t.Format("02.01.2006 15:04 UTC")
+	}
 	products := map[string]int{}
 	var focusRows []monitorObservation
 	for _, row := range rows {
@@ -178,7 +210,24 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 	}
 	for _, row := range active {
 		p := &m.Products[products[row.Product]]
-		magnitude := signalMagnitude(evidence.WatchdogWindow(row.Row))
+		first := firstSignalLabel(row, rows)
+		if first == "" {
+			m.Diagnostics = append(m.Diagnostics, views.Link{
+				Label: p.Name, URL: href("snapshot", row.snapshot, "obs", row.ID),
+				Detail: "Нет отметки обнаружения в " + row.Ref.SourceID,
+			})
+			m.ReviewCount++
+			continue
+		}
+		window := evidence.WatchdogWindow(row.Row)
+		magnitude := signalMagnitude(window)
+		var delta *float64
+		if window != nil && window.BaselineMean > 0 && window.ControlCurrentMean > 0 {
+			value := (window.CurrentMean/window.BaselineMean*window.ControlBaselineMean/window.ControlCurrentMean - 1) * 100
+			if !math.IsNaN(value) && !math.IsInf(value, 0) {
+				delta = &value
+			}
+		}
 		change, comparison := "", ""
 		if magnitude != nil {
 			change, comparison = magnitude.Change, magnitude.Caption
@@ -191,9 +240,12 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 				p.Freshness = "Неполный замер " + date(latest.Period.To)
 			}
 		}
+		weekly, basis, amount := signalPlanning(records, row)
 		m.Pulse = append(m.Pulse, views.PulseItem{
-			Product: p.Name, URL: link,
-			Week: span(row.Period.From, row.Period.To), Detected: signalTime(row.details.Detected, row.received),
+			Product: p.Name, ProductKey: row.Product, ControlKey: row.details.Control, Vendor: row.details.Vendor, ControlVendor: row.details.ControlVendor, Delta: delta, URL: link, FirstDetected: first,
+			Freshness: p.Freshness, Weekly: weekly, WeeklyBasis: basis, Amount: amount,
+			Coverage: signalCoverage(rows, row.Product, row.snapshot),
+			Week:     span(row.Period.From, row.Period.To), Detected: signalTime(row.details.Detected, row.received),
 			Change: change, Comparison: comparison, Origin: observationOrigin(row),
 		})
 	}
@@ -209,6 +261,24 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 			m.Products = append(m.Products, p)
 		}
 	}
+	slices.SortStableFunc(m.Pulse, func(a, b views.PulseItem) int {
+		if a.Amount == nil && b.Amount == nil {
+			return 0
+		}
+		if a.Amount == nil {
+			return 1
+		}
+		if b.Amount == nil {
+			return -1
+		}
+		if *a.Amount < *b.Amount {
+			return 1
+		}
+		if *a.Amount > *b.Amount {
+			return -1
+		}
+		return 0
+	})
 	if selected != "" {
 		if alert != "" {
 			m.Selected = investigation(selected, focusRows, records, alert)
@@ -297,13 +367,16 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 	}
 	var record *decision.Record
 	for i := range records {
-		if records[i].Hypothesis.ProductKey == key && (signal == nil || records[i].EvidenceSnapshotID == signal.snapshot) {
+		if records[i].Hypothesis.ProductKey == key && linkedRecord(records[i], rows, signal) {
 			record = &records[i]
 			break
 		}
 	}
 	if signal != nil {
 		v.Product = observedProductName(key, *signal)
+		v.FirstDetected = firstSignalLabel(*signal, rows)
+		v.Coverage = signalCoverage(rows, key, signal.snapshot)
+		v.Weekly, v.WeeklyBasis, _ = signalPlanning(records, *signal)
 		v.Origin, v.Detected, v.Week = observationOrigin(*signal), signalTime(signal.details.Detected, signal.received), span(signal.Period.From, signal.Period.To)
 		if signal.details.Control != "" {
 			v.Control = observedProductName(signal.details.Control, *signal)
@@ -335,10 +408,20 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 			if row.details.Screenshot != "" {
 				img = href("snapshot", row.snapshot, "frame", row.ID)
 			}
-			v.Frames = append(v.Frames, views.BrowserFrame{Device: device, Step: step, Verdict: verdict, Image: img, SourceURL: href("snapshot", row.snapshot, "obs", row.ID)})
+			tone := "incomplete"
+			if row.Status == "observed" {
+				switch row.Value {
+				case "path_broken", "metrika_add_not_observed":
+					tone = "failed"
+				case "ok":
+					tone = "verified"
+				}
+			}
+			v.Frames = append(v.Frames, views.BrowserFrame{Device: device, Step: step, Verdict: verdict, Image: img, Tone: tone, SourceURL: href("snapshot", row.snapshot, "obs", row.ID)})
 		}
 	}
 	if record != nil {
+		v.Status = record.Hypothesis.Status
 		v.RecordURL = href("id", record.Hypothesis.ID)
 		if v.SnapshotURL == "" {
 			v.SnapshotURL = href("snapshot", record.EvidenceSnapshotID)
@@ -498,10 +581,17 @@ func drawTrend(data []reading, release, caption string) views.Chart {
 	slices.SortFunc(data, func(a, b reading) int { return a.date.Compare(b.date) })
 	first, last := data[0].date, data[len(data)-1].date
 	lo, hi := math.Inf(1), math.Inf(-1)
+	reference := 0.0
+	if data[0].control != nil && *data[0].control > 0 {
+		reference = data[0].target / *data[0].control
+	}
 	for _, d := range data {
 		lo, hi = min(lo, d.target), max(hi, d.target)
 		if d.control != nil {
 			lo, hi = min(lo, *d.control), max(hi, *d.control)
+			if reference > 0 {
+				lo, hi = min(lo, *d.control*reference), max(hi, *d.control*reference)
+			}
 		}
 	}
 	y := func(value float64) string {
@@ -517,7 +607,7 @@ func drawTrend(data []reading, release, caption string) views.Chart {
 	if t, err := time.Parse(time.DateOnly, release); err == nil && !t.Before(first) && !t.After(last) {
 		c.ReleaseX = x(t)
 	}
-	var target, control []string
+	var target, control, equivalent []string
 	for _, d := range data {
 		p, t := x(d.date), y(d.target)
 		period := d.period
@@ -530,14 +620,20 @@ func drawTrend(data []reading, release, caption string) views.Chart {
 			dot.ControlY = y(*d.control)
 			dot.Label += " / " + num(*d.control)
 			control = append(control, p+","+dot.ControlY)
+			if reference > 0 {
+				equivalent = append(equivalent, p+","+y(*d.control*reference))
+			}
 		}
 		c.Dots = append(c.Dots, dot)
 	}
 	c.Target = strings.Join(target, " ")
 	if len(control) == len(target) {
 		c.Control = strings.Join(control, " ")
-		slices.Reverse(control)
-		c.Fill = c.Target + " " + strings.Join(control, " ")
+		if len(equivalent) == len(target) {
+			c.Counterfactual = strings.Join(equivalent, " ")
+			slices.Reverse(equivalent)
+			c.Fill = c.Target + " " + strings.Join(equivalent, " ")
+		}
 	}
 	return c
 }

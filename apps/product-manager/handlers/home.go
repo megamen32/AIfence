@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"agent/internal/catalogoverview"
 	"agent/internal/decision"
 	"agent/internal/evidence"
 	"agent/internal/product"
@@ -22,8 +23,9 @@ import (
 )
 
 type Handler struct {
-	svc   product.Service
-	files *agentsdk.Agent
+	svc             product.Service
+	files           *agentsdk.Agent
+	catalogOverview func(context.Context, catalogoverview.GetInput) (catalogoverview.Overview, error)
 }
 
 func New(s product.Service, agent ...*agentsdk.Agent) *Handler {
@@ -31,6 +33,11 @@ func New(s product.Service, agent ...*agentsdk.Agent) *Handler {
 	if len(agent) > 0 {
 		h.files = agent[0]
 	}
+	return h
+}
+
+func (h *Handler) WithCatalogOverview(read func(context.Context, catalogoverview.GetInput) (catalogoverview.Overview, error)) *Handler {
+	h.catalogOverview = read
 	return h
 }
 
@@ -338,11 +345,21 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		for _, s := range index.Snapshots {
 			v.Snapshots = append(v.Snapshots, views.Link{Label: date(s.AsOf), Detail: shortID(s.SnapshotID), URL: href("snapshot", s.SnapshotID)})
 		}
-		v.Monitor, err = h.monitor(ctx, index.Snapshots, records.Records, selected, snap, q.Get("alert"), q.Get("overview") == "")
+		demo := panelDemo(q, focus.Synthetic)
+		panelQuery := clonePanelQuery(q)
+		if selected != "" && panelQuery.Get("monitor") == "" {
+			panelQuery.Set("monitor", selected)
+			panelQuery.Set("snapshot", snap)
+		}
+		setupPanel(&v, panelQuery, demo, selected != "")
+		v.Monitor, err = h.monitor(ctx, index.Snapshots, records.Records, selected, snap, q.Get("alert"), v.Tab != "overview" && q.Get("overview") == "", demo)
 		if err != nil {
 			return v, err
 		}
+		h.loadOverview(ctx, v.Monitor, q, v.Tab, v.Mode)
 		if v.Monitor.Selected != nil {
+			v.Monitor.Selected.Mode = panelMode(demo)
+			v.Monitor.Selected.BackURL = href("tab", "overview", "mode", panelMode(demo))
 			monitorEconomics(v.Monitor.Selected, q.Get("orders"), q.Get("margin"))
 		}
 		return v, nil
@@ -359,6 +376,22 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		v.Card, err = h.cardInvestigation(ctx, rec, q.Get("orders"), q.Get("margin"))
 		if err != nil {
 			return v, err
+		}
+		demo := v.Card.Origin == "Синтетические данные"
+		if q.Get("tab") == "overview" {
+			demo = panelDemo(q, demo)
+		}
+		panelQuery := clonePanelQuery(q)
+		panelQuery.Set("id", id)
+		setupPanel(&v, panelQuery, demo, true)
+		v.Card.Mode, v.Card.Title, v.Card.Status = panelMode(demo), v.Detail.Title, rec.Hypothesis.Status
+		v.Card.BackURL = href("tab", "overview", "mode", panelMode(demo))
+		if v.Tab == "overview" {
+			v.Monitor, err = h.monitor(ctx, index.Snapshots, records.Records, "", "", "", false, demo)
+			if err != nil {
+				return v, err
+			}
+			h.loadOverview(ctx, v.Monitor, q, v.Tab, v.Mode)
 		}
 		snap = rec.EvidenceSnapshotID
 		for _, s := range index.Snapshots {

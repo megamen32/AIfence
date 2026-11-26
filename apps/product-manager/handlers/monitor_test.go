@@ -133,7 +133,7 @@ func TestMonitorOpensSavedAlertAlongsideNewerIncompleteWindow(t *testing.T) {
 			Source: "sales", Status: "observed", Value: "true", Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"},
 			Details: windowJSON(20, 10, 15, 15)},
 		snapshot: "owner-snapshot",
-		details:  monitorDetails{Origin: "imported_historical", Control: "control"},
+		details:  monitorDetails{Origin: "imported_historical", Control: "control", FirstDetected: "2026-01-19T06:00:00Z"},
 	}
 	incomplete := alert
 	incomplete.ID, incomplete.Period.To, incomplete.Status, incomplete.Value = "recent-window", "2026-01-25", "missing", "null"
@@ -145,7 +145,7 @@ func TestMonitorOpensSavedAlertAlongsideNewerIncompleteWindow(t *testing.T) {
 		t.Fatalf("map did not distinguish freshness and the alert: %+v", p)
 	}
 	if v.Selected == nil || v.Selected.Chart.Target == "" || v.Selected.Chart.Control == "" ||
-		v.Selected.Detected != "Время обнаружения неизвестно" || v.Selected.AlertID != alert.ID {
+		v.Selected.FirstDetected != "Впервые обнаружено 19.01.2026, 06:00 UTC" || v.Selected.AlertID != alert.ID {
 		t.Fatalf("wrong opened investigation: %+v", v.Selected)
 	}
 }

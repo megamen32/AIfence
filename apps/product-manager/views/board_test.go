@@ -40,10 +40,10 @@ func TestCardsAndSnapshotsRenderActionsAndEvidence(t *testing.T) {
 }
 
 func TestMonitorOverviewAndProductPanel(t *testing.T) {
-	v := HomeView{BoardURL: "./board?", Monitor: &Monitor{
+	v := HomeView{BoardURL: "./board?", Tab: "overview", Mode: "demo", Tabs: []Link{{Label: "Обзор"}}, Monitor: &Monitor{
 		Products: []MonitorProduct{{Name: "Kaspersky Small Office Security", URL: "./?monitor=demo", Origin: "Синтетические данные",
 			Cells: [4]MonitorCell{{Label: "Тревога", Tone: "alarm"}}}},
-		Pulse: []PulseItem{{Product: "Kaspersky Small Office Security", Detected: "Время обнаружения неизвестно", URL: "./?monitor=demo"}},
+		Pulse: []PulseItem{{Product: "Kaspersky Small Office Security", FirstDetected: "Впервые обнаружено 10:00", URL: "./?monitor=demo"}},
 	}}
 	render := func(v HomeView) string {
 		t.Helper()
@@ -54,26 +54,32 @@ func TestMonitorOverviewAndProductPanel(t *testing.T) {
 		return b.String()
 	}
 	overview := render(v)
-	for _, want := range []string{"Продукты по каналам и устройствам", "./?monitor=demo", "Время обнаружения неизвестно", "product-decisions"} {
+	for _, want := range []string{"Карта каталога", "./?monitor=demo", "Впервые обнаружено 10:00", "product-decisions", "Деморежим"} {
 		if !strings.Contains(overview, want) {
 			t.Fatal(want)
 		}
 	}
 	v.Monitor.Selected = &Investigation{Product: "Kaspersky Small Office Security", Origin: "Синтетические данные", Scale: "Не доказано",
 		Chart: Chart{Target: "30,30 570,170", Control: "30,30 570,35", Fill: "30,30 570,170 570,35 30,30", ReleaseX: "300"}}
+	v.Tab = "hypothesis"
 	product := render(v)
-	for _, want := range []string{"trend-fill", "trend-release", "Синтетические данные", "Задать допущения", "До и после релиза"} {
+	for _, want := range []string{"trend-fill", "trend-release", "Синтетические данные", "Задать допущения"} {
 		if !strings.Contains(product, want) {
 			t.Fatal(want)
 		}
 	}
-	if strings.Contains(product, "₽ / неделю") {
+	v.Tab = "after"
+	if !strings.Contains(render(v), "До и после релиза") {
+		t.Fatal("measurement tab unavailable")
+	}
+	if strings.Contains(overview, "<table") || strings.Contains(product, "₽ / неделю") {
 		t.Fatal("showed economics without inputs")
 	}
 }
 
 func TestSavedCardPutsVisualDetailsBeforeNormalActions(t *testing.T) {
 	v := HomeView{
+		Tab: "hypothesis", Mode: "real", Tabs: []Link{{Label: "Гипотеза"}},
 		Card: &Investigation{CardID: "saved", Product: "Kaspersky Small Office Security",
 			Chart: Chart{Caption: "Средние индексы", Target: "30,30 570,170"}},
 		Detail: &Decision{ID: "saved", Title: "Сохранённая гипотеза", Version: "1"},
@@ -84,7 +90,7 @@ func TestSavedCardPutsVisualDetailsBeforeNormalActions(t *testing.T) {
 	}
 	html := b.String()
 	chart, action := strings.Index(html, "trend-target"), strings.Index(html, "./approve")
-	if chart < 0 || action < chart || !strings.Contains(html, `href="#hypothesis-actions"`) {
+	if chart < 0 || action < chart || !strings.Contains(html, `id="hypothesis-actions"`) {
 		t.Fatal("the saved-card path must expose graph and approval together")
 	}
 	if strings.Contains(html, `class="trend-control"`) {
