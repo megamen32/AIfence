@@ -8,6 +8,8 @@ A native Go application for Airlock. The signed-in app members can query public 
 | `compare_offers` | Groups of observations for an exact SKU with original terms and a link to the same comparison in the web UI |
 | `crawl_coverage` | Latest dated reconciliation of unique license sitemap URLs with price, missing price, unavailability, exclusion, unresolved and pending counts where the denominator is known |
 | `catalog_status` | Indexed offer counts and latest observation timestamps per store |
+| `add_competitors` (admin) | Enable the vetted Allsoft and Syssoft profiles, persist activation, collect a bounded real sample via robots-aware fetch, and include them in normal refreshes |
+| `list_competitors` | Verify activation, observations, seed URLs and errors; these profiles have no full sitemap inventory |
 | `refresh_market` | Refresh featured pages and previously observed URLs for a known exact SKU |
 | `market_changes` | Price changes on comparable observations of the same store, URL, SKU, price basis and quantity tier |
 

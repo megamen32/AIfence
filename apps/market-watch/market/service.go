@@ -88,7 +88,7 @@ func (s *Service) List(ctx context.Context, in ListInput) (Evidence, error) {
 func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sources, e := catalog.Sources()
+	sources, e := s.configuredSources(ctx)
 	if e != nil {
 		return Evidence{}, e
 	}
@@ -143,7 +143,7 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 		if len(sel) > 0 && !sel[src.ID] {
 			continue
 		}
-		if len(targets[src.ID]) > 0 {
+		if src.Adapter != "allsoft_family" && src.Adapter != "syssoft_family" && len(targets[src.ID]) > 0 {
 			seen := map[string]bool{}
 			for _, u := range src.Seeds {
 				seen[u] = true

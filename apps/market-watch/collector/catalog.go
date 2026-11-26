@@ -148,6 +148,12 @@ func Extract(s Source, page string, html io.Reader, at time.Time) ([]Offer, erro
 }
 
 func extractDoc(s Source, page string, doc *goquery.Document, at time.Time) ([]Offer, error) {
+	if s.Adapter == "allsoft_family" {
+		return allsoftFamily(s, page, doc, at)
+	}
+	if s.Adapter == "syssoft_family" {
+		return syssoftFamily(s, page, doc, at)
+	}
 	if s.Adapter == "softline_product" {
 		offer, err := SoftlineDetail(doc, page, at)
 		if err != nil || offer == nil {

@@ -47,6 +47,10 @@ func storeName(id string) string {
 		return "SoftMagazin"
 	case "softmap":
 		return "SoftMap"
+	case "allsoft":
+		return "Allsoft"
+	case "syssoft":
+		return "Syssoft"
 	default:
 		return id
 	}

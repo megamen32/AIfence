@@ -45,7 +45,7 @@ func (s *Service) Coverage(ctx context.Context, _ struct{}) (CatalogStatus, erro
 	for _, r := range rows {
 		counts[r.Source] = SourceSummary{r.Source, r.Offers, r.ObservedAt.UTC().Format(time.RFC3339)}
 	}
-	sources, err := catalog.Sources()
+	sources, err := s.configuredSources(ctx)
 	if err != nil {
 		return CatalogStatus{}, err
 	}
@@ -166,7 +166,7 @@ func (s *Service) Import(w http.ResponseWriter, r *http.Request) error {
 	if err := d.Decode(&struct{}{}); err != io.EOF {
 		return agentsdk.NewHTTPError(400, "Unexpected data following observations", nil)
 	}
-	sources, err := catalog.Sources()
+	sources, err := s.configuredSources(r.Context())
 	if err != nil {
 		return err
 	}
