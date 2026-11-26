@@ -16,6 +16,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_HOST = "market-watch.localhost"
+BASEROW_HOST = "baserow.localhost"
 NONCE = "__air_relay_nonce=sample; Path=/; Max-Age=900; HttpOnly; SameSite=Lax"
 CLEAR = "__air_relay_nonce=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0; HttpOnly; SameSite=Lax"
 SESSION = "__air_session=example; Path=/; Max-Age=900; HttpOnly; SameSite=Lax"
@@ -104,6 +105,11 @@ class EmbeddedCookiePolicy(unittest.TestCase):
         }, False)
         self.check_flow(APP_HOST, {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Site": "same-origin"}, False)
         self.check_flow(APP_HOST, {}, False)
+
+    def test_authenticated_baserow_view(self):
+        self.check_flow(BASEROW_HOST, {"Sec-Fetch-Dest": "iframe"}, True)
+        self.check_flow(BASEROW_HOST, {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Storage-Access": "none"}, True)
+        self.check_flow(BASEROW_HOST, {"Sec-Fetch-Dest": "document"}, False)
 
     def test_unrelated_origins(self):
         for host in ("localhost", "other.localhost", "market-watch.localhost.example"):
