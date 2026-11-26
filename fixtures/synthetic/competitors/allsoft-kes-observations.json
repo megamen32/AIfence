@@ -1,0 +1,145 @@
+{
+  "schema_version": "aifence.v1",
+  "source": "competitor",
+  "as_of": "2026-11-20T12:00:00Z",
+  "status": "ok",
+  "observations": [
+    {
+      "id": "allsoft-kes-steps-18",
+      "kind": "competitor_observation",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "purchase.steps_to_cart",
+      "value": 4,
+      "unit": "steps",
+      "period": {
+        "from": "2026-11-18",
+        "to": "2026-11-18"
+      },
+      "source_ref": {
+        "source_id": "synthetic-allsoft",
+        "locator": "allsoft-kes-2026-11-18#purchase.steps_to_cart",
+        "revision": "allsoft-kes-2026-11-18",
+        "url": "https://allsoft.ru/"
+      },
+      "status": "observed",
+      "details": {
+        "competitor": "Allsoft",
+        "product_label": "Kaspersky Endpoint Security",
+        "value_type": "number",
+        "origin": "agent_collected",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "allsoft-kes-steps-19",
+      "kind": "competitor_observation",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "purchase.steps_to_cart",
+      "value": 3,
+      "unit": "steps",
+      "period": {
+        "from": "2026-11-19",
+        "to": "2026-11-19"
+      },
+      "source_ref": {
+        "source_id": "synthetic-allsoft",
+        "locator": "allsoft-kes-2026-11-19#purchase.steps_to_cart",
+        "revision": "allsoft-kes-2026-11-19",
+        "url": "https://allsoft.ru/"
+      },
+      "status": "observed",
+      "details": {
+        "competitor": "Allsoft",
+        "product_label": "Kaspersky Endpoint Security",
+        "value_type": "number",
+        "origin": "agent_collected",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "allsoft-kes-steps-20",
+      "kind": "competitor_observation",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "purchase.steps_to_cart",
+      "value": 3,
+      "unit": "steps",
+      "period": {
+        "from": "2026-11-20",
+        "to": "2026-11-20"
+      },
+      "source_ref": {
+        "source_id": "synthetic-allsoft",
+        "locator": "allsoft-kes-2026-11-20#purchase.steps_to_cart",
+        "revision": "allsoft-kes-2026-11-20",
+        "url": "https://allsoft.ru/"
+      },
+      "status": "observed",
+      "details": {
+        "competitor": "Allsoft",
+        "product_label": "Kaspersky Endpoint Security",
+        "value_type": "number",
+        "origin": "agent_collected",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "allsoft-kes-account",
+      "kind": "competitor_observation",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "purchase.account_required",
+      "value": false,
+      "unit": "boolean",
+      "period": {
+        "from": "2026-11-20",
+        "to": "2026-11-20"
+      },
+      "source_ref": {
+        "source_id": "synthetic-allsoft",
+        "locator": "allsoft-kes-2026-11-20#purchase.account_required",
+        "revision": "allsoft-kes-2026-11-20",
+        "url": "https://allsoft.ru/"
+      },
+      "status": "observed",
+      "details": {
+        "competitor": "Allsoft",
+        "product_label": "Kaspersky Endpoint Security",
+        "value_type": "boolean",
+        "origin": "agent_collected",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "allsoft-kes-fields",
+      "kind": "competitor_observation",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "card.fields",
+      "value": [
+        "edition",
+        "term",
+        "device_count"
+      ],
+      "unit": "set",
+      "period": {
+        "from": "2026-11-20",
+        "to": "2026-11-20"
+      },
+      "source_ref": {
+        "source_id": "synthetic-allsoft",
+        "locator": "allsoft-kes-2026-11-20#card.fields",
+        "revision": "allsoft-kes-2026-11-20",
+        "url": "https://allsoft.ru/"
+      },
+      "status": "observed",
+      "details": {
+        "competitor": "Allsoft",
+        "product_label": "Kaspersky Endpoint Security",
+        "value_type": "set",
+        "origin": "agent_collected",
+        "synthetic": true
+      }
+    }
+  ],
+  "warnings": [
+    "Synthetic example. Allsoft and Kaspersky Endpoint Security are real names; these values are illustrative."
+  ]
+}

@@ -1,35 +1,43 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aifence.example/contracts/signal-v1.json",
-  "title": "Weekly watchdog decisions",
+  "title": "Sales watchdog decisions and competitor change signals",
   "allOf": [
     {"$ref": "evidence-v1.json"},
     {
-      "properties": {
-        "source": {"const": "sales"},
-        "observations": {
-          "type": "array",
-          "items": {
-            "required": ["details"],
-            "properties": {
-              "kind": {"const": "metric"},
-              "metric_key": {"const": "watchdog.alert"},
-              "unit": {"const": "boolean"},
-              "value": {"type": ["boolean", "null"]},
-              "details": {
-                "type": "object",
-                "required": ["control_product_key", "metric_key", "evidence_ids", "reason"],
-                "properties": {
-                  "control_product_key": {"type": "string", "minLength": 1},
-                  "metric_key": {"type": "string", "minLength": 1},
-                  "evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-                  "reason": {"type": "string", "minLength": 1}
+      "if": {"properties": {"source": {"const": "competitor"}}},
+      "then": {
+        "properties": {
+          "observations": {"items": {"properties": {"kind": {"const": "competitor_change"}}}}
+        }
+      },
+      "else": {
+        "properties": {
+          "source": {"const": "sales"},
+          "observations": {
+            "type": "array",
+            "items": {
+              "required": ["details"],
+              "properties": {
+                "kind": {"const": "metric"},
+                "metric_key": {"const": "watchdog.alert"},
+                "unit": {"const": "boolean"},
+                "value": {"type": ["boolean", "null"]},
+                "details": {
+                  "type": "object",
+                  "required": ["control_product_key", "metric_key", "evidence_ids", "reason"],
+                  "properties": {
+                    "control_product_key": {"type": "string", "minLength": 1},
+                    "metric_key": {"type": "string", "minLength": 1},
+                    "evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+                    "reason": {"type": "string", "minLength": 1}
+                  }
                 }
-              }
-            },
-            "if": {"properties": {"status": {"const": "observed"}}},
-            "then": {"properties": {"value": {"type": "boolean"}}},
-            "else": {"properties": {"value": {"type": "null"}}}
+              },
+              "if": {"properties": {"status": {"const": "observed"}}},
+              "then": {"properties": {"value": {"type": "boolean"}}},
+              "else": {"properties": {"value": {"type": "null"}}}
+            }
           }
         }
       }
