@@ -23,15 +23,18 @@ type categoryAudit struct {
 	Sections    map[string]sectionEvidence `json:"sections,omitempty"`
 }
 type sectionEvidence struct {
-	Published int `json:"published_families"`
-	Observed  int `json:"observed_families"`
-	Pages     int `json:"pages"`
+	Published int         `json:"published_families"`
+	Observed  int         `json:"observed_families"`
+	Pages     int         `json:"pages"`
+	Counts    map[int]int `json:"visible_totals_and_page_counts"`
+	Empty     []string    `json:"empty_page_urls,omitempty"`
 }
 type listingVisit struct {
 	Next     string   `json:"next,omitempty"`
 	At       string   `json:"at"`
 	Issue    string   `json:"issue,omitempty"`
 	Verified bool     `json:"verified"`
+	Recheck  bool     `json:"recheck,omitempty"`
 	Total    int      `json:"published_total"`
 	Families []string `json:"families,omitempty"`
 }
@@ -98,9 +101,15 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 		seen := map[string]bool{}
 		families := map[string]bool{}
 		published := -1
-		observe := func(v listingVisit) {
+		counts := map[int]int{}
+		var empty []string
+		observe := func(current string, v listingVisit) {
 			if v.Issue != "" {
 				return
+			}
+			counts[v.Total]++
+			if len(v.Families) == 0 {
+				empty = append(empty, current)
 			}
 			if published < 0 {
 				published = v.Total
@@ -113,8 +122,8 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 		}
 		for current := section; current != "" && !seen[current]; {
 			seen[current] = true
-			if visit, ok := visits[current]; ok && visit.At >= inv.DiscoveredAt && visit.Verified {
-				observe(visit)
+			if visit, ok := visits[current]; ok && visit.At >= inv.DiscoveredAt && visit.Verified && !visit.Recheck {
+				observe(current, visit)
 				if visit.Issue != "" {
 					audit.Errors[current] = visit.Issue
 				}
@@ -151,7 +160,7 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 			for _, p := range rows {
 				visit.Families = append(visit.Families, p.URL)
 			}
-			observe(visit)
+			observe(current, visit)
 			enlarged := false
 			for _, p := range rows {
 				u, e := url.Parse(p.URL)
@@ -192,18 +201,22 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 			}
 			current = next
 		}
-		audit.Sections[section] = sectionEvidence{Published: published, Observed: len(families), Pages: len(seen)}
-		if published < 0 || len(families) != published {
-			audit.Errors[section] = fmt.Sprintf("publisher count %d, distinct listed families %d", published, len(families))
+		audit.Sections[section] = sectionEvidence{Published: published, Observed: len(families), Pages: len(seen), Counts: counts, Empty: empty}
+		if published < 0 || len(families) != published || len(counts) > 1 {
+			audit.Errors[section] = fmt.Sprintf("visible totals (by number of pages): %v, distinct listed families: %d", counts, len(families))
 			// A subsequent audit should refetch this section after page drift.
 			for page := range seen {
-				if visits[page].Issue == "" {
-					delete(visits, page)
+				if v, ok := visits[page]; ok && v.Issue == "" {
+					v.Recheck = true
+					visits[page] = v
 				}
 			}
 			if err := saveJSON(path, visits); err != nil {
 				return err
 			}
+		}
+		if err := saveJSON(auditFile, audit); err != nil {
+			return err
 		}
 	}
 	audit.Complete = len(audit.Errors) == 0

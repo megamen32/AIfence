@@ -204,8 +204,8 @@ func ReadSoftwareListing(s Source, page string, html io.Reader, at time.Time) (S
 			}
 		}
 	}
-	if result.Total > 0 && len(out) == 0 {
-		return result, fmt.Errorf("software section advertised %d products but returned no product rows", result.Total)
+	if strings.HasPrefix(base.Path, "/soft/") && len(out) == 0 && doc.Find(".wrapper-items-with-offers").Length() == 0 {
+		return result, fmt.Errorf("software section is missing its list container")
 	}
 	result.Rows = out
 	result.Next = next

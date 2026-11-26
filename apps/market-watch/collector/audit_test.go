@@ -70,3 +70,11 @@ func TestStandaloneSoftwareRequest(t *testing.T) {
 		t.Fatal(p, e)
 	}
 }
+func TestEmptyButPaginatedCategoryKeepsNextPage(t *testing.T) {
+	s := sources(t)[0]
+	h := `<span class="productOutput 717">602 товар(ов)</span><div class="wrapper-items-with-offers"></div><div class="navigation"><a id="navigation_1_next_page" href="/soft/security/?PAGEN_1=63">Next</a></div>`
+	page, e := ReadSoftwareListing(s, "https://www.softmagazin.ru/soft/security/?PAGEN_1=62", strings.NewReader(h), time.Now())
+	if e != nil || page.Total != 602 || len(page.Rows) != 0 || !strings.HasSuffix(page.Next, "PAGEN_1=63") {
+		t.Fatal(page, e)
+	}
+}
