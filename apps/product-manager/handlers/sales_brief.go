@@ -256,7 +256,7 @@ func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, 
 	r.PriceEvidenceStatus = "comparable_quotes_available"
 	if n == 0 {
 		r.PriceEvidenceStatus = "insufficient_comparable_quotes"
-		r.Price += " Оснований менять цену по этим предложениям нет. Для решения нужны цены на один артикул при одинаковом количестве и базисе."
+		r.Price += " Эти предложения не дают оснований снижать цену. Проверьте цены за одинаковое количество лицензий одного артикула на один срок."
 	}
 	var earliest time.Time
 	for _, q := range quotes {
