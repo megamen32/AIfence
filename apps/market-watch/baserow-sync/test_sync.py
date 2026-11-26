@@ -23,6 +23,12 @@ class MatrixProjectionTests(unittest.TestCase):
         self.assertEqual(row["Смена лидера за 7 дней"], "")
         self.assertEqual(row["Сопоставление"], "Вне сравнения")
 
+    def test_rfc3339_nanoseconds_on_system_python(self):
+        self.assertEqual(sync.normal("date", "2026-11-26T10:49:06.123456789Z"),
+                         "2026-11-26T10:49:06.123Z")
+        self.assertEqual(sync.normal("date", "2026-11-26T10:49:06.1Z"),
+                         "2026-11-26T10:49:06.100Z")
+
     def test_refuses_untrusted_drilldown(self):
         row = source_row()
         row["compare_url"] = "https://other.invalid/"

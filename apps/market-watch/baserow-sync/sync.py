@@ -7,6 +7,7 @@ from decimal import Decimal
 import fcntl
 import io
 import json
+import re
 from pathlib import Path
 import subprocess
 from urllib.parse import urlencode, urlsplit
@@ -146,7 +147,9 @@ def normal(kind, value):
     if kind == "number":
         return format(Decimal(str(value)).normalize(),"f")
     if kind == "date":
-        dt = datetime.fromisoformat(value.replace("Z","+00:00"))
+        # Python 3.9 on macOS accepts only three or six fractional digits.
+        value = re.sub(r"(?<=:\d{2})\.(\d+)", lambda m: "." + m[1][:6].ljust(6, "0"), value)
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             raise ValueError("Observation timestamp has no timezone")
         return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00","Z")
