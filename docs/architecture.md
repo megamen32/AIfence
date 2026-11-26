@@ -29,3 +29,7 @@ Use the approved partner materials in the closed environment; public fixtures re
 38–48 h: freeze functionality, fix acceptance blockers, measure request cost/time, prepare one-take demo and public-safe source.
 
 Not in MVP: universal parser of all websites, automatic price changes, model fine-tuning, replacement CRM/Jira, auto deployment of arbitrary code from web pages, five autonomous agents, fake post-release success.
+
+## Shared knowledge: use the native Airlock file catalog
+
+Use `platform.files` with the same authorized workspace/user for all three applications. It already supports list/search/read/write, stable file IDs, and content-version compare-and-swap. Store shared research, derived evidence and investigation briefs as versioned documents with source references; use native app storage for typed operational state and idempotency. A shared file catalog is not proof of automatic cross-app semantic memory. Do not import the owner's personal AgentMemory/Hindsight banks or credentials into the contest workspace. Only authorized partner material is available in the closed project environment. No additional memory service is required for the MVP.

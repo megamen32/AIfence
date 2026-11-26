@@ -18,7 +18,7 @@ if ! git -C "$SRC" cat-file -e "$REV^{commit}" 2>/dev/null; then git -C "$SRC" f
 git -C "$SRC" checkout --quiet --detach "$REV"
 if [[ "$(uname -s)" == Darwin ]] && command -v colima >/dev/null; then
   if ! colima status aifence >/dev/null 2>&1; then
-    colima start aifence --activate=false --cpu "${AIFENCE_CPUS:-6}" --memory "${AIFENCE_RAM_GB:-12}" --disk "${AIFENCE_DISK_GB:-80}" --vm-type vz
+    colima start aifence --activate=false --cpu "${AIFENCE_CPUS:-6}" --memory "${AIFENCE_RAM_GB:-12}" --disk "${AIFENCE_DISK_GB:-80}" --vm-type vz --vz-rosetta
   fi
   unset DOCKER_CONTEXT
   export DOCKER_HOST="unix://$HOME/.colima/aifence/docker.sock"
