@@ -18,7 +18,9 @@ RUNTIME = ROOT / ".runtime"
 SDK = RUNTIME / "bin/market-air"
 TABLE = "Цены по лицензиям"
 TITLE = "Открыть лицензию"
-TITLE_FORMULA = "link(field('Сравнение и история'), field('Лицензия'))"
+ORIGINAL_TITLE_FORMULA = "link(field('Сравнение и история'), field('Лицензия'))"
+TITLE_FORMULA = ("link(field('Сравнение и история'), if(isblank(field('Артикул')), "
+                 "field('Лицензия'), concat(field('Артикул'), ' · ', field('Лицензия'))))")
 DATABASE = "Market Watch"
 # CSV column, Baserow field, type, native grid width. Hidden metadata stays available in row details.
 COLUMNS = (
@@ -122,6 +124,8 @@ def configure(configure_views=False):
         if checked.get("formula_type") != "link":
             raise ValueError("Native Baserow did not validate the comparison link")
         title_field = api("POST", fields_path, {"type": "formula", **params})
+    elif title_field.get("formula") == ORIGINAL_TITLE_FORMULA and title_field.get("type") == "formula":
+        title_field = api("PATCH", f"database/fields/{title_field['id']}/", {"formula": TITLE_FORMULA})
     if title_field.get("formula") != TITLE_FORMULA or title_field.get("formula_type") != "link":
         raise ValueError("Existing Baserow title is not the managed comparison link")
     if primary["id"] != title_field["id"]:
