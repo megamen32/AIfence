@@ -1,0 +1,211 @@
+package views
+
+import "github.com/airlockrun/agentsdk/lucide"
+
+templ MonitorPanel(m *Monitor) {
+	<section class="pm-monitor" aria-label="Продуктовый мониторинг">
+		<div class="monitor-title">
+			<div>
+				<h2>Пульс продаж</h2>
+				<p>Заказы, конфигуратор и путь до корзины</p>
+			</div>
+			@lucide.Icon("activity", "monitor-icon")
+		</div>
+		if len(m.Products) == 0 {
+			<div class="monitor-empty">
+				<p>Здесь появятся продукты из ваших наблюдений.</p>
+				<p>Импортируйте снимок или запустите сторожа в чате.</p>
+			</div>
+		} else {
+			<div class="monitor-map">
+				<table aria-label="Продукты по каналам и устройствам">
+					<thead><tr>
+						<th scope="col">Продукт</th><th scope="col">Заказы</th>
+						<th scope="col">Конфигуратор</th><th scope="col">Desktop</th><th scope="col">Mobile</th>
+					</tr></thead>
+					<tbody>
+						for _, p := range m.Products {
+							<tr>
+								<th scope="row"><a href={ p.URL }>{ p.Name }</a>
+									if p.Origin != "" {
+										<small>{ p.Origin }</small>
+									}
+								</th>
+								for _, cell := range p.Cells {
+									<td>
+										<a class={ "monitor-cell", cell.Tone } href={ p.URL } aria-label={ p.Name + ": " + cellLabel(cell) }>
+											<span aria-hidden="true"></span>{ cellLabel(cell) }
+										</a>
+									</td>
+								}
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+		if m.Selected != nil {
+			@investigationPanel(m.Selected)
+		} else {
+			<section class="monitor-pulse" aria-label="Тревоги">
+				<h3>Тревоги</h3>
+				if len(m.Pulse) == 0 {
+					<p class="muted">В доступных снимках нет зарегистрированных тревог.</p>
+				}
+				for _, p := range m.Pulse {
+					<a class="pulse-row" href={ p.URL }>
+						<span class="pulse-mark" aria-hidden="true"></span>
+						<span><strong>{ p.Product }</strong><small>{ p.Week }</small></span>
+						<span class="pulse-time">
+							if p.Origin != "" {
+								<small>{ p.Origin }</small>
+							}
+							<small>{ p.Detected }</small>
+						</span>
+						if p.Change != "" {
+							<strong class="pulse-change">{ p.Change }</strong>
+						}
+					</a>
+				}
+			</section>
+		}
+	</section>
+}
+
+func cellLabel(cell MonitorCell) string {
+	if cell.Label == "" {
+		return "Нет данных"
+	}
+	return cell.Label
+}
+
+templ investigationPanel(v *Investigation) {
+	<section class="monitor-investigation" aria-label="Разбор продукта">
+		<div class="investigation-title">
+			<div>
+				<a href={ v.BackURL } class="monitor-back">Все тревоги</a>
+				<h3>{ v.Product }</h3>
+				if v.Detected != "" {
+					<p>{ v.Detected }</p>
+				}
+			</div>
+			if v.Origin != "" {
+				<span class="monitor-origin">{ v.Origin }</span>
+			}
+		</div>
+		if v.Chart.Target != "" {
+			@trend(v.Chart, v.Control)
+		} else {
+			<p class="monitor-empty">Для графика нужны сопоставимые замеры продукта и контроля.</p>
+		}
+		if v.ReleaseDate != "" {
+			<p class="monitor-release">
+				@lucide.Icon("flag", "size-4")
+				<time>{ v.ReleaseDate }</time>
+				if v.ReleaseURL != "" {
+					<a class="text-link" href={ v.ReleaseURL }>{ v.Release }</a>
+				} else {
+					<span>{ v.Release }</span>
+				}
+			</p>
+		}
+		<div class="monitor-facts">
+			<div>
+				<h4>Доказанность</h4>
+				<div class="proof-scale" data-confirmed={ v.Scale == "Подтверждено по замеру" }>
+					<span>Не доказано</span><span>Подтверждено</span>
+				</div>
+				<p>{ v.Scale }</p>
+			</div>
+			<div>
+				<h4>Стоимость потерь</h4>
+				if v.Cost != "" {
+					<p class="cost-value">{ v.Cost }</p><small>Сценарий по вашим допущениям</small>
+				}
+				<details class="assumptions" open?={ v.CostError != "" }>
+					<summary>Задать допущения</summary>
+					<form action="./" method="get">
+						<input type="hidden" name="monitor" value={ v.ProductKey }/>
+						<input type="hidden" name="snapshot" value={ v.SnapshotID }/>
+						<label>Потерянные заказы за неделю<input class="input" required name="orders" inputmode="decimal" value={ v.Orders }/></label>
+						<label>Маржа с заказа, ₽<input class="input" required name="margin" inputmode="decimal" value={ v.Margin }/></label>
+						if v.CostError != "" {
+							<p role="alert">{ v.CostError }</p>
+						}
+						<button class="btn btn-neutral" type="submit">Рассчитать сценарий</button>
+					</form>
+				</details>
+			</div>
+		</div>
+		<section class="monitor-section">
+			<h4>Проверка до корзины</h4>
+			if len(v.Frames) == 0 {
+				<p class="muted">Нет сохранённого браузерного прогона для этого среза.</p>
+			} else {
+				<div class="monitor-film">
+					for _, f := range v.Frames {
+						<figure>
+							if f.Image != "" {
+								<a class="film-image" href={ f.Image } target="_blank" rel="noopener">
+									<img src={ f.Image } alt={ f.Device + ": " + f.Step } loading="lazy"/>
+								</a>
+							}
+							<figcaption>
+								<a href={ f.SourceURL }><strong>{ f.Device }</strong></a><span>{ f.Step }</span><small>{ f.Verdict }</small>
+							</figcaption>
+						</figure>
+					}
+				</div>
+			}
+		</section>
+		<section class="monitor-section">
+			<h4>До и после релиза</h4>
+			if v.Before != "" && v.After != "" {
+				<dl class="monitor-compare"><div><dt>До</dt><dd>{ v.Before }</dd></div><div><dt>После</dt><dd>{ v.After }</dd></div></dl>
+			}
+			if v.Assessment != "" {
+				<p>{ v.Assessment }</p>
+			} else {
+				<p class="muted">Результат появится после сопоставимого замера.</p>
+			}
+		</section>
+		if len(v.Evidence) > 0 || v.RecordURL != "" || v.SnapshotURL != "" {
+			<section class="monitor-section">
+				<h4>Доказательства</h4>
+				for _, e := range v.Evidence {
+					<a class="monitor-evidence" href={ e.OpenURL }><span>{ e.Metric }</span><small>{ e.Source }</small></a>
+				}
+				if v.RecordURL != "" {
+					<a class="text-link" href={ v.RecordURL }>Открыть гипотезу</a>
+				}
+				if v.SnapshotURL != "" {
+					<a class="text-link" href={ v.SnapshotURL }>Открыть наблюдение</a>
+				}
+			</section>
+		}
+	</section>
+}
+
+templ trend(c Chart, control string) {
+	<figure class="trend">
+		<figcaption><strong>Динамика продукта и контроля</strong><small>Средние по наблюдаемым окнам</small></figcaption>
+		<svg class="trend-svg" viewBox="0 0 600 200" role="img" aria-label="Динамика продукта и контроля">
+			<path class="trend-grid" d="M30 34H570M30 104H570M30 174H570"></path>
+			<polygon class="trend-fill" points={ c.Fill }></polygon>
+			if c.ReleaseX != "" {
+				<line class="trend-release" x1={ c.ReleaseX } x2={ c.ReleaseX } y1="20" y2="174"></line>
+			}
+			<polyline class="trend-control" pathLength="1" points={ c.Control }></polyline>
+			<polyline class="trend-target" pathLength="1" points={ c.Target }></polyline>
+			for _, p := range c.Dots {
+				<circle class="trend-control-dot" cx={ p.X } cy={ p.ControlY } r="4"><title>{ p.Label }</title></circle>
+				<circle class="trend-target-dot" cx={ p.X } cy={ p.TargetY } r="4"><title>{ p.Label }</title></circle>
+			}
+			<text class="trend-tick" x="30" y="21">{ c.Max }</text>
+			<text class="trend-tick" x="30" y="196">{ c.First }</text>
+			<text class="trend-tick" x="570" y="196" text-anchor="end">{ c.Last }</text>
+			<text class="trend-tick" x="570" y="165" text-anchor="end">{ c.Min }</text>
+		</svg>
+		<div class="trend-keys"><span>Продукт</span><span>Контроль: { control }</span></div>
+	</figure>
+}

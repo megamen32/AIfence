@@ -38,3 +38,36 @@ func TestCardsAndSnapshotsRenderActionsAndEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestMonitorOverviewAndProductPanel(t *testing.T) {
+	v := HomeView{BoardURL: "./board?", Monitor: &Monitor{
+		Products: []MonitorProduct{{Name: "Учебный продукт", URL: "./?monitor=demo", Origin: "Учебные данные",
+			Cells: [4]MonitorCell{{Label: "Тревога", Tone: "alarm"}}}},
+		Pulse: []PulseItem{{Product: "Учебный продукт", Detected: "Время обнаружения неизвестно", URL: "./?monitor=demo"}},
+	}}
+	render := func(v HomeView) string {
+		t.Helper()
+		var b bytes.Buffer
+		if err := Index(v).Render(t.Context(), &b); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	overview := render(v)
+	for _, want := range []string{"Продукты по каналам и устройствам", "./?monitor=demo", "Время обнаружения неизвестно", "product-decisions"} {
+		if !strings.Contains(overview, want) {
+			t.Fatal(want)
+		}
+	}
+	v.Monitor.Selected = &Investigation{Product: "Учебный продукт", Origin: "Учебные данные", Scale: "Не доказано",
+		Chart: Chart{Target: "30,30 570,170", Control: "30,30 570,35", Fill: "30,30 570,170 570,35 30,30", ReleaseX: "300"}}
+	product := render(v)
+	for _, want := range []string{"trend-fill", "trend-release", "Учебные данные", "Задать допущения", "До и после релиза"} {
+		if !strings.Contains(product, want) {
+			t.Fatal(want)
+		}
+	}
+	if strings.Contains(product, "₽ / неделю") {
+		t.Fatal("showed economics without inputs")
+	}
+}

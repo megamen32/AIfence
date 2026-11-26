@@ -6,6 +6,7 @@ import (
 	"agent/internal/product"
 	"agent/views"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,11 +16,22 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/airlockrun/agentsdk"
 )
 
-type Handler struct{ svc product.Service }
+type Handler struct {
+	svc   product.Service
+	files *agentsdk.Agent
+}
 
-func New(s product.Service) *Handler { return &Handler{svc: s} }
+func New(s product.Service, agent ...*agentsdk.Agent) *Handler {
+	h := &Handler{svc: s}
+	if len(agent) > 0 {
+		h.files = agent[0]
+	}
+	return h
+}
 
 var browserVerdicts = map[string]string{
 	"path_broken":              "Путь до корзины нарушен",
@@ -288,14 +300,38 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	if err != nil {
 		return views.HomeView{}, err
 	}
-	v := views.HomeView{BoardURL: "./board?" + q.Encode()}
-	id, snap := q.Get("id"), q.Get("snapshot")
-	if id == "" && snap == "" && len(records.Records) > 0 {
-		id = records.Records[0].Hypothesis.ID
+	focus, err := h.svc.GetFocus(ctx, evidence.Empty{})
+	if err != nil {
+		return views.HomeView{}, err
 	}
+	seen := focusFingerprint(focus)
+	changed := q.Has("focus_seen") && q.Get("focus_seen") != seen
+	if changed && focus.ProductKey != "" {
+		// An explicit focus from chat resets only the panel's manual navigation.
+		q = url.Values{}
+	}
+	q.Set("focus_seen", seen)
+	v := views.HomeView{BoardURL: "./board?" + q.Encode()}
+	id, snap, selected := q.Get("id"), q.Get("snapshot"), q.Get("monitor")
 	for _, rec := range records.Records {
 		p := rec.Hypothesis
 		v.Records = append(v.Records, views.Link{Label: p.Title, URL: href("id", p.ID), Detail: label(statusTitles, p.Status), Active: p.ID == id})
+	}
+	if selected != "" || id == "" && snap == "" {
+		if selected == "" && q.Get("overview") == "" {
+			selected, snap = focus.ProductKey, focus.SnapshotID
+		}
+		for _, s := range index.Snapshots {
+			v.Snapshots = append(v.Snapshots, views.Link{Label: date(s.AsOf), Detail: shortID(s.SnapshotID), URL: href("snapshot", s.SnapshotID)})
+		}
+		v.Monitor, err = h.monitor(ctx, index.Snapshots, records.Records, selected, snap)
+		if err != nil {
+			return v, err
+		}
+		if v.Monitor.Selected != nil {
+			monitorEconomics(v.Monitor.Selected, q.Get("orders"), q.Get("margin"))
+		}
+		return v, nil
 	}
 	if id != "" {
 		rec, err := h.svc.Get(ctx, decision.GetInput{HypothesisID: id})
@@ -406,6 +442,10 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	}
 	return v, nil
 }
+func focusFingerprint(focus product.Focus) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(focus.ProductKey+"\x00"+focus.SnapshotID+"\x00"+focus.HypothesisID)))
+}
+
 func shortID(s string) string {
 	if len(s) > 11 {
 		return s[3:11]
@@ -413,6 +453,9 @@ func shortID(s string) string {
 	return s
 }
 func (h *Handler) Home(w http.ResponseWriter, r *http.Request) error {
+	if r.URL.Query().Get("frame") != "" {
+		return h.browserFrame(w, r)
+	}
 	v, err := h.model(r)
 	if err != nil {
 		return err
@@ -426,7 +469,7 @@ func (h *Handler) Board(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	return views.Board(v).Render(r.Context(), w)
+	return views.LiveBoard(v).Render(r.Context(), w)
 }
 func (h *Handler) Approve(w http.ResponseWriter, r *http.Request) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)

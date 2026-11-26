@@ -23,13 +23,32 @@ templ Index(v HomeView) {
 				</form>
 			</details>
 		</section>
-		<div data-airlock-topic="product-decisions" hx-get={ v.BoardURL } hx-trigger="airlock:change" hx-swap="innerHTML">
-			@Board(v)
-		</div>
+		@LiveBoard(v)
 	}
 }
 
+templ LiveBoard(v HomeView) {
+	<div id="product-decisions" data-airlock-topic="product-decisions" hx-get={ v.BoardURL } hx-trigger="airlock:change" hx-swap="outerHTML">
+		@Board(v)
+	</div>
+}
+
 templ Board(v HomeView) {
+	if v.Monitor != nil {
+		@MonitorPanel(v.Monitor)
+		if len(v.Records) > 0 || len(v.Snapshots) > 0 {
+			<details class="notes">
+				<summary>Гипотезы и снимки данных</summary>
+				for _, link := range v.Records {
+					@navLink(link)
+				}
+				for _, link := range v.Snapshots {
+					@navLink(link)
+				}
+			</details>
+		}
+	}
+	if v.Monitor == nil || v.Detail != nil {
 	<div class="pm-board">
 		<nav class="pm-index" aria-label="Навигация">
 			<section>
@@ -203,6 +222,7 @@ templ Board(v HomeView) {
 			}
 		</article>
 	</div>
+	}
 }
 
 func active(value bool) string {

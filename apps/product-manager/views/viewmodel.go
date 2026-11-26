@@ -24,6 +24,7 @@ type Decision struct {
 	Unknowns                                                                                                              []string
 }
 type HomeView struct {
+	Monitor                                           *Monitor
 	Records, Snapshots, Filters                       []Link
 	Detail                                            *Decision
 	Signals                                           []Signal
@@ -32,3 +33,39 @@ type HomeView struct {
 	BoardURL, SnapshotID, AsOf, RowsLabel, Prev, Next string
 	ShowSources, CanInvestigate, IsReplay             bool
 }
+
+type Monitor struct {
+	Products []MonitorProduct
+	Pulse    []PulseItem
+	Selected *Investigation
+}
+
+type MonitorProduct struct {
+	Name, URL, Origin string
+	Cells             [4]MonitorCell
+}
+
+type MonitorCell struct{ Label, Tone string }
+
+type PulseItem struct {
+	Product, URL, Week, Detected, Change, Origin string
+}
+
+type Investigation struct {
+	Product, BackURL, Origin, Detected, Week, Control, Scale, Cost, SnapshotURL string
+	Chart                                                                       Chart
+	Release, ReleaseDate, ReleaseURL                                            string
+	Before, After, Assessment                                                   string
+	Frames                                                                      []BrowserFrame
+	Evidence                                                                    []EvidenceRow
+	RecordURL, Orders, Margin, CostError, ProductKey, SnapshotID                string
+}
+
+type BrowserFrame struct{ Device, Step, Verdict, Image, SourceURL string }
+
+type Chart struct {
+	Target, Control, Fill, First, Last, Min, Max, ReleaseX string
+	Dots                                                   []ChartDot
+}
+
+type ChartDot struct{ X, TargetY, ControlY, Label string }
