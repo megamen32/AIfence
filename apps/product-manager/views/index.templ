@@ -34,6 +34,11 @@ templ LiveBoard(v HomeView) {
 }
 
 templ Board(v HomeView) {
+	if v.Card != nil {
+		<div class="pm-monitor">
+			@investigationPanel(v.Card)
+		</div>
+	}
 	if v.Monitor != nil {
 		@MonitorPanel(v.Monitor)
 		if len(v.Records) > 0 || len(v.Snapshots) > 0 {
@@ -73,7 +78,7 @@ templ Board(v HomeView) {
 		<article class="work">
 			if v.Detail!=nil {
 				<div class="muted meta">{ v.Detail.Product }<span class="chip">{ v.Detail.Status }</span></div>
-				<h2 class="headline">{ v.Detail.Title }</h2>
+				<h2 class="headline" id="hypothesis-actions">{ v.Detail.Title }</h2>
 				if v.Detail.EvidenceLevel != "" {
 					<p class="muted compact">Уровень доказанности · { v.Detail.EvidenceLevel }</p>
 				}

@@ -31,11 +31,17 @@ templ MonitorPanel(m *Monitor) {
 										<small>{ p.Origin }</small>
 									}
 								</th>
-								for _, cell := range p.Cells {
+								for i, cell := range p.Cells {
 									<td>
 										<a class={ "monitor-cell", cell.Tone } href={ p.URL } aria-label={ p.Name + ": " + cellLabel(cell) }>
 											<span aria-hidden="true"></span>{ cellLabel(cell) }
 										</a>
+										if i == 0 && p.AlertWeek != "" {
+											<small class="monitor-alert-date">Неделя по { p.AlertWeek }</small>
+										}
+										if i == 0 && p.Freshness != "" {
+											<small class="monitor-freshness">{ p.Freshness }</small>
+										}
 									</td>
 								}
 							</tr>
@@ -46,11 +52,11 @@ templ MonitorPanel(m *Monitor) {
 		}
 		if m.Selected != nil {
 			@investigationPanel(m.Selected)
-		} else {
-			<section class="monitor-pulse" aria-label="Тревоги">
-				<h3>Тревоги</h3>
+		}
+		<section class="monitor-pulse" aria-label="Открытые тревоги">
+				<h3>Открытые тревоги</h3>
 				if len(m.Pulse) == 0 {
-					<p class="muted">В доступных снимках нет зарегистрированных тревог.</p>
+					<p class="muted">В доступных снимках нет открытых тревог.</p>
 				}
 				for _, p := range m.Pulse {
 					<a class="pulse-row" href={ p.URL }>
@@ -67,8 +73,7 @@ templ MonitorPanel(m *Monitor) {
 						}
 					</a>
 				}
-			</section>
-		}
+		</section>
 	</section>
 }
 
@@ -85,6 +90,9 @@ templ investigationPanel(v *Investigation) {
 			<div>
 				<a href={ v.BackURL } class="monitor-back">Все тревоги</a>
 				<h3>{ v.Product }</h3>
+				if v.Week != "" {
+					<p>{ v.Week }</p>
+				}
 				if v.Detected != "" {
 					<p>{ v.Detected }</p>
 				}
@@ -93,10 +101,13 @@ templ investigationPanel(v *Investigation) {
 				<span class="monitor-origin">{ v.Origin }</span>
 			}
 		</div>
+		if v.CardID != "" {
+			<a class="text-link monitor-card-actions" href="#hypothesis-actions">К гипотезе и действиям</a>
+		}
 		if v.Chart.Target != "" {
 			@trend(v.Chart, v.Control)
 		} else {
-			<p class="monitor-empty">Для графика нужны сопоставимые замеры продукта и контроля.</p>
+			<p class="monitor-empty">Для графика нужны сопоставимые замеры продукта.</p>
 		}
 		if v.ReleaseDate != "" {
 			<p class="monitor-release">
@@ -125,8 +136,13 @@ templ investigationPanel(v *Investigation) {
 				<details class="assumptions" open?={ v.CostError != "" }>
 					<summary>Задать допущения</summary>
 					<form action="./" method="get">
-						<input type="hidden" name="monitor" value={ v.ProductKey }/>
-						<input type="hidden" name="snapshot" value={ v.SnapshotID }/>
+						if v.CardID != "" {
+							<input type="hidden" name="id" value={ v.CardID }/>
+						} else {
+							<input type="hidden" name="monitor" value={ v.ProductKey }/>
+							<input type="hidden" name="snapshot" value={ v.SnapshotID }/>
+							<input type="hidden" name="alert" value={ v.AlertID }/>
+						}
 						<label>Потерянные заказы за неделю<input class="input" required name="orders" inputmode="decimal" value={ v.Orders }/></label>
 						<label>Маржа с заказа, ₽<input class="input" required name="margin" inputmode="decimal" value={ v.Margin }/></label>
 						if v.CostError != "" {
@@ -188,17 +204,23 @@ templ investigationPanel(v *Investigation) {
 
 templ trend(c Chart, control string) {
 	<figure class="trend">
-		<figcaption><strong>Динамика продукта и контроля</strong><small>Средние по наблюдаемым окнам</small></figcaption>
-		<svg class="trend-svg" viewBox="0 0 600 200" role="img" aria-label="Динамика продукта и контроля">
+		<figcaption><strong>Динамика заказов</strong><small>{ c.Caption }</small></figcaption>
+		<svg class="trend-svg" viewBox="0 0 600 200" role="img" aria-label="Динамика заказов">
 			<path class="trend-grid" d="M30 34H570M30 104H570M30 174H570"></path>
-			<polygon class="trend-fill" points={ c.Fill }></polygon>
+			if c.Fill != "" {
+				<polygon class="trend-fill" points={ c.Fill }></polygon>
+			}
 			if c.ReleaseX != "" {
 				<line class="trend-release" x1={ c.ReleaseX } x2={ c.ReleaseX } y1="20" y2="174"></line>
 			}
-			<polyline class="trend-control" pathLength="1" points={ c.Control }></polyline>
+			if c.Control != "" {
+				<polyline class="trend-control" pathLength="1" points={ c.Control }></polyline>
+			}
 			<polyline class="trend-target" pathLength="1" points={ c.Target }></polyline>
 			for _, p := range c.Dots {
-				<circle class="trend-control-dot" cx={ p.X } cy={ p.ControlY } r="4"><title>{ p.Label }</title></circle>
+				if p.ControlY != "" {
+					<circle class="trend-control-dot" cx={ p.X } cy={ p.ControlY } r="4"><title>{ p.Label }</title></circle>
+				}
 				<circle class="trend-target-dot" cx={ p.X } cy={ p.TargetY } r="4"><title>{ p.Label }</title></circle>
 			}
 			<text class="trend-tick" x="30" y="21">{ c.Max }</text>
@@ -206,6 +228,11 @@ templ trend(c Chart, control string) {
 			<text class="trend-tick" x="570" y="196" text-anchor="end">{ c.Last }</text>
 			<text class="trend-tick" x="570" y="165" text-anchor="end">{ c.Min }</text>
 		</svg>
-		<div class="trend-keys"><span>Продукт</span><span>Контроль: { control }</span></div>
+		<div class="trend-keys">
+			<span>Продукт</span>
+			if c.Control != "" {
+				<span>Контроль: { control }</span>
+			}
+		</div>
 	</figure>
 }

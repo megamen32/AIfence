@@ -25,6 +25,7 @@ type Decision struct {
 }
 type HomeView struct {
 	Monitor                                           *Monitor
+	Card                                              *Investigation
 	Records, Snapshots, Filters                       []Link
 	Detail                                            *Decision
 	Signals                                           []Signal
@@ -41,8 +42,8 @@ type Monitor struct {
 }
 
 type MonitorProduct struct {
-	Name, URL, Origin string
-	Cells             [4]MonitorCell
+	Name, URL, Origin, AlertWeek, Freshness string
+	Cells                                   [4]MonitorCell
 }
 
 type MonitorCell struct{ Label, Tone string }
@@ -52,20 +53,20 @@ type PulseItem struct {
 }
 
 type Investigation struct {
-	Product, BackURL, Origin, Detected, Week, Control, Scale, Cost, SnapshotURL string
-	Chart                                                                       Chart
-	Release, ReleaseDate, ReleaseURL                                            string
-	Before, After, Assessment                                                   string
-	Frames                                                                      []BrowserFrame
-	Evidence                                                                    []EvidenceRow
-	RecordURL, Orders, Margin, CostError, ProductKey, SnapshotID                string
+	Product, BackURL, Origin, Detected, Week, Control, Scale, Cost, SnapshotURL   string
+	Chart                                                                         Chart
+	Release, ReleaseDate, ReleaseURL                                              string
+	Before, After, Assessment                                                     string
+	Frames                                                                        []BrowserFrame
+	Evidence                                                                      []EvidenceRow
+	RecordURL, Orders, Margin, CostError, ProductKey, SnapshotID, CardID, AlertID string
 }
 
 type BrowserFrame struct{ Device, Step, Verdict, Image, SourceURL string }
 
 type Chart struct {
-	Target, Control, Fill, First, Last, Min, Max, ReleaseX string
-	Dots                                                   []ChartDot
+	Target, Control, Fill, First, Last, Min, Max, ReleaseX, Caption string
+	Dots                                                            []ChartDot
 }
 
 type ChartDot struct{ X, TargetY, ControlY, Label string }

@@ -29,6 +29,8 @@ type monitorDetails struct {
 	Origin         string          `json:"origin"`
 	Synthetic      bool            `json:"synthetic"`
 	Detected       string          `json:"detected_at"`
+	Metric         string          `json:"metric_key"`
+	Scenario       string          `json:"scenario_id"`
 	Control        string          `json:"control_product_key"`
 	TargetCurrent  *float64        `json:"current_mean"`
 	ControlCurrent *float64        `json:"control_current_mean"`
@@ -118,7 +120,7 @@ func monitorCell(o monitorObservation) (column int, cell views.MonitorCell) {
 	return -1, cell
 }
 
-func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, records []decision.Record, selected, pinned string) (*views.Monitor, error) {
+func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, records []decision.Record, selected, pinned, alert string, autoOpen bool) (*views.Monitor, error) {
 	// Look at recent owner snapshots; a pinned older source is still reachable.
 	ids := []string{}
 	if pinned != "" {
@@ -135,20 +137,32 @@ func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, rec
 		if err != nil {
 			return nil, err
 		}
-		slices.SortStableFunc(data.Rows, func(a, b evidence.Row) int { return strings.Compare(b.Period.To, a.Period.To) })
 		for _, row := range data.Rows {
 			o := monitorObservation{Row: row, snapshot: id}
 			_ = json.Unmarshal([]byte(row.Details), &o.details)
 			rows = append(rows, o)
 		}
 	}
+	return monitorView(rows, records, selected, pinned, alert, autoOpen), nil
+}
+
+func monitorView(rows []monitorObservation, records []decision.Record, selected, pinned, alert string, autoOpen bool) *views.Monitor {
+	slices.SortStableFunc(rows, func(a, b monitorObservation) int { return strings.Compare(b.Period.To, a.Period.To) })
+	fresh, active := watchdogState(rows)
+	if autoOpen && selected == "" {
+		for _, row := range active {
+			if originText(row.details) != "Учебные данные" {
+				selected, pinned, alert = row.Product, row.snapshot, row.ID
+				break
+			}
+		}
+	}
 	m := &views.Monitor{}
 	products := map[string]int{}
-	seenAlerts := map[string]bool{}
 	var focusRows []monitorObservation
 	for _, row := range rows {
 		col, cell := monitorCell(row)
-		if row.Product == selected && (pinned == "" || row.snapshot == pinned) {
+		if selected != "" && (pinned == "" || row.snapshot == pinned) {
 			focusRows = append(focusRows, row)
 		}
 		if col < 0 || row.Product == "" {
@@ -169,18 +183,26 @@ func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, rec
 			(old == "Есть замер" || old == "Нет замера") {
 			p.Cells[col] = cell
 		}
-		if row.Metric == watchdogMetric && cell.Tone == "alarm" && !seenAlerts[row.ID] {
-			seenAlerts[row.ID] = true
-			change := ""
-			if row.details.Change != nil {
-				change = num(*row.details.Change) + " %"
-			}
-			m.Pulse = append(m.Pulse, views.PulseItem{
-				Product: p.Name, URL: href("monitor", row.Product, "snapshot", row.snapshot),
-				Week: span(row.Period.From, row.Period.To), Detected: detectedAt(row.details.Detected),
-				Change: change, Origin: originText(row.details),
-			})
+	}
+	for _, row := range active {
+		p := &m.Products[products[row.Product]]
+		change := ""
+		if row.details.Change != nil {
+			change = num(*row.details.Change) + " %"
 		}
+		link := href("monitor", row.Product, "snapshot", row.snapshot, "alert", row.ID)
+		if p.AlertWeek == "" {
+			p.AlertWeek, p.URL = date(row.Period.To), link
+			p.Cells[0] = views.MonitorCell{Label: "Открытая тревога", Tone: "alarm"}
+			if latest := fresh[seriesOf(row)]; latest.Status != "observed" || (latest.Value != "true" && latest.Value != "false") {
+				p.Freshness = "Неполный замер " + date(latest.Period.To)
+			}
+		}
+		m.Pulse = append(m.Pulse, views.PulseItem{
+			Product: p.Name, URL: link,
+			Week: span(row.Period.From, row.Period.To), Detected: detectedAt(row.details.Detected),
+			Change: change, Origin: originText(row.details),
+		})
 	}
 	for _, row := range rows {
 		key := row.details.Control
@@ -196,18 +218,85 @@ func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, rec
 		}
 	}
 	if selected != "" {
-		m.Selected = investigation(selected, focusRows, records)
-		m.Selected.ProductKey, m.Selected.SnapshotID = selected, pinned
+		if alert != "" {
+			m.Selected = investigation(selected, focusRows, records, alert)
+		} else {
+			m.Selected = investigation(selected, focusRows, records)
+		}
+		m.Selected.ProductKey, m.Selected.SnapshotID, m.Selected.AlertID = selected, pinned, alert
 	}
-	return m, nil
+	return m
 }
 
-func investigation(key string, rows []monitorObservation, records []decision.Record) *views.Investigation {
+type watchdogSeries struct{ product, segment, metric, control, origin, scenario, source string }
+
+func seriesOf(o monitorObservation) watchdogSeries {
+	source, _, _ := strings.Cut(o.Ref.Locator, "#")
+	return watchdogSeries{o.Product, o.Segment, o.details.Metric, o.details.Control, originText(o.details), o.details.Scenario, source}
+}
+
+// A missing week says nothing about recovery. Only compare observed decisions
+// for the same monitored product, segment, metric, control and data origin.
+func watchdogState(rows []monitorObservation) (map[watchdogSeries]monitorObservation, []monitorObservation) {
+	fresh := map[watchdogSeries]monitorObservation{}
+	definitive := map[watchdogSeries]bool{}
+	var open []monitorObservation
+	for _, row := range rows {
+		if row.Metric != watchdogMetric || row.Product == "" {
+			continue
+		}
+		key := seriesOf(row)
+		if _, ok := fresh[key]; !ok {
+			fresh[key] = row
+		}
+		if definitive[key] || row.Status != "observed" || (row.Value != "true" && row.Value != "false") {
+			continue
+		}
+		definitive[key] = true
+		if row.Value == "true" {
+			open = append(open, row)
+		}
+	}
+	return fresh, open
+}
+
+func (h *Handler) cardInvestigation(ctx context.Context, record decision.Record, orders, margin string) (*views.Investigation, error) {
+	snapshot := record.EvidenceSnapshotID
+	rows := []monitorObservation{}
+	for offset := 0; ; offset += 100 {
+		data, err := h.svc.Evidence.Read(ctx, evidence.Query{SnapshotID: snapshot, Offset: offset, Limit: 100})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range data.Rows {
+			o := monitorObservation{Row: row, snapshot: snapshot}
+			_ = json.Unmarshal([]byte(row.Details), &o.details)
+			rows = append(rows, o)
+		}
+		if offset+len(data.Rows) >= data.Total || len(data.Rows) == 0 {
+			break
+		}
+	}
+	v := savedCard(record, rows)
+	monitorEconomics(v, orders, margin)
+	return v, nil
+}
+
+func savedCard(record decision.Record, rows []monitorObservation) *views.Investigation {
+	key := record.Hypothesis.ProductKey
+	v := investigation(key, rows, []decision.Record{record}, record.Hypothesis.SignalIDs...)
+	v.CardID, v.RecordURL = record.Hypothesis.ID, ""
+	v.ProductKey, v.SnapshotID = key, record.EvidenceSnapshotID
+	return v
+}
+
+func investigation(key string, rows []monitorObservation, records []decision.Record, preferred ...string) *views.Investigation {
 	v := &views.Investigation{Product: productName(key), BackURL: "./?overview=1", Scale: "Не доказано"}
 	var signal *monitorObservation
 	for i := range rows {
 		row := rows[i]
-		if row.Metric == watchdogMetric && row.Status == "observed" && row.details.TargetCurrent != nil {
+		if row.Product == key && row.Metric == watchdogMetric && row.Status == "observed" &&
+			(len(preferred) == 0 || slices.Contains(preferred, row.ID)) {
 			if signal == nil || signal.Value != "true" && row.Value == "true" {
 				signal = &rows[i]
 			}
@@ -228,7 +317,7 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 		v.SnapshotURL = href("snapshot", signal.snapshot, "obs", signal.ID)
 	}
 	for _, row := range rows {
-		if signal != nil && row.snapshot != signal.snapshot {
+		if row.Product != key || signal != nil && row.snapshot != signal.snapshot {
 			continue
 		}
 		if len(v.Evidence) < 8 && row.Metric != watchdogMetric {
@@ -282,6 +371,8 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 	}
 	if signal != nil {
 		v.Chart = plot(signal, rows, v.ReleaseDate)
+	} else if record != nil {
+		v.Chart, v.Control, v.Origin = legacyTrend(*record, rows, v.ReleaseDate)
 	}
 	return v
 }
@@ -293,8 +384,9 @@ var browserStages = map[string]string{
 }
 
 type reading struct {
-	date            time.Time
-	target, control float64
+	date    time.Time
+	target  float64
+	control *float64
 }
 
 func plot(signal *monitorObservation, rows []monitorObservation, release string) views.Chart {
@@ -306,15 +398,75 @@ func plot(signal *monitorObservation, rows []monitorObservation, release string)
 			return
 		}
 		seen[t] = true
-		data = append(data, reading{t, *target, *control})
+		data = append(data, reading{t, *target, control})
 	}
 	for _, row := range rows {
-		if row.snapshot == signal.snapshot && row.Metric == watchdogMetric && row.Status == "observed" &&
+		if row.snapshot == signal.snapshot && row.Product == signal.Product && row.Metric == watchdogMetric && row.Status == "observed" &&
 			row.Segment == signal.Segment && row.details.Control == signal.details.Control {
 			add(row.Period.To, row.details.TargetCurrent, row.details.ControlCurrent)
 		}
 	}
 	add(signal.details.Baseline.To, signal.details.TargetBase, signal.details.ControlBase)
+	return drawTrend(data, release, "Средние по наблюдаемым окнам")
+}
+
+type legacyWindows struct {
+	BaselineFrom, BaselineTo, CurrentFrom string
+	Baseline, Current                     *float64
+}
+
+func legacyReading(row monitorObservation) (legacyWindows, bool) {
+	var d struct {
+		Variant      string   `json:"variant"`
+		BaselineFrom string   `json:"baseline_from"`
+		BaselineTo   string   `json:"baseline_to"`
+		CurrentFrom  string   `json:"current_from"`
+		Baseline     *float64 `json:"baseline_mean"`
+		Current      *float64 `json:"current_mean"`
+	}
+	if row.Source != "sales" || row.Status != "observed" || row.Metric != "family_orders_idx.relative_change_pct" ||
+		json.Unmarshal([]byte(row.Details), &d) != nil || d.Variant != "full_weeks" || d.Baseline == nil || d.Current == nil {
+		return legacyWindows{}, false
+	}
+	return legacyWindows{d.BaselineFrom, d.BaselineTo, d.CurrentFrom, d.Baseline, d.Current}, true
+}
+
+func legacyTrend(record decision.Record, rows []monitorObservation, release string) (views.Chart, string, string) {
+	h := record.Hypothesis
+	for _, row := range rows {
+		if row.Product != h.ProductKey || row.snapshot != record.EvidenceSnapshotID || !slices.Contains(h.SignalIDs, row.ID) {
+			continue
+		}
+		d, ok := legacyReading(row)
+		if !ok {
+			continue
+		}
+		before, e1 := time.Parse(time.DateOnly, d.BaselineTo)
+		after, e2 := time.Parse(time.DateOnly, row.Period.To)
+		if e1 != nil || e2 != nil || !before.Before(after) {
+			continue
+		}
+		points := []reading{{date: before, target: *d.Baseline}, {date: after, target: *d.Current}}
+		control := ""
+		for _, candidate := range rows {
+			if h.SuccessCriterion.ControlProductKey == "" || candidate.Product != h.SuccessCriterion.ControlProductKey ||
+				candidate.snapshot != row.snapshot || candidate.Period != row.Period || candidate.Segment != row.Segment || candidate.Unit != row.Unit ||
+				!slices.Contains(h.CounterIDs, candidate.ID) {
+				continue
+			}
+			other, ok := legacyReading(candidate)
+			if ok && other.BaselineFrom == d.BaselineFrom && other.BaselineTo == d.BaselineTo && other.CurrentFrom == d.CurrentFrom {
+				points[0].control, points[1].control = other.Baseline, other.Current
+				control = productName(candidate.Product)
+				break
+			}
+		}
+		return drawTrend(points, release, "Средние индексы по полным неделям"), control, originText(row.details)
+	}
+	return views.Chart{}, "", ""
+}
+
+func drawTrend(data []reading, release, caption string) views.Chart {
 	if len(data) < 2 {
 		return views.Chart{}
 	}
@@ -322,7 +474,10 @@ func plot(signal *monitorObservation, rows []monitorObservation, release string)
 	first, last := data[0].date, data[len(data)-1].date
 	lo, hi := math.Inf(1), math.Inf(-1)
 	for _, d := range data {
-		lo, hi = min(lo, d.target, d.control), max(hi, d.target, d.control)
+		lo, hi = min(lo, d.target), max(hi, d.target)
+		if d.control != nil {
+			lo, hi = min(lo, *d.control), max(hi, *d.control)
+		}
 	}
 	y := func(value float64) string {
 		if hi == lo {
@@ -333,20 +488,28 @@ func plot(signal *monitorObservation, rows []monitorObservation, release string)
 	x := func(t time.Time) string {
 		return strconv.FormatFloat(30+t.Sub(first).Seconds()/last.Sub(first).Seconds()*540, 'f', 1, 64)
 	}
-	c := views.Chart{First: first.Format("02.01"), Last: last.Format("02.01"), Min: num(lo), Max: num(hi)}
+	c := views.Chart{First: first.Format("02.01"), Last: last.Format("02.01"), Min: num(lo), Max: num(hi), Caption: caption}
 	if t, err := time.Parse(time.DateOnly, release); err == nil && !t.Before(first) && !t.After(last) {
 		c.ReleaseX = x(t)
 	}
 	var target, control []string
 	for _, d := range data {
-		t, b := y(d.target), y(d.control)
-		p := x(d.date)
-		target, control = append(target, p+","+t), append(control, p+","+b)
-		c.Dots = append(c.Dots, views.ChartDot{X: p, TargetY: t, ControlY: b, Label: d.date.Format("02.01.2006") + " | " + num(d.target) + " / " + num(d.control)})
+		p, t := x(d.date), y(d.target)
+		dot := views.ChartDot{X: p, TargetY: t, Label: d.date.Format("02.01.2006") + " | " + num(d.target)}
+		target = append(target, p+","+t)
+		if d.control != nil {
+			dot.ControlY = y(*d.control)
+			dot.Label += " / " + num(*d.control)
+			control = append(control, p+","+dot.ControlY)
+		}
+		c.Dots = append(c.Dots, dot)
 	}
-	c.Target, c.Control = strings.Join(target, " "), strings.Join(control, " ")
-	slices.Reverse(control)
-	c.Fill = c.Target + " " + strings.Join(control, " ")
+	c.Target = strings.Join(target, " ")
+	if len(control) == len(target) {
+		c.Control = strings.Join(control, " ")
+		slices.Reverse(control)
+		c.Fill = c.Target + " " + strings.Join(control, " ")
+	}
 	return c
 }
 

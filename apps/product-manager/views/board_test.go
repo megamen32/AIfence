@@ -71,3 +71,23 @@ func TestMonitorOverviewAndProductPanel(t *testing.T) {
 		t.Fatal("showed economics without inputs")
 	}
 }
+
+func TestSavedCardPutsVisualDetailsBeforeNormalActions(t *testing.T) {
+	v := HomeView{
+		Card: &Investigation{CardID: "saved", Product: "Учебный продукт",
+			Chart: Chart{Caption: "Средние индексы", Target: "30,30 570,170"}},
+		Detail: &Decision{ID: "saved", Title: "Сохранённая гипотеза", Version: "1"},
+	}
+	var b bytes.Buffer
+	if err := Index(v).Render(t.Context(), &b); err != nil {
+		t.Fatal(err)
+	}
+	html := b.String()
+	chart, action := strings.Index(html, "trend-target"), strings.Index(html, "./approve")
+	if chart < 0 || action < chart || !strings.Contains(html, `href="#hypothesis-actions"`) {
+		t.Fatal("the saved-card path must expose graph and approval together")
+	}
+	if strings.Contains(html, `class="trend-control"`) {
+		t.Fatal("plotted a control with no observations")
+	}
+}

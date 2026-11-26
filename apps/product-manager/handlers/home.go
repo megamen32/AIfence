@@ -312,19 +312,19 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	}
 	q.Set("focus_seen", seen)
 	v := views.HomeView{BoardURL: "./board?" + q.Encode()}
-	id, snap, selected := q.Get("id"), q.Get("snapshot"), q.Get("monitor")
+	id, snap, selected := cardIDForView(q, focus), q.Get("snapshot"), q.Get("monitor")
 	for _, rec := range records.Records {
 		p := rec.Hypothesis
 		v.Records = append(v.Records, views.Link{Label: p.Title, URL: href("id", p.ID), Detail: label(statusTitles, p.Status), Active: p.ID == id})
 	}
-	if selected != "" || id == "" && snap == "" {
+	if id == "" && (selected != "" || snap == "") {
 		if selected == "" && q.Get("overview") == "" {
 			selected, snap = focus.ProductKey, focus.SnapshotID
 		}
 		for _, s := range index.Snapshots {
 			v.Snapshots = append(v.Snapshots, views.Link{Label: date(s.AsOf), Detail: shortID(s.SnapshotID), URL: href("snapshot", s.SnapshotID)})
 		}
-		v.Monitor, err = h.monitor(ctx, index.Snapshots, records.Records, selected, snap)
+		v.Monitor, err = h.monitor(ctx, index.Snapshots, records.Records, selected, snap, q.Get("alert"), q.Get("overview") == "")
 		if err != nil {
 			return v, err
 		}
@@ -342,7 +342,17 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		if err != nil {
 			return v, err
 		}
+		v.Card, err = h.cardInvestigation(ctx, rec, q.Get("orders"), q.Get("margin"))
+		if err != nil {
+			return v, err
+		}
 		snap = rec.EvidenceSnapshotID
+		for _, s := range index.Snapshots {
+			v.Snapshots = append(v.Snapshots, views.Link{
+				Label: date(s.AsOf), Detail: shortID(s.SnapshotID), URL: href("snapshot", s.SnapshotID),
+			})
+		}
+		return v, nil
 	}
 	if snap == "" && len(index.Snapshots) > 0 {
 		snap = index.Snapshots[0].SnapshotID
@@ -366,16 +376,6 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 			v.CanInvestigate = true
 			break
 		}
-	}
-	if v.Detail != nil {
-		filtered := v.Signals[:0]
-		for _, sig := range v.Signals {
-			if sig.Product == v.Detail.Product || sig.Product == v.Detail.Control {
-				filtered = append(filtered, sig)
-			}
-		}
-		v.Signals = filtered
-		return v, nil
 	}
 	v.ShowSources = true
 	source, obs := q.Get("source"), q.Get("obs")
@@ -442,6 +442,13 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	}
 	return v, nil
 }
+func cardIDForView(q url.Values, focus product.Focus) string {
+	if q.Get("id") == "" && q.Get("monitor") == "" && q.Get("snapshot") == "" && q.Get("overview") == "" {
+		return focus.HypothesisID
+	}
+	return q.Get("id")
+}
+
 func focusFingerprint(focus product.Focus) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(focus.ProductKey+"\x00"+focus.SnapshotID+"\x00"+focus.HypothesisID)))
 }
