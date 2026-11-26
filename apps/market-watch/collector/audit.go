@@ -83,7 +83,7 @@ func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time)
 		p.State = "priced"
 	case len(p.Variants) > 0:
 		p.State = "no_public_price"
-	case s.ID == "softmagazin" && p.Title != "" && strings.Contains(strings.ToLower(doc.Find(".soft-tovar-style #placeforminprice .no-price").Text()), "запрос"):
+	case p.Title != "" && ((s.ID == "softmagazin" && strings.Contains(strings.ToLower(doc.Find(".soft-tovar-style #placeforminprice .no-price").Text()), "запрос")) || (s.ID == "softmap" && strings.Contains(strings.ToLower(doc.Find("a[data-popup-target-ajax='ask-price']").Text()), "запрос"))):
 		p.State = "no_public_price"
 		p.Variants = []Variant{{URL: page, Name: p.Title, Status: "no_public_price"}}
 	}

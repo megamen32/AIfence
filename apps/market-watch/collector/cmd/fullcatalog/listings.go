@@ -65,9 +65,27 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv inve
 			byCanonical[u.String()] = v
 		}
 	}
-	for _, vendor := range vendorRoots(inv.URLs) {
+	// Start with unvisited vendors that expose many software families. Mixed
+	// hardware/software vendors may have hundreds of irrelevant listing pages.
+	remaining := map[string]int{}
+	for _, u := range inv.URLs {
+		if cached, ok := pages[u]; ok && cached.At >= inv.DiscoveredAt {
+			continue
+		}
+		for _, vendor := range vendorRoots([]string{u}) {
+			remaining[vendor]++
+		}
+	}
+	vendors := vendorRoots(inv.URLs)
+	sort.SliceStable(vendors, func(i, j int) bool { return remaining[vendors[i]] > remaining[vendors[j]] })
+	for _, vendor := range vendors {
+		if remaining[vendor] < 2 {
+			continue
+		}
+		limit := remaining[vendor]
 		seen := map[string]bool{}
-		for current := vendor; current != "" && !seen[current]; {
+		misses := 0
+		for current := vendor; current != "" && !seen[current] && len(seen) < limit && remaining[vendor] > 0 && misses < 2; {
 			seen[current] = true
 			if visit, ok := visits[current]; ok && visit.At >= inv.DiscoveredAt {
 				current = visit.Next
@@ -94,18 +112,26 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv inve
 			if e != nil {
 				return e
 			}
+			hits := 0
 			for _, p := range rows {
 				indexed, ok := byCanonical[p.URL]
 				if !ok {
 					continue
 				}
 				p.URL = indexed
+				hits++
 				if cached, ok := pages[indexed]; ok && cached.At >= inv.DiscoveredAt {
 					continue
 				}
 				if e = save(p); e != nil {
 					return e
 				}
+				remaining[vendor]--
+			}
+			if hits == 0 {
+				misses++
+			} else {
+				misses = 0
 			}
 			visits[current] = listingVisit{At: at.Format(time.RFC3339), Next: next}
 			if e = writeAtomic(path, func(w io.Writer) error { return json.NewEncoder(w).Encode(visits) }); e != nil {

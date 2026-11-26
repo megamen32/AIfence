@@ -20,7 +20,7 @@ func TestListingResumeDoesNotCountAsFamilyVerification(t *testing.T) {
 	const family = "https://www.softmagazin.ru/test-vendor/family/"
 	const vendor = "https://www.softmagazin.ru/test-vendor/"
 	dir := t.TempDir()
-	inv := inventory{Source: s.ID, DiscoveredAt: "2025-01-01T00:00:00Z", URLs: []string{family}}
+	inv := inventory{Source: s.ID, DiscoveredAt: "2025-01-01T00:00:00Z", URLs: []string{family, "https://www.softmagazin.ru/test-vendor/other/"}}
 	pages := map[string]catalog.PageResult{}
 	fetchCount := 0
 	fetch := func(_ context.Context, _ catalog.Source, url string) ([]byte, error) {
@@ -37,7 +37,7 @@ func TestListingResumeDoesNotCountAsFamilyVerification(t *testing.T) {
 		}
 	}
 	st, e := snapshot(dir, inv, pages)
-	if e != nil || fetchCount != 1 || st.PricedOffers != 1 || st.ProcessedPages != 0 || st.ListedPages != 1 || st.PendingPages != 1 {
+	if e != nil || fetchCount != 1 || st.PricedOffers != 1 || st.ProcessedPages != 0 || st.ListedPages != 1 || st.PendingPages != 2 {
 		t.Fatal(st, fetchCount, e)
 	}
 	b, e := os.ReadFile(filepath.Join(dir, "offers.jsonl"))
