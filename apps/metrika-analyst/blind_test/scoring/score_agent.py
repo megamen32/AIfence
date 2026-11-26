@@ -16,6 +16,17 @@ from pathlib import Path
 from typing import Any
 
 
+FAMILY_ALIASES = {
+    "kes": {"kes", "kaspersky", "kaspersky_endpoint_security", "kaspersky_configurator", "конфигуратор_kaspersky", "kaspersky_endpoint_security"},
+    "astra": {"astra", "astra_linux", "astra_control", "astra_configurator", "конфигуратор_astra", "конфигуратор_астра"},
+}
+def family_norm(value: Any) -> str:
+    key = norm(value)
+    for canonical, aliases in FAMILY_ALIASES.items():
+        if key == canonical or key in {norm(x) for x in aliases}:
+            return canonical
+    return key
+
 TYPE_ALIASES = {
     "tracking_gap": {"tracking_gap", "учет", "сбой учета", "недоучет", "measurement_gap", "instrumentation"},
     "mobile_regression": {"mobile_regression", "mobile", "мобильный регресс", "регресс мобильного"},
@@ -96,7 +107,7 @@ def card_fields(raw: Any) -> dict[str, Any]:
 
 
 def signal_matches(card: dict[str, Any], answer: dict[str, Any]) -> bool:
-    cf, af = norm(card["family"]), norm(answer["family"])
+    cf, af = family_norm(card["family"]), family_norm(answer["family"])
     cw, aw = norm(card["week"]), norm(answer["week"])
     text = norm(card.get("text", ""))
     family_ok = bool(af and (af in cf or cf in af or af in text))
@@ -107,7 +118,7 @@ def signal_matches(card: dict[str, Any], answer: dict[str, Any]) -> bool:
 
 
 def false_alarm(card: dict[str, Any], answer: dict[str, Any]) -> bool:
-    cf, af = norm(card["family"]), norm(answer["family"])
+    cf, af = family_norm(card["family"]), family_norm(answer["family"])
     cw, aw = norm(card["week"]), norm(answer["week"])
     if not cf and not cw:
         return False
