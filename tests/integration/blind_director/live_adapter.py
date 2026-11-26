@@ -176,6 +176,24 @@ def send_and_wait(token, cid, app, message, timeout, out, label, purpose):
     return receipt,state,'timeout'
 
 
+def final_reply(chat, run_id):
+    """Only a final assistant message from this run can answer the director."""
+    messages = chat.get('messages', [])
+    for message in reversed(messages):
+        role = message.get('role')
+        if role not in ('assistant', 'user', 'tool'):
+            continue
+        if role != 'assistant' or message.get('runId', run_id) != run_id:
+            return ''
+        parts = message.get('parts') or []
+        if isinstance(parts, str):
+            parts = json.loads(parts)
+        if any(part.get('type') == 'tool-call' for part in parts):
+            return ''
+        return (message.get('content') or '').strip()
+    return ''
+
+
 def confirmation_mode(text):
     """Act only on an explicit, unambiguous request directed to the user."""
     text = text.casefold().replace('ё', 'е')
@@ -329,9 +347,8 @@ def main():
     save_private(out/'first-chat.json', chat)
     after=call_tool(token,pm_id,'list_hypotheses'); ids_first=tasks(after)
     save_private(out/'backend-after-first.json', after)
-    messages=chat.get('messages',[])
-    response='\n'.join(m.get('content','') for m in messages if m.get('role')=='assistant' and m.get('content'))
-    if first_status == 'completed' and not response.strip(): first_status='unknown'
+    response=final_reply(chat, receipt['runId'])
+    if first_status == 'completed' and not response: first_status='failed'
     second_request=None; second_response=None; second=after; chat2=None; second_status=None
     mode=confirmation_mode(response) if first_status == 'completed' else 'none'
     approval={'mode':mode,'outcome':'not_requested','card_id':None,'card_version':None,
