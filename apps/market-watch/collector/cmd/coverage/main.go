@@ -122,8 +122,11 @@ func (r register) softline(root string) error {
 	if cycle == "" || cycle == ".." || cycle == "." || filepath.Base(cycle) != cycle {
 		return fmt.Errorf("invalid Softline checkpoint")
 	}
-	var inventory struct{ Products []string }
+	var inventory struct{ Families, Products []string }
 	if e := load(filepath.Join(dir, "checkpoints", cycle, "sitemap.json"), &inventory); e != nil {
+		return e
+	}
+	if e := r.softlineFamilies(dir, cycle, inventory.Families); e != nil {
 		return e
 	}
 	for _, u := range inventory.Products {
@@ -169,6 +172,10 @@ func label(s string) string {
 	switch s {
 	case "pending":
 		return "В очереди"
+	case "family_without_listed_variants":
+		return "На странице нет вариантов лицензии"
+	case "family_with_variants":
+		return "Есть варианты без подтверждённой цены"
 	case "family_with_prices":
 		return "Есть варианты с ценой"
 	case "priced":

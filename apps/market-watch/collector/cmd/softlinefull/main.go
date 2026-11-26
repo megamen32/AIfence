@@ -31,6 +31,7 @@ type inventory struct {
 }
 type check struct {
 	Page     string
+	Title    string `json:",omitempty"`
 	At       time.Time
 	Products []softlinefamily.Product
 	State    string
@@ -281,6 +282,9 @@ func (s *survey) scan(ctx context.Context, urls []string, family bool, get fetch
 			if err == nil {
 				if family {
 					c.Products, err = softlinefamily.Extract(page, b, c.At)
+					if err == nil {
+						c.Title, c.State = softlinefamily.Describe(b, c.Products)
+					}
 				} else {
 					c.Products, err = direct(page, b, c.At)
 				}
