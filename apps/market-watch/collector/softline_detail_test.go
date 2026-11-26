@@ -28,3 +28,18 @@ func TestSoftlineUnitAndCounterTotal(t *testing.T) {
 		})
 	}
 }
+
+func TestSoftlineConflictingUpperBound(t *testing.T) {
+	src := sources(t)[2]
+	const html = `<script id="js-front-config">window.temporaryFrontConfig = {"product":{"minQuantity":10000,"priceWithDiscount":6352}};</script><h1>Кибер Файлы</h1><input class="js-product-quantity" min="10000" max="9999" data-maxval="9999"><span class="js-price-with-discount">63 520 000</span>`
+	for _, body := range []string{html, html[strings.Index(html, "<h1>"):]} {
+		rows, err := Extract(src, src.Seeds[0], strings.NewReader(body), time.Unix(0, 0))
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("observations %v: %v", rows, err)
+		}
+		o := rows[0]
+		if o.Quantity == nil || *o.Quantity != 10000 || o.MaxQuantity != nil {
+			t.Fatalf("inconsistent public range %+v", o)
+		}
+	}
+}

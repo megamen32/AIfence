@@ -32,7 +32,7 @@ func SoftlineDetail(doc *goquery.Document, page string, at time.Time) (*Offer, e
 	counter := doc.Find("input.js-product-quantity").First()
 	minimum, _ := counter.Attr("min")
 	maximum, _ := counter.Attr("max")
-	o := Offer{Source: "softline", SKU: strings.ToUpper(strings.TrimSpace(sku)), Name: name, URL: page, Currency: "RUB", CapturedAt: at.UTC().Format(time.RFC3339), Quantity: quantityValue(minimum), MaxQuantity: quantityValue(maximum)}
+	o := Offer{Source: "softline", SKU: strings.ToUpper(strings.TrimSpace(sku)), Name: name, URL: page, Currency: "RUB", CapturedAt: at.UTC().Format(time.RFC3339), Quantity: quantityValue(minimum)}
 	var cfg struct {
 		Product struct {
 			Min     json.RawMessage `json:"minQuantity"`
@@ -51,14 +51,15 @@ func SoftlineDetail(doc *goquery.Document, page string, at time.Time) (*Offer, e
 			}
 			o.Quantity = q
 		}
-		if price, err := Money(strings.Trim(string(cfg.Product.Current), "\" ")); err == nil {
-			o.PriceBasis = "per_unit"
-			o.PriceMinor = price
-			if old, err := Money(strings.Trim(string(cfg.Product.List), "\" ")); err == nil && old > price {
-				o.OldPriceMinor = &old
-			}
-			return &o, nil
+	}
+	o.MaxQuantity = PublicMaxQuantity(o.Quantity, quantityValue(maximum))
+	if price, err := Money(strings.Trim(string(cfg.Product.Current), "\" ")); err == nil {
+		o.PriceBasis = "per_unit"
+		o.PriceMinor = price
+		if old, err := Money(strings.Trim(string(cfg.Product.List), "\" ")); err == nil && old > price {
+			o.OldPriceMinor = &old
 		}
+		return &o, nil
 	}
 	displayed := strings.TrimSpace(doc.Find(".js-price-with-discount").First().Text())
 	if displayed == "" {
