@@ -17,7 +17,10 @@ progress. A long run resumes its generation. The exporter writes
 `.runtime/market-catalog/offers.csv` atomically every minute for Excel or other
 importers. It uses UTF-8 BOM, a semicolon delimiter and plain decimal prices.
 The separate `coverage.csv` checks known URLs, including removed pages and
-licenses available by request. Its scheduled rebuild runs every three hours.
+licenses available by request. Its companion `coverage-summary.json` counts
+family and variant URLs independently by state and names each unresolved
+coverage condition. Rebuilds run every three hours and whenever a source
+finishes or begins a new generation.
 
 SoftMagazin's family sitemap also contains hardware. The collector follows
 the store's own software sections and their published pagination, adds newly

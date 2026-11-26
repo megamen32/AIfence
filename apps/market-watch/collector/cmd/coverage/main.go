@@ -278,7 +278,10 @@ func run(root string) error {
 			return e
 		}
 	}
-	return r.write(filepath.Join(root, "coverage.csv"))
+	if err := r.write(filepath.Join(root, "coverage.csv")); err != nil {
+		return err
+	}
+	return r.writeSummary(root)
 }
 func main() {
 	root := flag.String("catalog", ".runtime/market-catalog", "market catalog directory")

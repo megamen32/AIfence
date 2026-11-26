@@ -76,6 +76,54 @@ func export(dir string, sources []string) (map[string]int, error) {
 	}
 	return counts, os.Rename(f.Name(), target)
 }
+
+// Update on completion, review or a new generation, even when the ordinary
+// coverage export is still fresh. Ordinary per-page updates do not trigger it.
+func coverageDue(root string) bool {
+	st, e := os.Stat(filepath.Join(root, "coverage.csv"))
+	if e != nil || time.Since(st.ModTime()) >= 3*time.Hour {
+		return true
+	}
+	var previous struct {
+		Sources map[string]struct {
+			Inventory string `json:"inventory_at"`
+			State     string `json:"worker_state"`
+		}
+	}
+	b, e := os.ReadFile(filepath.Join(root, "coverage-summary.json"))
+	if e != nil || json.Unmarshal(b, &previous) != nil {
+		return true
+	}
+	for _, id := range []string{"softline", "softmap", "softmagazin"} {
+		name := "progress.json"
+		if id == "softline" {
+			name = "inventory.json"
+		}
+		b, e = os.ReadFile(filepath.Join(root, id, name))
+		if e != nil {
+			return false
+		}
+		var now struct {
+			Inventory string `json:"inventory_at"`
+			State     string `json:"state"`
+			Complete  bool   `json:"complete"`
+		}
+		if json.Unmarshal(b, &now) != nil {
+			return false
+		}
+		if id == "softline" {
+			now.State = "running"
+			if now.Complete {
+				now.State = "complete"
+			}
+		}
+		then, ok := previous.Sources[id]
+		if !ok || now.Inventory != then.Inventory || now.State != then.State {
+			return true
+		}
+	}
+	return false
+}
 func main() {
 	dir := flag.String("dir", "", "catalog root")
 	sources := flag.String("sources", "softline,softmagazin,softmap", "comma-separated source IDs")
@@ -109,8 +157,7 @@ func main() {
 	}
 	checker := filepath.Join(filepath.Dir(bin), "market-coverage")
 	if _, err := os.Stat(checker); err == nil {
-		old, err := os.Stat(filepath.Join(*dir, "coverage.csv"))
-		if errors.Is(err, os.ErrNotExist) || err == nil && time.Since(old.ModTime()) >= 3*time.Hour {
+		if coverageDue(*dir) {
 			cmd := exec.Command(checker, "-catalog", *dir)
 			cmd.Stderr = os.Stderr
 			if e = cmd.Run(); e != nil {
