@@ -11,7 +11,7 @@
         {
           "id": "fixture/baseline",
           "kind": "metric",
-          "product_key": "qa/synthetic/atlas",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "self_service_order_index",
           "value": 80,
           "unit": "index",
@@ -20,7 +20,7 @@
             "to": "2025-02-02"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "orders!C6:C9"
           },
           "status": "observed",
@@ -28,13 +28,16 @@
           "details": {
             "complete": true,
             "quality": "comparable",
-            "measurement_kind": "product_outcome"
+            "measurement_kind": "product_outcome",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "KL4141RCEFR"
           }
         },
         {
           "id": "fixture/control-baseline",
           "kind": "metric",
-          "product_key": "qa/synthetic/lumen",
+          "product_key": "dr_web_desktop_security_suite",
           "metric_key": "self_service_order_index",
           "value": 100,
           "unit": "index",
@@ -43,7 +46,7 @@
             "to": "2025-02-02"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "orders!D6:D9"
           },
           "status": "observed",
@@ -51,13 +54,16 @@
           "details": {
             "complete": true,
             "quality": "comparable",
-            "measurement_kind": "product_outcome"
+            "measurement_kind": "product_outcome",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "LBW-BC-12M-100-A3"
           }
         },
         {
           "id": "fixture/after",
           "kind": "metric",
-          "product_key": "qa/synthetic/atlas",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "self_service_order_index",
           "value": 100,
           "unit": "index",
@@ -66,7 +72,7 @@
             "to": "2025-03-09"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "orders!C11:C14"
           },
           "status": "observed",
@@ -74,13 +80,16 @@
           "details": {
             "complete": true,
             "quality": "comparable",
-            "measurement_kind": "product_outcome"
+            "measurement_kind": "product_outcome",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "KL4141RCEFR"
           }
         },
         {
           "id": "fixture/control-after",
           "kind": "metric",
-          "product_key": "qa/synthetic/lumen",
+          "product_key": "dr_web_desktop_security_suite",
           "metric_key": "self_service_order_index",
           "value": 105,
           "unit": "index",
@@ -89,7 +98,7 @@
             "to": "2025-03-09"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "orders!D11:D14"
           },
           "status": "observed",
@@ -97,13 +106,16 @@
           "details": {
             "complete": true,
             "quality": "comparable",
-            "measurement_kind": "product_outcome"
+            "measurement_kind": "product_outcome",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "LBW-BC-12M-100-A3"
           }
         },
         {
           "id": "fixture/partial",
           "kind": "metric",
-          "product_key": "qa/synthetic/atlas",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "self_service_order_index",
           "value": 95,
           "unit": "index",
@@ -112,7 +124,7 @@
             "to": "2025-03-09"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "orders!C11:C13"
           },
           "status": "observed",
@@ -120,7 +132,10 @@
           "details": {
             "complete": false,
             "quality": "comparable",
-            "measurement_kind": "product_outcome"
+            "measurement_kind": "product_outcome",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "KL4141RCEFR"
           }
         }
       ],
@@ -135,7 +150,7 @@
         {
           "id": "fixture/tag-before",
           "kind": "metric",
-          "product_key": "qa/synthetic/atlas",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "self_service_order_index",
           "value": 70,
           "unit": "index",
@@ -144,7 +159,7 @@
             "to": "2025-02-02"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "events!B2:B5"
           },
           "status": "observed",
@@ -152,13 +167,16 @@
           "details": {
             "complete": true,
             "quality": "comparable",
-            "measurement_kind": "measurement_repair"
+            "measurement_kind": "measurement_repair",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "KL4141RCEFR"
           }
         },
         {
           "id": "fixture/tag-after",
           "kind": "metric",
-          "product_key": "qa/synthetic/atlas",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "self_service_order_index",
           "value": 130,
           "unit": "index",
@@ -167,7 +185,7 @@
             "to": "2025-03-09"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "events!B7:B10"
           },
           "status": "observed",
@@ -175,7 +193,10 @@
           "details": {
             "complete": true,
             "quality": "comparable",
-            "measurement_kind": "measurement_repair"
+            "measurement_kind": "measurement_repair",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "KL4141RCEFR"
           }
         }
       ],
@@ -190,7 +211,7 @@
         {
           "id": "fixture/fix",
           "kind": "release",
-          "product_key": "qa/synthetic/atlas",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "published_change",
           "value": "Обновлён выбор продления и проведена независимая проверка заказов.",
           "unit": "text",
@@ -199,12 +220,15 @@
             "to": "2025-02-05"
           },
           "source_ref": {
-            "source_id": "synthetic/shop-lab-v1",
+            "source_id": "qa/lifecycle/fixture",
             "locator": "releases!A3:C3"
           },
           "status": "observed",
           "details": {
-            "hypothesis_id": "qa/synthetic/atlas/renewal"
+            "hypothesis_id": "qa/lifecycle/fixture",
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "sku": "KL4141RCEFR"
           }
         }
       ],

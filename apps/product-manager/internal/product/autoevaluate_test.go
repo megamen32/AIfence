@@ -11,8 +11,8 @@ import (
 func measurementFixture() (decision.Record, []followupRow) {
 	r := decision.Record{
 		Task: &decision.Task{ID: "T"}, EvidenceSnapshotID: "original",
-		Hypothesis: decision.Hypothesis{ID: "H", ProductKey: "target", Status: "in_backlog", SuccessCriterion: decision.Criterion{
-			MetricKey: "orders", BaselineFrom: "2025-01-06", BaselineTo: "2025-02-02", ObservationDays: 28, ControlProductKey: "control",
+		Hypothesis: decision.Hypothesis{ID: "H", ProductKey: "kaspersky_small_office_security", Status: "in_backlog", SuccessCriterion: decision.Criterion{
+			MetricKey: "orders", BaselineFrom: "2025-01-06", BaselineTo: "2025-02-02", ObservationDays: 28, ControlProductKey: "dr_web_desktop_security_suite",
 		}},
 	}
 	before := evidence.Period{From: "2025-01-06", To: "2025-02-02"}
@@ -22,9 +22,9 @@ func measurementFixture() (decision.Record, []followupRow) {
 		row.meta.measurementMeta = measurementMeta{Complete: true, Quality: "comparable", Kind: "product_outcome"}
 		return row
 	}
-	release := followupRow{snapshot: "release", Row: evidence.Row{ID: "fix", Kind: "release", Source: "release", Product: "target", Status: "observed", Period: evidence.Period{From: "2025-02-05", To: "2025-02-05"}}}
+	release := followupRow{snapshot: "release", Row: evidence.Row{ID: "fix", Kind: "release", Source: "release", Product: "kaspersky_small_office_security", Status: "observed", Period: evidence.Period{From: "2025-02-05", To: "2025-02-05"}}}
 	release.meta.HypothesisID = "H"
-	return r, []followupRow{release, outcome("original", "b", "target", "80", before), outcome("original", "cb", "control", "100", before), outcome("target", "n", "target", "100", after), outcome("control", "cn", "control", "105", after)}
+	return r, []followupRow{release, outcome("original", "b", "kaspersky_small_office_security", "80", before), outcome("original", "cb", "dr_web_desktop_security_suite", "100", before), outcome("target", "n", "kaspersky_small_office_security", "100", after), outcome("control", "cn", "dr_web_desktop_security_suite", "105", after)}
 }
 
 func TestPlanFollowupAcrossSnapshots(t *testing.T) {
@@ -65,7 +65,7 @@ func TestIgnoreUnusableEvidence(t *testing.T) {
 		"no approved task":            func(r *decision.Record, _ []followupRow) { r.Task = nil },
 		"terminal":                    func(r *decision.Record, _ []followupRow) { r.Hypothesis.Status = "rejected" },
 		"release without link":        func(_ *decision.Record, x []followupRow) { x[0].meta.HypothesisID = "" },
-		"release for another product": func(_ *decision.Record, x []followupRow) { x[0].Product = "other" },
+		"release for another product": func(_ *decision.Record, x []followupRow) { x[0].Product = "astra_linux_special_edition" },
 		"wrong release tag":           func(_ *decision.Record, x []followupRow) { x[3].meta.ReleaseID = "other" },
 		"wrong hypothesis":            func(_ *decision.Record, x []followupRow) { x[3].meta.HypothesisID = "other" },
 		"repair to tracking":          func(_ *decision.Record, x []followupRow) { x[3].meta.Kind = "measurement_repair" },
@@ -129,5 +129,16 @@ func TestObservedByRequiresBothSourceAndDocumentDates(t *testing.T) {
 		if observedBy(row, tc.document) != tc.want {
 			t.Fatalf("unexpected relevance for %+v", tc)
 		}
+	}
+}
+
+func TestLifecycleSourceDoesNotCrossRunsOrCatalogHistory(t *testing.T) {
+	const run = "qa/lifecycle/f1"
+	const other = "qa/lifecycle/f2"
+	const historical = "store-orders"
+	if !lifecycleSourceMatches(run, run) || !lifecycleSourceMatches("saved-card", historical) ||
+		lifecycleSourceMatches(run, other) || lifecycleSourceMatches(run, historical) ||
+		lifecycleSourceMatches("saved-card", run) {
+		t.Fatal("QA measurements crossed the selected run or the live series")
 	}
 }

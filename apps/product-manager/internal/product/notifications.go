@@ -72,7 +72,7 @@ func notificationKey(h decision.Hypothesis, rows []evidence.Row) string {
 			Synthetic bool   `json:"synthetic"`
 		}
 		_ = json.Unmarshal([]byte(row.Details), &provenance)
-		if strings.HasPrefix(row.Ref.SourceID, "synthetic/") || provenance.Origin == "synthetic_fixture" || provenance.Synthetic {
+		if strings.HasPrefix(row.Ref.SourceID, "synthetic/") || strings.HasPrefix(row.Ref.SourceID, qaLifecyclePrefix) || provenance.Origin == "synthetic_fixture" || provenance.Synthetic {
 			return ""
 		}
 		observed = observed || row.Status == "observed"

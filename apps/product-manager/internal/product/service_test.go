@@ -8,7 +8,7 @@ import (
 )
 
 func TestBrowserEvidenceLevel(t *testing.T) {
-	h := decision.Hypothesis{ProductKey: "example/product"}
+	h := decision.Hypothesis{ProductKey: "kaspersky_small_office_security"}
 	if err := checkEvidenceLevel(h, nil); err != nil {
 		t.Fatalf("legacy record: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestBrowserEvidenceLevel(t *testing.T) {
 	for name, change := range map[string]func(*evidence.Row){
 		"wrong source":  func(r *evidence.Row) { r.Source = "metrika" },
 		"wrong kind":    func(r *evidence.Row) { r.Kind = "metric" },
-		"wrong product": func(r *evidence.Row) { r.Product = "example/other" },
+		"wrong product": func(r *evidence.Row) { r.Product = "dr_web_desktop_security_suite" },
 		"not observed":  func(r *evidence.Row) { r.Status = "estimated" },
 		"no verdict":    func(r *evidence.Row) { r.Value = "inconclusive" },
 	} {
@@ -40,7 +40,7 @@ func TestBrowserEvidenceLevel(t *testing.T) {
 }
 
 func TestSignalNotificationKey(t *testing.T) {
-	h := decision.Hypothesis{ID: "first", ProductKey: "test/product", SignalIDs: []string{"a", "b"}}
+	h := decision.Hypothesis{ID: "first", ProductKey: "kaspersky_small_office_security", SignalIDs: []string{"a", "b"}}
 	rows := []evidence.Row{{ID: "b", Status: "observed"}}
 	key := notificationKey(h, rows)
 	h.ID = "second"

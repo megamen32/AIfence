@@ -17,8 +17,9 @@ from priorities import check_priorities
 HERE = Path(__file__).resolve().parent
 APP = HERE.parent
 ROOT = APP.parents[1]
-SYNTHETIC = "qa/synthetic/atlas"
-CONTROL = "qa/synthetic/lumen"
+TARGET = "kaspersky_small_office_security"
+CONTROL = "dr_web_desktop_security_suite"
+RUN_PREFIX = "qa/lifecycle/"
 TAG = "сгенерирована ИИ-помощником"
 
 
@@ -72,9 +73,8 @@ class SDK:
 
 
 def register(sdk, document):
-    evidence = {"document": json.dumps(document, ensure_ascii=False)}
-    summary = sdk.call("import_evidence", evidence)
-    repeated = sdk.call("import_evidence", {"document": document})
+    summary = sdk.call("import_evidence", {"document": document})
+    repeated = sdk.call("import_evidence", {"document": json.dumps(document, ensure_ascii=False)})
     rows = [row for batch in document["batches"] for row in batch["observations"]]
     for receipt in (summary, repeated):
         check(not receipt.get("followup_error") and all(x["status"] != "retry" for x in receipt.get("followup", [])),
@@ -97,8 +97,8 @@ def register(sdk, document):
 
 def hypothesis(identifier):
     return {
-        "schema_version": "aifence.v1", "id": identifier, "title": "QA. Проверить путь продления Atlas",
-        "product_key": SYNTHETIC, "signal_ids": ["fixture/earlier", "fixture/baseline"],
+        "schema_version": "aifence.v1", "id": identifier, "title": "QA. Проверить путь продления Kaspersky Small Office Security",
+        "product_key": TARGET, "signal_ids": ["fixture/earlier", "fixture/baseline"],
         "support_ids": ["fixture/interview"], "counter_ids": ["fixture/prices", "fixture/auditing"],
         "unknowns": ["Перешли ли клиенты к менеджерам?"],
         "proposed_action": "Сверить синтетические независимые заказы с обращениями к менеджерам и пройти путь продления.",
@@ -115,10 +115,11 @@ def awaiting(assessment):
 
 
 def scenario_document(document, identifier):
-    # Each run has independent products so unfinished or historical runs cannot supply measurements.
+    # Keep catalog identities stable. A unique source isolates unlabelled measurements by run.
     for batch in document["batches"]:
         for row in batch["observations"]:
-            row["product_key"] = {SYNTHETIC: identifier, CONTROL: identifier + "/control"}[row["product_key"]]
+            check(row["product_key"] in (TARGET, CONTROL), "unexpected catalog product")
+            row["source_ref"]["source_id"] = identifier
     return document
 
 
@@ -135,8 +136,6 @@ def run_lifecycle(sdk, initial, identifier, resume=False):
         doc["batches"] = [batch for batch in doc["batches"] if batch["observations"]]
         return doc
     h = hypothesis(identifier)
-    h["product_key"] = identifier
-    h["success_criterion"]["control_product_key"] = identifier + "/control"
     key = {"hypothesis_id": identifier}
     save = {"hypothesis": h, "expected_version": 0, "evidence_snapshot_id": initial}
     bad = copy.deepcopy(save)
@@ -191,7 +190,7 @@ def run_lifecycle(sdk, initial, identifier, resume=False):
     answer = final["assessment"]
     refs = [f"{initial}/fixture/baseline", f"{target}/fixture/after",
             f"{initial}/fixture/control-baseline", f"{control}/fixture/control-after"]
-    # Atlas goes from 80 to 100, its control from 100 to 105. The difference is 20 pp.
+    # Compare the two catalog series from this isolated QA run.
     check(answer["status"] == "supported" and math.isclose(answer["value"], 20.0) and
           answer["unit"] == "п.п." and answer["evidence_refs"] == refs, "incorrect controlled effect or source IDs")
     check(final["version"] == released["version"] + 1 and final["task"] == task and
@@ -207,11 +206,9 @@ def run_lifecycle(sdk, initial, identifier, resume=False):
 
 
 def check_simultaneous_release(sdk):
-    identifier = SYNTHETIC + "/" + uuid.uuid4().hex[:12]
+    identifier = RUN_PREFIX + uuid.uuid4().hex[:12]
     initial = register(sdk, scenario_document(fixture("synthetic-input.json"), identifier))
     h = hypothesis(identifier)
-    h["product_key"] = identifier
-    h["success_criterion"]["control_product_key"] = identifier + "/control"
     first = sdk.call("save_hypothesis", {"hypothesis": h, "expected_version": 0, "evidence_snapshot_id": initial})
     sdk.approve(identifier, first["version"])
     document = scenario_document(fixture("synthetic-followup.json"), identifier)
@@ -265,7 +262,7 @@ def main():
     action = p.add_mutually_exclusive_group()
     action.add_argument("--prepare-chat", action="store_true")
     action.add_argument("--check-release-race", action="store_true")
-    action.add_argument("--resume-draft", metavar="SYNTHETIC_ID", help="Resume a previously saved version-1 QA draft")
+    action.add_argument("--resume-draft", metavar="RUN_ID", help="Resume a previously saved version-1 QA draft")
     action.add_argument("--check-chat", metavar="HYPOTHESIS_ID")
     action.add_argument("--check-confirmed", metavar="HYPOTHESIS_ID")
     args = p.parse_args()
@@ -277,8 +274,8 @@ def main():
     elif args.check_chat or args.check_confirmed:
         result = check_chat(sdk, args.check_chat or args.check_confirmed, bool(args.check_confirmed))
     else:
-        identifier = args.resume_draft or (SYNTHETIC + "/" + uuid.uuid4().hex[:12])
-        check(re.fullmatch(re.escape(SYNTHETIC) + "/[a-f0-9]{12}", identifier), "invalid QA identifier")
+        identifier = args.resume_draft or (RUN_PREFIX + uuid.uuid4().hex[:12])
+        check(re.fullmatch(re.escape(RUN_PREFIX) + "[a-f0-9]{12}", identifier), "invalid QA identifier")
         first = register(sdk, scenario_document(fixture("synthetic-input.json"), identifier))
         result = run_lifecycle(sdk, first, identifier, resume=bool(args.resume_draft))
     print(json.dumps(result, ensure_ascii=False, indent=2))

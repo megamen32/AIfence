@@ -118,6 +118,11 @@ func (s Service) Import(ctx context.Context, in evidence.ImportInput) (ImportRec
 	}
 	cache := map[string][]followupRow{summary.SnapshotID: fresh}
 	for _, rec := range records {
+		if !slices.ContainsFunc(fresh, func(row followupRow) bool {
+			return lifecycleSourceMatches(rec.Hypothesis.ID, row.Ref.SourceID)
+		}) {
+			continue
+		}
 		item, err := s.reconcile(ctx, rec, summary.SnapshotID, cache)
 		if err != nil {
 			item = FollowupResult{HypothesisID: rec.Hypothesis.ID, Status: "retry", Reason: err.Error()}
@@ -128,6 +133,16 @@ func (s Service) Import(ctx context.Context, in evidence.ImportInput) (ImportRec
 	}
 	return result, nil
 }
+
+const qaLifecyclePrefix = "qa/lifecycle/"
+
+func lifecycleSourceMatches(hypothesisID, sourceID string) bool {
+	if strings.HasPrefix(hypothesisID, qaLifecyclePrefix) || strings.HasPrefix(sourceID, qaLifecyclePrefix) {
+		return sourceID == hypothesisID
+	}
+	return true
+}
+
 func (s Service) reconcile(ctx context.Context, rec decision.Record, incoming string, cache map[string][]followupRow) (FollowupResult, error) {
 	id := rec.Hypothesis.ID
 	var rows []followupRow
@@ -243,6 +258,9 @@ func planFollowup(r decision.Record, incoming string, rows []followupRow, now ti
 	if r.Task == nil || h.Status == "supported" || h.Status == "rejected" {
 		return nil, ""
 	}
+	rows = slices.DeleteFunc(slices.Clone(rows), func(row followupRow) bool {
+		return !lifecycleSourceMatches(h.ID, row.Ref.SourceID)
+	})
 	var release releaseBinding
 	if a := r.Assessment; a != nil && a.ReleaseID != "" {
 		release = releaseBinding{a.ReleaseID, a.ReleasedOn, a.ReleaseEvidenceRef}

@@ -11,12 +11,12 @@ func TestProposeUsesComparableFullWeeks(t *testing.T) {
 	row := func(name, variant, value string) evidence.Row {
 		return evidence.Row{Source: "sales", Product: name, ID: name + "/" + variant, Metric: "family_orders_idx.relative_change_pct", Status: "observed", Period: evidence.Period{From: "2025-01-06", To: "2025-05-25"}, Details: `{"variant":"` + variant + `","baseline_mean":100,"current_mean":` + value + `,"current_weeks":6,"baseline_from":"2025-01-06","baseline_to":"2025-03-30","current_from":"2025-04-14"}`}
 	}
-	rows := []evidence.Row{row("Control", "full_weeks", "103"), row("Target", "all_reported_weeks", "20"), row("Target", "full_weeks", "80")}
+	rows := []evidence.Row{row("dr_web_desktop_security_suite", "full_weeks", "103"), row("kaspersky_small_office_security", "all_reported_weeks", "20"), row("kaspersky_small_office_security", "full_weeks", "80")}
 	h, err := proposeLegacy(rows, "fixture", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.Hypothesis.ProductKey != "Target" || h.Hypothesis.SignalIDs[0] != "Target/full_weeks" || h.Hypothesis.SuccessCriterion.ControlProductKey != "Control" || h.Hypothesis.SuccessCriterion.BaselineFrom != "2025-04-28" || h.Hypothesis.Status != "proposed" {
+	if h.Hypothesis.ProductKey != "kaspersky_small_office_security" || h.Hypothesis.SignalIDs[0] != "kaspersky_small_office_security/full_weeks" || h.Hypothesis.SuccessCriterion.ControlProductKey != "dr_web_desktop_security_suite" || h.Hypothesis.SuccessCriterion.BaselineFrom != "2025-04-28" || h.Hypothesis.Status != "proposed" {
 		t.Fatal(h)
 	}
 	_, err = proposeLegacy(rows[:2], "fixture", "")
@@ -27,14 +27,14 @@ func TestProposeUsesComparableFullWeeks(t *testing.T) {
 
 func TestInvestigateWatchdog(t *testing.T) {
 	const detail = `{
-		"metric_key":"orders_index","control_product_key":"example_control",
+		"metric_key":"orders_index","control_product_key":"dr_web_desktop_security_suite",
 		"baseline_period":{"from":"2025-01-06","to":"2025-02-02"},
 		"current_period":{"from":"2025-02-03","to":"2025-03-02"},
 		"baseline_mean":10,"current_mean":5,"control_baseline_mean":10,"control_current_mean":10,
 		"relative_change_pct":-50,"control_adjusted_change_pct":-50,
 		"evidence_ids":["series/a"],"source_refs":[{"id":"series/a","source_ref":{"source_id":"fixture","locator":"row 1"}}]
 	}`
-	hit := evidence.Row{ID: "watchdog/week1", Kind: "metric", Source: "sales", Product: "example_target", Metric: WatchdogMetric, Status: "observed", Value: "true",
+	hit := evidence.Row{ID: "watchdog/week1", Kind: "metric", Source: "sales", Product: "kaspersky_small_office_security", Metric: WatchdogMetric, Status: "observed", Value: "true",
 		Period: evidence.Period{From: "2025-02-24", To: "2025-03-02"}, Details: detail}
 	release := evidence.Row{ID: "release/earlier", Source: "release", Product: hit.Product, Status: "observed",
 		Period: evidence.Period{From: "2025-02-12", To: "2025-02-12"}}
@@ -51,7 +51,7 @@ func TestInvestigateWatchdog(t *testing.T) {
 	}
 	h := a.Hypothesis
 	if h.EvidenceLevel != "path_verified" || h.SuccessCriterion.MetricKey != "orders_index" ||
-		h.SuccessCriterion.BaselineFrom != "2025-02-03" || h.SuccessCriterion.ControlProductKey != "example_control" ||
+		h.SuccessCriterion.BaselineFrom != "2025-02-03" || h.SuccessCriterion.ControlProductKey != "dr_web_desktop_security_suite" ||
 		len(h.BrowserEvidenceIDs) != 1 || len(a.ContextIDs) != 1 || a.ContextIDs[0] != release.ID {
 		t.Fatal(a)
 	}
@@ -82,7 +82,7 @@ func TestInvestigateWatchdog(t *testing.T) {
 func TestSignalReadbackUsesExactSavedSignal(t *testing.T) {
 	details := `{"baseline_period":{"from":"2025-01-06","to":"2025-02-02"},"current_period":{"from":"2025-02-03","to":"2025-03-02"},
 			"baseline_mean":10,"current_mean":5,"control_baseline_mean":10,"control_current_mean":10,"relative_change_pct":-50}`
-	h := decision.Hypothesis{ID: "watch-saved", ProductKey: "test-target", SignalIDs: []string{"watchdog/saved"}}
+	h := decision.Hypothesis{ID: "watch-saved", ProductKey: "kaspersky_small_office_security", SignalIDs: []string{"watchdog/saved"}}
 	row := evidence.Row{ID: "watchdog/other", Product: h.ProductKey, Source: "sales", Metric: WatchdogMetric, Status: "observed", Value: "true",
 		Period: evidence.Period{From: "2025-02-24", To: "2025-03-02"}, Details: details}
 	record := decision.Record{Hypothesis: h}

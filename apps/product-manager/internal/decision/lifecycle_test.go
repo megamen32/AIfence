@@ -13,12 +13,12 @@ import (
 
 func number(v float64) *float64 { return &v }
 func fixture() SaveInput {
-	return SaveInput{EvidenceSnapshotID: "ev-" + strings.Repeat("a", 64), Hypothesis: Hypothesis{SchemaVersion: "aifence.v1", ID: "test/a+b", Title: "Synthetic renewal experiment", ProductKey: "fixture-product", SignalIDs: []string{"fixture:signal"}, SupportIDs: []string{}, CounterIDs: []string{}, Unknowns: []string{"Channel shift"}, ProposedAction: "Check the alternative channel", Status: "proposed", EconomicEffect: EconomicEffect{Status: "unknown", Assumptions: []string{}}, SuccessCriterion: Criterion{MetricKey: "weekly_index", BaselineFrom: "2025-01-06", BaselineTo: "2025-02-02", ObservationDays: 28, Rule: "difference_in_relative_changes_pp >= 10", ControlProductKey: "fixture-control"}}}
+	return SaveInput{EvidenceSnapshotID: "ev-" + strings.Repeat("a", 64), Hypothesis: Hypothesis{SchemaVersion: "aifence.v1", ID: "test/a+b", Title: "Kaspersky Small Office Security renewal", ProductKey: "kaspersky_small_office_security", SignalIDs: []string{"fixture:signal"}, SupportIDs: []string{}, CounterIDs: []string{}, Unknowns: []string{"Channel shift"}, ProposedAction: "Check the alternative channel", Status: "proposed", EconomicEffect: EconomicEffect{Status: "unknown", Assumptions: []string{}}, SuccessCriterion: Criterion{MetricKey: "weekly_index", BaselineFrom: "2025-01-06", BaselineTo: "2025-02-02", ObservationDays: 28, Rule: "difference_in_relative_changes_pp >= 10", ControlProductKey: "dr_web_desktop_security_suite"}}}
 }
 func measuredFixture() (Record, EvaluateInput, time.Time) {
 	in := fixture()
 	r := Record{Hypothesis: in.Hypothesis, Version: 2, EvidenceSnapshotID: in.EvidenceSnapshotID, Task: &Task{ID: "test"}}
-	base := PeriodValue{ProductKey: "fixture-product", MetricKey: "weekly_index", Unit: "index", From: "2025-01-06", To: "2025-02-02", SourceRef: "synthetic:baseline", Value: number(100), Complete: true}
+	base := PeriodValue{ProductKey: "kaspersky_small_office_security", MetricKey: "weekly_index", Unit: "index", From: "2025-01-06", To: "2025-02-02", SourceRef: "synthetic:baseline", Value: number(100), Complete: true}
 	// Synthetic release on a Wednesday. The next four whole weeks start Monday.
 	current := base
 	current.From = "2025-02-10"
@@ -26,7 +26,7 @@ func measuredFixture() (Record, EvaluateInput, time.Time) {
 	current.SourceRef = "synthetic:current"
 	current.Value = number(125)
 	cb, cc := base, current
-	cb.ProductKey, cc.ProductKey = "fixture-control", "fixture-control"
+	cb.ProductKey, cc.ProductKey = "dr_web_desktop_security_suite", "dr_web_desktop_security_suite"
 	cb.SourceRef, cc.SourceRef = "synthetic:control-baseline", "synthetic:control-current"
 	cb.Value, cc.Value = number(50), number(55)
 	measure := &Measurement{Quality: "comparable", Kind: "product_outcome", Baseline: base, Current: current, ControlBaseline: &cb, ControlCurrent: &cc}
@@ -109,7 +109,7 @@ func TestAwaitComparableObservedWindows(t *testing.T) {
 		"tracking break":       func(in *EvaluateInput) { in.Measurement.Quality = "tracking_break" },
 		"last week incomplete": func(in *EvaluateInput) { in.Measurement.Current.Complete = false },
 		"metric mismatch":      func(in *EvaluateInput) { in.Measurement.Current.MetricKey = "cart_clicks" },
-		"different product":    func(in *EvaluateInput) { in.Measurement.Current.ProductKey = "another" },
+		"different product":    func(in *EvaluateInput) { in.Measurement.Current.ProductKey = "astra_linux_special_edition" },
 		"mixed units":          func(in *EvaluateInput) { in.Measurement.Current.Unit = "count" },
 		"mixed segment":        func(in *EvaluateInput) { in.Measurement.Current.Segment = "enterprise" },
 		"missing source":       func(in *EvaluateInput) { in.Measurement.Current.SourceRef = "" },
@@ -123,7 +123,7 @@ func TestAwaitComparableObservedWindows(t *testing.T) {
 		"overlap release":       func(in *EvaluateInput) { in.Measurement.Current.From = in.ReleasedOn },
 		"missing control":       func(in *EvaluateInput) { in.Measurement.ControlCurrent = nil },
 		"wrong control period":  func(in *EvaluateInput) { in.Measurement.ControlCurrent.From = "2025-01-01" },
-		"wrong control product": func(in *EvaluateInput) { in.Measurement.ControlBaseline.ProductKey = "fixture-product" },
+		"wrong control product": func(in *EvaluateInput) { in.Measurement.ControlBaseline.ProductKey = "kaspersky_small_office_security" },
 		"zero control baseline": func(in *EvaluateInput) { in.Measurement.ControlBaseline.Value = number(0) },
 	}
 	for name, change := range cases {

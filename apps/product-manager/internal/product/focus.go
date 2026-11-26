@@ -51,7 +51,7 @@ func syntheticFocus(rows []evidence.Row) bool {
 			Synthetic bool   `json:"synthetic"`
 		}
 		_ = json.Unmarshal([]byte(row.Details), &provenance)
-		if provenance.Synthetic || provenance.Origin == "synthetic_fixture" || strings.HasPrefix(row.Ref.SourceID, "synthetic/") {
+		if provenance.Synthetic || provenance.Origin == "synthetic_fixture" || strings.HasPrefix(row.Ref.SourceID, "synthetic/") || strings.HasPrefix(row.Ref.SourceID, qaLifecyclePrefix) {
 			return true
 		}
 	}

@@ -141,8 +141,12 @@ func (s Service) Evaluate(ctx context.Context, in EvaluateInput) (decision.Asses
 		rows[r.ID] = r
 	}
 	for _, id := range ids {
-		if _, ok := rows[id]; !ok {
+		row, ok := rows[id]
+		if !ok {
 			return decision.Assessment{}, fmt.Errorf("наблюдение отсутствует: %s", id)
+		}
+		if !lifecycleSourceMatches(in.HypothesisID, row.Ref.SourceID) {
+			return decision.Assessment{}, errors.New("наблюдение относится к другому проверочному запуску")
 		}
 	}
 	if in.ReleaseObservationID != "" {

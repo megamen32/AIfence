@@ -56,8 +56,8 @@ func TestSignalMailSMTPReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	draft := decision.SaveInput{Hypothesis: decision.Hypothesis{ProductKey: "test_product", SignalIDs: []string{"watchdog/test"}}}
-	row := evidence.Row{ID: "watchdog/test", Product: "test_product", Source: "sales", Kind: "metric", Metric: WatchdogMetric,
+	draft := decision.SaveInput{Hypothesis: decision.Hypothesis{ProductKey: "kaspersky_small_office_security", SignalIDs: []string{"watchdog/test"}}}
+	row := evidence.Row{ID: "watchdog/test", Product: "kaspersky_small_office_security", Source: "sales", Kind: "metric", Metric: WatchdogMetric,
 		Status: "observed", Value: "true", Ref: evidence.SourceRef{SourceID: "aifence-watchdog"}, Details: `{"origin":"imported_historical"}`}
 	if id := realSignalID(draft, []evidence.Row{row}); id != row.ID {
 		t.Fatalf("real alert not selected: %q", id)

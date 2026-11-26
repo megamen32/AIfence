@@ -6,7 +6,7 @@ import (
 )
 
 func TestRowsKeepIdentityMissingAndFilters(t *testing.T) {
-	raw := json.RawMessage(`{"id":"m","metric_key":"orders","product_key":"A","value":null,"period":{"from":"2025-05-01","to":"2025-05-02"},"source_ref":{"source_id":"fixture","locator":"a2"},"status":"missing","kind":"metric","unit":"index"}`)
+	raw := json.RawMessage(`{"id":"m","metric_key":"orders","product_key":"kaspersky_small_office_security","value":null,"period":{"from":"2025-05-01","to":"2025-05-02"},"source_ref":{"source_id":"fixture","locator":"a2"},"status":"missing","kind":"metric","unit":"index"}`)
 	b := Batch{Schema: "aifence.v1", Source: "sales", Status: "partial", AsOf: "2025-05-02T00:00:00Z", Observations: []json.RawMessage{raw}, Warnings: []string{}}
 	d := Document{Schema: "aifence.case.v1", AsOf: b.AsOf, Batches: []Batch{b}, SourcePolicy: "local_project_only"}
 	blob, _ := json.Marshal(d)

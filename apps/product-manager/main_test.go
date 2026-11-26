@@ -52,7 +52,7 @@ func TestAgentComposition(t *testing.T) {
 			strings.Contains(instruction.Text, "scan_watchdog_series({})") &&
 			strings.Contains(instruction.Text, "«Создать эту задачу»") &&
 			strings.Contains(instruction.Text, "Не проси ответить «да»") &&
-			!strings.Contains(instruction.Text, "demo_target") && !strings.Contains(instruction.Text, "synthetic-watch")
+			!strings.Contains(instruction.Text, "fixtures/")
 	}) {
 		t.Fatal("watchdog must discover the available series and require one confirmation on the card")
 	}

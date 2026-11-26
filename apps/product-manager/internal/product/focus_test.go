@@ -15,7 +15,7 @@ func TestSyntheticFocusComesFromEvidence(t *testing.T) {
 		{evidence.Row{Details: `{"synthetic":true}`}, true},
 		{evidence.Row{Ref: evidence.SourceRef{SourceID: "synthetic/test"}}, true},
 		{evidence.Row{Details: `{"origin":"imported_historical","synthetic":false}`}, false},
-		{evidence.Row{Product: "demo-like-name"}, false},
+		{evidence.Row{Product: "kaspersky_small_office_security"}, false},
 	} {
 		if got := syntheticFocus([]evidence.Row{tc.row}); got != tc.want {
 			t.Fatalf("syntheticFocus(%+v) = %v, want %v", tc.row, got, tc.want)
