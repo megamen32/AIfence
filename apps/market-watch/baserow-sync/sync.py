@@ -369,9 +369,15 @@ def sync(tid, ids):
     for method,entries in [("POST",new),("PATCH",changed),("PATCH",inactive)]:
         for batch in batches(entries):
             answer=api(method,base+"batch/?user_field_names=true",{"items":batch})
-            if len(answer["items"])!=len(batch):
+            acknowledged = answer["items"]
+            if len(acknowledged) != len(batch):
                 raise ValueError("Baserow did not acknowledge every row")
-    count=api("GET",base+f"?filter__field_{ids['active']}__boolean=1&size=1")["count"]
+            identifier = NAMES["key"] if method == "POST" else "id"
+            if {item[identifier] for item in acknowledged} != {item[identifier] for item in batch}:
+                raise ValueError("Baserow acknowledged different comparison rows")
+    managed_filters = urlencode({f"filter__field_{ids['active']}__boolean": "1",
+                                 f"filter__field_{ids['key']}__not_empty": "", "size": 1})
+    count = api("GET", base + "?" + managed_filters)["count"]
     if count!=len(rows):
         raise ValueError(f"Visible matrix has {count} rows; expected {len(rows)}")
     multi = [row for row in rows.values() if row[NAMES["store_count"]] is not None]
