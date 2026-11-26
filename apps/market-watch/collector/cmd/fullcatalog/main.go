@@ -38,6 +38,7 @@ type progress struct {
 	CandidatePages         int            `json:"candidate_pages"`
 	ProcessedPages         int            `json:"processed_pages"`
 	PendingPages           int            `json:"pending_pages"`
+	ListedPages            int            `json:"listing_only_pages"`
 	States                 map[string]int `json:"page_states"`
 	PricedOffers           int            `json:"priced_offers"`
 	Variants               int            `json:"variants"`
@@ -212,8 +213,12 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 			continue
 		}
 		if p.At >= inv.DiscoveredAt {
-			status.ProcessedPages++
-			status.States[p.State]++
+			if p.EvidenceURL == "" {
+				status.ProcessedPages++
+				status.States[p.State]++
+			} else {
+				status.ListedPages++
+			}
 			if p.State != "error" {
 				for _, v := range p.Variants {
 					observed[v.URL] = true
@@ -402,7 +407,7 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	var pending []string
 	for _, u := range inv.URLs {
 		p, ok := pages[u]
-		if !ok || p.At < inv.DiscoveredAt || p.State == "error" || p.State == "unclassified" {
+		if !ok || p.At < inv.DiscoveredAt || p.EvidenceURL != "" || p.State == "error" || p.State == "unclassified" {
 			pending = append(pending, u)
 		}
 	}
@@ -430,6 +435,11 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 			lastExport = time.Now()
 		}
 		return nil
+	}
+	if s.ID == "softmagazin" {
+		if e = collectListings(ctx, s, dir, inv, pages, fetch, consume); e != nil {
+			return e
+		}
 	}
 	if e = process(ctx, s, pending, fetch, consume); e != nil {
 		return e

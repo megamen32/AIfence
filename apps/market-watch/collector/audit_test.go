@@ -37,3 +37,20 @@ func TestMissingManufacturerCodeStillHasPublicPrice(t *testing.T) {
 		t.Fatal(got, e)
 	}
 }
+func TestVendorPublicListing(t *testing.T) {
+	s := sources(t)[0]
+	html := `<div class="wrapper-items-with-offers"><div class="wrapper-info-product"><div class="information-product"><a class="title" href="/vendor/family/">Family</a></div><div class="offers"><span class="articul"><span></span> CODE-1 </span><a class="name" href="/vendor/lic/">License</a><span class="price" content="99 руб.">99 руб.</span></div></div></div><div class="navigation"><a id="navigation_1_next_page" href="/vendor/?PAGEN_1=2">Next</a></div>`
+	rows, next, err := VendorListing(s, "https://www.softmagazin.ru/vendor/", strings.NewReader(html), time.Now())
+	if err != nil || len(rows) != 1 || len(rows[0].Offers) != 1 || rows[0].Offers[0].SKU != "CODE-1" || rows[0].Offers[0].PriceMinor != 9900 || rows[0].EvidenceURL == "" || !strings.HasSuffix(next, "/vendor/?PAGEN_1=2") {
+		t.Fatal(rows, next, err)
+	}
+}
+
+func TestMinimumDisplayedPriceKeepsItsBasis(t *testing.T) {
+	s := sources(t)[0]
+	h := `<div class="offers"><span class="articul" title="CODE">CODE</span><a class="name" href="/v/lic/">License</a><span class="price" content="от 50 руб.">от 50 руб.</span></div>`
+	p, e := InspectPage(s, s.Seeds[0], strings.NewReader(h), time.Now())
+	if e != nil || len(p.Offers) != 1 || p.Offers[0].PriceMinor != 5000 || p.Offers[0].PriceBasis != "minimum_displayed_price" {
+		t.Fatal(p, e)
+	}
+}

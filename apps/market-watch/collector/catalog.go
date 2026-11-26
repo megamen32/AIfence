@@ -157,6 +157,17 @@ func extractDoc(s Source, page string, doc *goquery.Document, at time.Time) ([]O
 		if name == "" || p == "" {
 			return
 		}
+		basis := s.Rule.PriceBasis
+		visible := field(r, Field{Selector: s.Rule.Price.Selector})
+		for _, label := range []string{p, visible} {
+			words := strings.Fields(label)
+			if len(words) > 1 && strings.EqualFold(words[0], "от") {
+				basis = "minimum_displayed_price"
+				if label == p {
+					p = strings.Join(words[1:], " ")
+				}
+			}
+		}
 		price, e := Money(p)
 		if e != nil {
 			invalid++
@@ -177,7 +188,7 @@ func extractDoc(s Source, page string, doc *goquery.Document, at time.Time) ([]O
 		if v, e := strconv.ParseInt(field(r, s.Rule.Quantity), 10, 64); e == nil && v > 0 {
 			quantity = &v
 		}
-		out = append(out, Offer{Quantity: quantity, PriceBasis: s.Rule.PriceBasis, Source: s.ID, SKU: strings.ToUpper(sku), Name: name, PriceMinor: price, OldPriceMinor: old, Currency: "RUB", URL: link, CapturedAt: at.UTC().Format(time.RFC3339)})
+		out = append(out, Offer{Quantity: quantity, PriceBasis: basis, Source: s.ID, SKU: strings.ToUpper(sku), Name: name, PriceMinor: price, OldPriceMinor: old, Currency: "RUB", URL: link, CapturedAt: at.UTC().Format(time.RFC3339)})
 	})
 	if invalid > 0 {
 		return out, fmt.Errorf("%d invalid price rows", invalid)

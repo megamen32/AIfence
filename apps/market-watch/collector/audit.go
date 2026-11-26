@@ -4,6 +4,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,13 +18,14 @@ type Variant struct {
 }
 
 type PageResult struct {
-	URL      string    `json:"url"`
-	At       string    `json:"at"`
-	State    string    `json:"state"`
-	Title    string    `json:"title,omitempty"`
-	Offers   []Offer   `json:"offers,omitempty"`
-	Variants []Variant `json:"variants,omitempty"`
-	Error    string    `json:"error,omitempty"`
+	URL         string    `json:"url"`
+	At          string    `json:"at"`
+	State       string    `json:"state"`
+	Title       string    `json:"title,omitempty"`
+	EvidenceURL string    `json:"evidence_url,omitempty"`
+	Offers      []Offer   `json:"offers,omitempty"`
+	Variants    []Variant `json:"variants,omitempty"`
+	Error       string    `json:"error,omitempty"`
 }
 
 // InspectPage uses the same producer of prices as the native app and records
@@ -34,6 +36,11 @@ func InspectPage(s Source, page string, body io.Reader, at time.Time) (PageResul
 	if err != nil {
 		return p, err
 	}
+	return inspectDocument(s, page, doc, at)
+}
+func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time) (PageResult, error) {
+	p := PageResult{URL: page, At: at.UTC().Format(time.RFC3339), State: "unclassified"}
+	var err error
 	p.Title = strings.Join(strings.Fields(doc.Find("h1").First().Text()), " ")
 	p.Offers, err = extractDoc(s, page, doc, at)
 	priced := map[string]bool{}
@@ -81,4 +88,56 @@ func InspectPage(s Source, page string, body io.Reader, at time.Time) (PageResul
 		p.Variants = []Variant{{URL: page, Name: p.Title, Status: "no_public_price"}}
 	}
 	return p, err
+}
+
+// VendorListing reads the product-owned license rows on an official SoftMagazin
+// vendor page. Never treat a family's headline "from" price as a license price.
+func VendorListing(s Source, page string, html io.Reader, at time.Time) ([]PageResult, string, error) {
+	doc, err := goquery.NewDocumentFromReader(html)
+	if err != nil {
+		return nil, "", err
+	}
+	base, err := url.Parse(page)
+	if err != nil {
+		return nil, "", err
+	}
+	// Vendor-listing SKU spans carry the code as visible text; on the family
+	// template the same element also has a title attribute.
+	listingSource := s
+	listingSource.Rule.SKU.Attr = ""
+	var out []PageResult
+	doc.Find(".wrapper-items-with-offers .wrapper-info-product").Each(func(_ int, block *goquery.Selection) {
+		link := block.Find(".information-product a.title").First()
+		href, ok := link.Attr("href")
+		if !ok {
+			return
+		}
+		family, e := base.Parse(href)
+		if e != nil || !Allowed(s, family.String()) {
+			return
+		}
+		sub := goquery.NewDocumentFromNode(block.Nodes[0])
+		record, e := inspectDocument(listingSource, family.String(), sub, at)
+		if e != nil || len(record.Variants) == 0 {
+			return
+		}
+		record.Title = strings.Join(strings.Fields(link.Text()), " ")
+		record.EvidenceURL = page
+		out = append(out, record)
+	})
+	raw, _ := doc.Find(".navigation a#navigation_1_next_page").First().Attr("href")
+	var next string
+	if raw != "" {
+		u, e := base.Parse(raw)
+		if e != nil {
+			return nil, "", e
+		}
+		if Allowed(s, u.String()) && u.Path == base.Path && len(u.Query()) == 1 {
+			n, e := strconv.Atoi(u.Query().Get("PAGEN_1"))
+			if e == nil && n > 1 && n < 1000 {
+				next = u.String()
+			}
+		}
+	}
+	return out, next, nil
 }
