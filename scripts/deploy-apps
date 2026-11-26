@@ -15,14 +15,13 @@ for arg in "$@"; do
 done
 if [[ -z "$slug" ]]; then
   [[ "$create" == 0 && "$auto" == 0 ]] || usage
-  export AIFENCE_DEPLOY_COMMIT="$(git -C "$ROOT" rev-parse --verify 'HEAD^{commit}')"
+  export AIFENCE_DEPLOY_COMMIT="$(git -C "$ROOT" rev-parse --verify --end-of-options "${AIFENCE_DEPLOY_COMMIT:-HEAD}^{commit}")"
   for app in market-watch metrika-analyst product-manager; do
     if [[ "$dry" == 1 ]]; then "$0" --dry-run "$app"; else "$0" --auto "$app"; fi
   done
   exit 0
 fi
-commit="${AIFENCE_DEPLOY_COMMIT:-$(git -C "$ROOT" rev-parse --verify 'HEAD^{commit}')}"
-[[ "$commit" == "$(git -C "$ROOT" rev-parse --verify 'HEAD^{commit}')" ]] || { echo 'HEAD changed during deployment; restart from a consistent snapshot.' >&2; exit 1; }
+commit="$(git -C "$ROOT" rev-parse --verify --end-of-options "${AIFENCE_DEPLOY_COMMIT:-HEAD}^{commit}")"
 url="${AIRLOCK_URL:-http://localhost:42080}"
 origin_key="$(python3 - "$url" <<'ORIGIN'
 import hashlib, sys, urllib.parse
