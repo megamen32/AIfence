@@ -9,6 +9,8 @@ import (
 	"github.com/airlockrun/goai/tool"
 	"html/template"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -23,6 +25,7 @@ func newAgent() *agentsdk.Agent {
 	counter := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "counter_id", Description: "ID счётчика магазина", Pattern: "^[0-9]+$"})
 	ec := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "ecommerce_confirmed", Description: "Подтверждена непрерывная инструментация e-commerce за анализируемые периоды", Default: "false", Pattern: "^(true|false)$"})
 	file := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "evidence_path", Description: "Необязательный путь к явно выбранному evidence-v1 JSON в файлах Airlock; пусто — live MCP"})
+	demoRoot := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "demo_data_root", Description: "Разрешённый каталог demo_sources/data с original/sandbox evidence-v1 JSON"})
 	s := Service{call: func(ctx context.Context, n string, args any) (json.RawMessage, error) {
 		r, e := m.CallTool(ctx, n, args)
 		if e != nil || r == nil || r.IsError {
@@ -43,7 +46,25 @@ func newAgent() *agentsdk.Agent {
 		e, _ := ec.Get(ctx)
 		p, _ := file.Get(ctx)
 		return Settings{n, e == "true", p}
-	}, read: a.ReadFile}
+	}, read: func(ctx context.Context, p string) ([]byte, error) {
+		root, _ := demoRoot.Get(ctx)
+		if root == "" {
+			root = filepath.Join("demo_sources", "data")
+		}
+		base, _ := filepath.Abs(root)
+		candidate := p
+		if !filepath.IsAbs(candidate) {
+			candidate = filepath.Join(base, candidate)
+		}
+		candidate, _ = filepath.Abs(candidate)
+		allowed := candidate == base || strings.HasPrefix(candidate, base+string(os.PathSeparator))
+		if allowed && strings.HasSuffix(strings.ToLower(candidate), ".json") {
+			if b, err := os.ReadFile(candidate); err == nil {
+				return b, nil
+			}
+		}
+		return a.ReadFile(ctx, p)
+	}}
 	instructions, _ := assets.ReadFile("INSTRUCTIONS.md")
 	a.AddInstruction(&agentsdk.Instruction{Text: string(instructions)})
 	a.RegisterTool(tool.Typed[Query, Batch]("query_metrics").Description("Read exact period metrics from configured MCP or explicitly selected historical evidence file.").Execute(s.Query).Build(), agentsdk.AccessUser)

@@ -26,6 +26,25 @@ go tool air build
 
 Шлюз публикует только get_metadata, describe_counter, run_report, run_comparison, run_timeseries, run_drilldown. Выгрузка сырых событий, административные операции и записи не входят в MVP. Внутри приложения: query_metrics, compare_periods, check_metrika; возврат evidence-v1. Равные непересекающиеся окна; абсолютные, относительные и п.п. изменения; null при отсутствии данных/нулевой базе; семплирование помечается. UI / выводит таблицу со ссылками на факты. Интерпретация — чат.
 
+## AIfence demo sources
+
+The standalone demo_sources/ layer keeps the Softline workbook immutable and
+separates synthetic problem scenarios. It does not change Airlock core.
+
+Build it on the Mac M1:
+
+    python3 demo_sources/aifence_demo_sources.py build       --workbook /Users/user/AIfence/data/softline_dataset_v17.xlsx
+
+Set the app's demo_data_root to
+/Users/user/AIfence/apps/metrika-analyst/demo_sources/data and choose either
+original-evidence.json or sandbox-evidence.json as source_path. The existing MCP
+tools then use the same evidence-v1 contract. See demo_sources/README.md for
+source provenance and scenario IDs.
+
+One physical Yandex counter (114698578) is enough for recent synthetic
+replay/smoke events. Historical workbook aggregates stay in the imported
+source because Measurement Protocol cannot rewrite past history.
+
 ## Инструкции агента
 
 INSTRUCTIONS.md встроен в Go-бинарник и зарегистрирован штатным `agent.AddInstruction`. Это не отдельный runtime-механизм SKILL.md: приложение получает методологию в системном промпте. Поддержка developer skills относится к среде разработки.
