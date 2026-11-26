@@ -1,0 +1,89 @@
+[
+  {
+    "id": "softmagazin",
+    "host": "www.softmagazin.ru",
+    "sitemap": "https://www.softmagazin.ru/sitemap.xml",
+    "sitemap_include": "/sitemap-3\\.xml$",
+    "page_include": "^https://www\\.softmagazin\\.ru/[^/]+/[^/]+/$",
+    "seeds": [
+      "https://www.softmagazin.ru/laboratoriya-kasperskogo/kaspersky-small-office-security/"
+    ],
+    "rule": {
+      "row": ".offers",
+      "sku": {
+        "selector": ".articul",
+        "attr": "title"
+      },
+      "name": {
+        "selector": "a.name"
+      },
+      "price": {
+        "selector": ".price",
+        "attr": "content"
+      },
+      "link": {
+        "selector": "a.name",
+        "attr": "href"
+      },
+      "price_basis": "displayed_offer_price"
+    }
+  },
+  {
+    "id": "softmap",
+    "host": "softmap.ru",
+    "sitemap": "https://softmap.ru/sitemap.xml",
+    "page_include": "^https://softmap\\.ru/[^/]+/[^/]+/$",
+    "seeds": [
+      "https://softmap.ru/kaspersky/kaspersky-small-office-security/"
+    ],
+    "rule": {
+      "row": ".table-tr",
+      "sku": {
+        "selector": ".art"
+      },
+      "name": {
+        "selector": ".div-h3 a"
+      },
+      "price": {
+        "selector": ".new-price > span:first-child"
+      },
+      "old_price": {
+        "selector": "[data-old]",
+        "attr": "data-old"
+      },
+      "link": {
+        "selector": ".div-h3 a",
+        "attr": "href"
+      },
+      "quantity": {
+        "selector": ".item-count input",
+        "attr": "value"
+      },
+      "price_basis": "displayed_total"
+    }
+  },
+  {
+    "id": "softline",
+    "host": "store.softline.ru",
+    "sitemap": "https://store.softline.ru/https-sitemap.xml",
+    "sitemap_include": "/sitemap/softwareProducts-[0-9]+\\.xml$",
+    "page_include": "^https://store\\.softline\\.ru/[^/]+/[^/]+-[0-9]+/$",
+    "seeds": [
+      "https://store.softline.ru/kaspersky/kl4141rcefs-248970/"
+    ],
+    "rule": {
+      "row": "body",
+      "sku": {
+        "selector": ".js-sku-btn",
+        "attr": "data-code"
+      },
+      "name": {
+        "selector": "h1"
+      },
+      "price": {
+        "selector": ".js-price-with-discount"
+      },
+      "price_basis": "displayed_offer_price"
+    }
+  }
+]
