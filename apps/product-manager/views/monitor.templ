@@ -14,7 +14,7 @@ templ MonitorPanel(m *Monitor) {
 			</dd></div>
 			<div><dt>Тревоги</dt><dd class="dashboard-alarm">{ countLabel(len(m.Pulse)) }</dd></div>
 			<div><dt>На проверке</dt><dd>{ countLabel(m.ReviewCount) }</dd></div>
-			<div><dt>Обновление</dt><dd>
+			<div><dt>Последний снимок</dt><dd>
 				if m.Updated != "" {
 					{ m.Updated }
 				} else {
@@ -31,6 +31,7 @@ templ MonitorPanel(m *Monitor) {
 				}
 			</details>
 		}
+			@signalLegend(m)
 		<section class="dashboard-exceptions" aria-label="Открытые исключения">
 			<div class="dashboard-heading"><h2>Открытые исключения</h2><small>Потенциал в ₽/нед</small></div>
 			if len(m.Pulse) == 0 {
@@ -46,13 +47,13 @@ templ MonitorPanel(m *Monitor) {
 							}
 						</span>
 						<span class="dashboard-alert-cost">
-							if p.Weekly != "" {
-								<strong title={ p.WeeklyBasis }>{ p.Weekly }</strong>
-							} else {
-								<small>Без оценки</small>
-							}
 							if p.Change != "" {
-								<small title={ p.Comparison }>{ p.Change }</small>
+								<strong class="dashboard-alert-change" title={ p.Comparison }>{ p.Change }</strong>
+							}
+							if p.Weekly != "" {
+								<small title={ p.WeeklyBasis }>{ p.Weekly }</small>
+							} else {
+								<small class="dashboard-alert-cost-reason">Источник даёт индекс, ₽ не рассчитаны</small>
 							}
 							if p.Comparison != "" {
 								<small class="dashboard-alert-period">{ p.Comparison }</small>
@@ -63,6 +64,45 @@ templ MonitorPanel(m *Monitor) {
 				</article>
 			}
 		</section>
+	</section>
+}
+
+templ signalLegend(m *Monitor) {
+	<section class="dashboard-signal-legend" aria-label="Легенда тревоги и контроля">
+		<div class="dashboard-heading">
+			<h2>Тревога и контроль</h2>
+			<small>Канонический процент и его окно</small>
+		</div>
+		<div class="signal-legend-list">
+			for _, p := range m.Pulse {
+				<div class="signal-legend-item signal-legend-alert">
+					<span class="signal-legend-mark" aria-hidden="true"></span>
+					<div>
+						<strong>Тревога</strong>
+						<b>{ p.Product }</b>
+						if p.Comparison != "" {
+							<small>{ p.Comparison }</small>
+						}
+					</div>
+					if p.Change != "" {
+						<strong class="signal-legend-value">{ p.Change }</strong>
+					}
+				</div>
+			}
+			for _, product := range m.Products {
+				if product.Cells[0].Tone == "quiet" {
+					<div class="signal-legend-item signal-legend-control">
+						<span class="signal-legend-mark" aria-hidden="true"></span>
+						<div>
+							<strong>Контроль</strong>
+							<b>{ product.Name }</b>
+							<small>Нейтральный ориентир для того же окна</small>
+						</div>
+						<strong class="signal-legend-value">ориентир</strong>
+					</div>
+				}
+			}
+		</div>
 	</section>
 }
 

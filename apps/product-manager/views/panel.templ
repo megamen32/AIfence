@@ -1,6 +1,7 @@
 package views
 
 import (
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -26,6 +27,20 @@ func catalogToneLabel(tone string) string {
 	default:
 		return ""
 	}
+}
+
+func catalogResearchURL(base string) string {
+	if base == "" {
+		return ""
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return ""
+	}
+	query := u.Query()
+	query.Set("q", "Другие")
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 templ Panel(v HomeView) {
@@ -179,6 +194,7 @@ templ catalogPanel(m *Monitor) {
 					}
 				}
 			</svg>
+			@catalogLegend(m)
 		}
 		if len(m.Matches) != 0 {
 			<details open class="dashboard-history">
@@ -188,6 +204,32 @@ templ catalogPanel(m *Monitor) {
 				}
 			</details>
 		}
+	</section>
+}
+
+templ catalogLegend(m *Monitor) {
+	<section class="catalog-legend" aria-label="Подписи групп каталога">
+		<div class="catalog-legend-heading">
+			<strong>Подписи групп</strong>
+			<small>Значения взяты из текущего снимка</small>
+		</div>
+		<ul>
+			for _, tile := range m.Catalog.Tiles {
+				<li class={ "catalog-legend-item", tile.Tone }>
+					<span class="catalog-legend-mark" aria-hidden="true"></span>
+					<span class="catalog-legend-name">{ tile.Name }</span>
+					<strong>{ tile.Value }</strong>
+					if meaning := catalogToneLabel(tile.Tone); meaning != "" {
+						<small>{ meaning }</small>
+					}
+					if tile.Name == "Другие" && m.MarketURL != "" {
+						<a href={ catalogResearchURL(m.MarketURL) } target="_blank" rel="noopener">Исследовать состав</a>
+					} else if tile.URL != "" {
+						<a href={ tile.URL }>Открыть</a>
+					}
+				</li>
+			}
+		</ul>
 	</section>
 }
 
