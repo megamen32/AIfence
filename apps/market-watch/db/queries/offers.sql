@@ -19,13 +19,16 @@ WHERE excluded.observed_at > latest_offers.observed_at;
 
 -- name: SearchOffers :many
 SELECT l.offer FROM latest_offers l
-WHERE (sqlc.arg(query)::text='' OR upper(l.sku)=upper(sqlc.arg(query)) OR l.url=sqlc.arg(query) OR strpos(lower(l.offer->>'name'),lower(sqlc.arg(query)))>0)
+WHERE (upper(l.sku)=upper(sqlc.arg(query)) OR
+       (NOT sqlc.arg(exact_sku)::boolean AND (sqlc.arg(query)::text='' OR l.url=sqlc.arg(query) OR strpos(lower(l.offer->>'name'),lower(sqlc.arg(query)))>0)))
+  AND (sqlc.arg(license_pattern)::text='' OR
+       ((lower(l.offer->>'name') ~ sqlc.arg(license_pattern)) <> sqlc.arg(unclassified)::boolean))
   AND (sqlc.arg(source)::text='' OR l.source=sqlc.arg(source))
   AND (sqlc.arg(basis)::text='' OR l.basis=sqlc.arg(basis))
   AND (sqlc.arg(min_qty)::bigint<0 OR l.quantity=sqlc.arg(min_qty))
   AND (sqlc.arg(max_qty)::bigint<0 OR l.max_quantity=sqlc.arg(max_qty))
 ORDER BY (upper(l.sku)=upper(sqlc.arg(query))) DESC,l.sku,l.source,l.url,l.basis,l.quantity,l.max_quantity
-LIMIT sqlc.arg(maxrows)::int;
+LIMIT sqlc.arg(maxrows)::int OFFSET sqlc.arg(skip_rows)::bigint;
 
 -- name: CatalogCounts :many
 SELECT l.source,count(*) AS offers,max(l.observed_at)::timestamptz AS observed_at

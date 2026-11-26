@@ -4,12 +4,16 @@ A native Go application for Airlock. The signed-in app members can query public 
 
 | Chat tool | Result |
 | --- | --- |
-| `list_offers` | Up to 100 matching indexed offers |
+| `list_offers` | A page of up to 100 matching indexed offers, optionally filtered by store, license words in the title, exact SKU or price basis |
+| `compare_offers` | Groups of observations for an exact SKU with original terms and a link to the same comparison in the web UI |
+| `crawl_coverage` | Latest dated reconciliation of unique license sitemap URLs with price, missing price, unavailability, exclusion, unresolved and pending counts where the denominator is known |
 | `catalog_status` | Indexed offer counts and latest observation timestamps per store |
 | `refresh_market` | Refresh featured pages and previously observed URLs for a known exact SKU |
 | `market_changes` | Price changes on comparable observations of the same store, URL, SKU, price basis and quantity tier |
 
-The authenticated route `GET /catalog.csv` streams the full current index as an Excel-compatible CSV. Catalog counts measure observed offers. Crawl progress and outstanding pages are tracked by the collector.
+The authenticated route `GET /catalog.csv` streams the full current index as an Excel-compatible CSV. Catalog counts measure observed offers. The Sources tab displays these counts alongside a separately dated reconciliation of license URLs. An unknown license inventory remains explicitly unknown.
+
+The main route provides Catalog, Comparison, Price history and Sources. The catalog applies filters to the entire index before returning a page of 25 rows. Each row links to its original store page and related observations. Share a comparison with `/?tab=compare&q=KL4141RCEFS`. History uses inclusive UTC dates and consecutive price observations for the same offer identity.
 
 ## Local Airlock on Mac M1
 
@@ -34,4 +38,4 @@ go build -o ../../.runtime/bin/importcatalog ./cmd/importcatalog
 ../../.runtime/bin/importcatalog -root ../../.runtime/market-catalog -air ../../.runtime/bin/market-air -app-dir . -checkpoint ../../.runtime/market-catalog/local-market-watch.uploaded
 ```
 
-Schedule the importer after refreshed observations are published. Exact SKU matching requires a SKU from the store. Offers without a SKU can be found by title and URL. Minimum and maximum quantities are preserved for comparisons.
+On the local Mac deployment, the existing three-hour import also publishes the sitemap reconciliation when all three collector checkpoints exist. Run `go run ./cmd/coverageimport` to inspect the current snapshot without uploading. Run `go run ./cmd/coverageimport -upload -air ../../.runtime/bin/market-air` to upload only that report. Schedule the importer after refreshed observations are published. Exact SKU matching requires a SKU from the store. Offers without a SKU can be found by title and URL. Minimum and maximum quantities are preserved for comparisons.

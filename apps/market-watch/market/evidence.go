@@ -4,6 +4,7 @@ import (
 	catalog "agent/collector"
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -93,15 +94,17 @@ func obs(o catalog.Offer) Observation {
 	return Observation{ID: identity, Kind: "offer", ProductKey: o.SKU, MetricKey: "displayed_price", Value: price(o.PriceMinor), Unit: "RUB", Currency: "RUB", TaxBasis: "unknown", Period: Period{From: d, To: d}, SourceRef: SourceRef{SourceID: o.Source, Locator: o.URL, URL: o.URL, Revision: o.CapturedAt}, Status: "observed", Caveats: []string{"Public displayed price; final terms and tax basis unknown. Check quantity and price basis."}, Details: Details{Seller: o.Source, Name: o.Name, Quantity: o.Quantity, MaxQuantity: o.MaxQuantity, PriceBasis: o.PriceBasis, CapturedAt: o.CapturedAt, OldPrice: old, MatchStatus: match}}
 }
 func FromSnapshot(s Snapshot, q string, limit int, now time.Time) Evidence {
+	in := ListInput{ProductKey: q, Limit: pageSize(limit)}
+	ev, _ := snapshotPage(s, in, nil, now)
+	return ev
+}
+func snapshotPage(s Snapshot, in ListInput, license *regexp.Regexp, now time.Time) (Evidence, bool) {
 	ev := empty(now)
 	if s.CapturedAt != "" {
 		ev.AsOf = s.CapturedAt
 	}
 	ev.Warnings = append(ev.Warnings, "Configured page sample only, not full catalog coverage.")
 	ev.Warnings = append(ev.Warnings, s.Warnings...)
-	if limit <= 0 || limit > 100 {
-		limit = 100
-	}
 	if len(s.Runs) < 3 {
 		ev.Status = "partial"
 	}
@@ -111,7 +114,7 @@ func FromSnapshot(s Snapshot, q string, limit int, now time.Time) Evidence {
 			ev.Warnings = append(ev.Warnings, r.Source+": "+r.Status+"; retained prices may be stale")
 		}
 		for _, o := range r.Offers {
-			if !matches(o, q) {
+			if !browseMatch(o, in, license) {
 				continue
 			}
 			x := obs(o)
@@ -121,37 +124,30 @@ func FromSnapshot(s Snapshot, q string, limit int, now time.Time) Evidence {
 			ev.Observations = append(ev.Observations, x)
 		}
 	}
-	sort.Slice(ev.Observations, func(i, j int) bool {
-		a, b := ev.Observations[i], ev.Observations[j]
-		if a.ProductKey != b.ProductKey {
-			return a.ProductKey < b.ProductKey
-		}
-		return a.Details.Seller < b.Details.Seller
+	sort.SliceStable(ev.Observations, func(i, j int) bool {
+		return offerOrder(ev.Observations[i], ev.Observations[j], in.ProductKey) < 0
 	})
+	ev.Observations = ev.Observations[min(in.Offset, len(ev.Observations)):]
 	if len(ev.Observations) == 0 {
 		ev.Status = "unavailable"
 		ev.Warnings = append(ev.Warnings, "No observed matching price in configured pages.")
 	}
-	if len(ev.Observations) > limit {
-		ev.Observations = ev.Observations[:limit]
+	more := len(ev.Observations) > in.Limit
+	if more {
+		ev.Observations = ev.Observations[:in.Limit]
 		ev.Status = "partial"
-		ev.Warnings = append(ev.Warnings, "Response truncated.")
+		ev.Warnings = append(ev.Warnings, moreOffersWarning)
 	}
-	return ev
-}
-func sameBasis(a, b catalog.Offer) bool {
-	if a.PriceBasis != b.PriceBasis || a.Currency != b.Currency {
-		return false
-	}
-	if a.Quantity == nil || b.Quantity == nil {
-		return a.Quantity == nil && b.Quantity == nil
-	}
-	return *a.Quantity == *b.Quantity
+	return ev, more
 }
 func Compare(snaps []Snapshot, in ChangesInput, now time.Time) Evidence {
 	ev := empty(now)
 	ev.Warnings = append(ev.Warnings, "Configured sample only. Absence is not a price change or delisting.")
-	first, last := map[string]catalog.Offer{}, map[string]catalog.Offer{}
+	type offerKey struct {
+		source, sku, url, basis, currency string
+		minQty, maxQty                    int64
+	}
+	first, last := map[offerKey]catalog.Offer{}, map[offerKey]catalog.Offer{}
 	for _, s := range snaps {
 		for _, r := range s.Runs {
 			if r.Status != "ok" {
@@ -161,7 +157,7 @@ func Compare(snaps []Snapshot, in ChangesInput, now time.Time) Evidence {
 				if !matches(o, in.ProductKey) {
 					continue
 				}
-				k := o.Source + "/" + o.SKU
+				k := offerKey{o.Source, o.SKU, o.URL, o.PriceBasis, o.Currency, quantityValue(o.Quantity), quantityValue(o.MaxQuantity)}
 				if _, ok := first[k]; !ok {
 					first[k] = o
 				}
@@ -172,11 +168,6 @@ func Compare(snaps []Snapshot, in ChangesInput, now time.Time) Evidence {
 	for k, a := range first {
 		b := last[k]
 		if a.CapturedAt == b.CapturedAt {
-			continue
-		}
-		if !sameBasis(a, b) {
-			ev.Warnings = append(ev.Warnings, k+": quantity or price basis changed; not compared")
-			ev.Status = "partial"
 			continue
 		}
 		x := changeObs(a, b)

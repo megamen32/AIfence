@@ -43,3 +43,112 @@
     animation: none;
   }
 }
+
+/* Market Watch uses the active Airlock theme for both standalone and embedded views. */
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+.workspace {
+  --border: color-mix(in srgb, var(--color-base-content) 15%, var(--color-base-100));
+  --muted: color-mix(in srgb, var(--color-base-content) 72%, var(--color-base-100));
+  max-width: 94rem;
+  margin-inline: auto;
+  padding: 0 clamp(.85rem, 3vw, 3rem) 2.5rem;
+  min-width: 0;
+}
+.brand, .section-nav, .section-heading, .panel-head, .shop, .message,
+.pager, .coverage-note, .source-card h2, .row-links, .source-summary {
+  display: flex;
+  align-items: center;
+}
+.brand { gap: .65rem; padding: 1rem 0 .6rem; font-size: 1.08rem; font-weight: 720; letter-spacing: -.035em; }
+.brand-mark { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .55rem; background: var(--color-primary); color: var(--color-primary-content); }
+.section-nav { gap: .4rem 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-top: .4rem; }
+.section-nav a { display: inline-flex; align-items: center; min-height: 2.85rem; gap: .48rem; padding: .45rem .6rem; border-bottom: 3px solid transparent; color: var(--muted); font-size: .88rem; font-weight: 600; }
+.section-nav a:hover, .shop:hover { color: var(--color-primary); }
+.section-nav a[aria-current=page] { border-bottom-color: var(--color-primary); color: var(--color-base-content); }
+.section-heading { justify-content: space-between; gap: .8rem; flex-wrap: wrap; margin: clamp(1.2rem, 3vw, 2.3rem) 0 1.15rem; }
+h1 { font-size: clamp(1.65rem, 4vw, 2.75rem); font-weight: 680; letter-spacing: -.045em; line-height: 1.13; }
+h2 { font-size: 1.09rem; letter-spacing: -.018em; font-weight: 660; }
+button, a, input, select { touch-action: manipulation; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.search-panel, .result-panel, .source-card, .source-summary, .empty-state {
+  background: var(--color-base-100); border: 1px solid var(--border); border-radius: .8rem;
+}
+.search-panel { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .8rem; padding: 1rem; }
+.field { flex: 1 1 9.5rem; min-width: 0; display: grid; gap: .35rem; font-size: .82rem; font-weight: 610; }
+.field-wide { flex: 2 1 16rem; }
+.field > input, .field > select { width: 100%; min-width: 0; height: 2.75rem; max-width: 100%; font-size: .9rem; font-weight: 400; }
+.search-panel .btn, .export-link, .pager a { min-height: 2.75rem; }
+.search-panel.htmx-request .air-action-icon-idle { visibility: hidden; }
+.search-panel.htmx-request .air-action-icon-busy { visibility: visible; animation-play-state: running; }
+#results { display: grid; gap: .9rem; margin-top: 1rem; min-width: 0; }
+.result-panel { min-width: 0; overflow: hidden; }
+.panel-head, .pager { padding: .85rem 1.12rem; gap: .6rem 1.4rem; flex-wrap: wrap; }
+.panel-head { justify-content: space-between; }
+.panel-head p { margin-top: .2rem; font-size: .85rem; }
+.range, .muted, .observed, .coverage-detail, .message { color: var(--muted); }
+.range, .source-summary strong, .source-card strong, .offers, .coverage-data dd { font-variant-numeric: tabular-nums; }
+.range { font-size: .85rem; }
+.table-wrap { min-width: 0; }
+.offers { border-collapse: collapse; width: 100%; font-size: .88rem; text-align: left; overflow-wrap: anywhere; }
+.offers thead { background: var(--color-base-200); }
+.offers th { color: var(--muted); font-size: .75rem; font-weight: 640; }
+.offers th, .offers td { padding: .75rem .7rem; vertical-align: top; border-top: 1px solid var(--border); }
+.offers th:first-child, .offers td:first-child { padding-left: 1.12rem; }
+.offers th:last-child, .offers td:last-child { padding-right: 1.12rem; }
+.offers td:first-child { width: 38%; }
+.offers td { line-height: 1.45; }
+.offers small, .offer-title code { display: block; margin-top: .2rem; color: var(--muted); font-size: .76rem; }
+.offer-title strong { font-weight: 640; }
+.offer-title code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.row-links { gap: .6rem; flex-wrap: wrap; }
+.row-links a { font-size: .78rem; text-decoration: underline; text-underline-offset: .18em; padding-block: .2rem; }
+.shop { gap: .28rem; align-items: baseline; text-decoration: underline; text-underline-offset: .18em; }
+.shop svg, .coverage-note > svg, .message > svg { flex-shrink: 0; }
+.amount { white-space: nowrap; font-weight: 650; }
+.observed { font-size: .8rem; }
+.lowest { display: grid; font-size: .8rem; }
+.lowest strong { font-size: 1.25rem; color: var(--color-base-content); }
+.pager { justify-content: flex-end; border-top: 1px solid var(--border); }
+.message { gap: .5rem; align-items: flex-start; padding: .65rem .9rem; border-inline-start: 3px solid var(--color-warning); }
+.empty-state { display: grid; justify-items: center; gap: .45rem; text-align: center; padding: 2.75rem 1.2rem; }
+.empty-state svg { color: var(--muted); margin-bottom: .3rem; }
+.empty-state p { max-width: 32rem; color: var(--muted); font-size: .9rem; }
+.source-summary { flex-wrap: wrap; gap: 1rem 3rem; padding: 1rem 1.15rem; }
+.source-summary p { display: grid; }
+.source-summary span, .source-card > p span, .source-time > span:first-child { font-size: .79rem; color: var(--muted); }
+.source-summary strong { font-size: 2rem; line-height: 1.3; }
+.source-summary .freshness { margin-top: .25rem; font-size: 1.05rem; }
+.source-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem),1fr)); gap: .85rem; }
+.source-card { min-width: 0; padding: 1rem; overflow-wrap: anywhere; }
+.source-card h2 { gap: .5rem; }
+.source-card > p { display: grid; margin: .75rem 0; }
+.source-card > p strong { font-size: 1.75rem; line-height: 1.2; }
+.source-time { display: grid; font-size: .85rem; }
+.coverage-data { margin-top: .85rem; padding-top: .8rem; border-top: 1px solid var(--border); font-size: .82rem; }
+.coverage-data h3, .coverage-note h2 { font-size: .92rem; font-weight: 650; }
+.coverage-data dl { display: grid; gap: .3rem; margin: .6rem 0; }
+.coverage-data dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: .8rem; }
+.coverage-data dt, .coverage-note p { color: var(--muted); }
+.coverage-data dd { font-weight: 625; text-align: right; }
+.coverage-detail { margin-top: .6rem; }
+.coverage-note { gap: .65rem; align-items: flex-start; max-width: 60rem; margin: .15rem 0; }
+.coverage-note p { margin-top: .2rem; font-size: .88rem; }
+@media (max-width: 55rem) {
+  .offers, .offers tbody { display: block; }
+  .offers thead { position: absolute; height: 1px; width: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .offers tr { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .65rem 1rem; padding: .95rem 1.12rem; border-top: 1px solid var(--border); }
+  .offers td, .offers td:first-child, .offers td:last-child { display: block; width: auto; min-width: 0; padding: 0; border: 0; }
+  .offers td:first-child { grid-column: 1 / -1; }
+  .offers td[data-field]::before { content: attr(data-field); display: block; margin-bottom: .12rem; font-size: .72rem; font-weight: 600; color: var(--muted); }
+  .shop { display: inline-flex; }
+}
+@media (max-width: 34rem) {
+  .section-nav { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 .35rem; }
+  .section-nav a { padding-inline: .45rem; }
+  .field, .field-wide { flex-basis: 100%; }
+  .search-panel button { width: 100%; }
+}

@@ -1,0 +1,343 @@
+package views
+
+import (
+	"github.com/airlockrun/agentsdk"
+	"github.com/airlockrun/agentsdk/lucide"
+)
+
+func sectionTitle(tab string) string {
+	switch tab {
+	case "compare":
+		return "Сравнение лицензий"
+	case "changes":
+		return "История цен"
+	case "sources":
+		return "Источники данных"
+	default:
+		return "Каталог предложений"
+	}
+}
+
+templ Screen(p Page) {
+	<!DOCTYPE html>
+	<html lang="ru">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ sectionTitle(p.Tab) } · Market Watch</title>
+			<link rel="stylesheet" href={ "./static/" + AppCSSName }/>
+			<script src={ agentsdk.Assets.HTMX } defer></script>
+			@agentsdk.WebUI(agentsdk.WebUIOptions{})
+		</head>
+		<body>
+			<div class="workspace">
+				<header data-airlock-standalone-only>
+					<div class="brand">
+						<span class="brand-mark">
+							@lucide.Icon("chart-no-axes-combined", "size-5")
+						</span>
+						<span>Market Watch</span>
+					</div>
+				</header>
+				<nav class="section-nav" aria-label="Разделы Market Watch">
+					@navItem(p.CatalogURL, "Каталог", "layers", p.Tab == "catalog")
+					@navItem(p.CompareURL, "Сравнение", "scale", p.Tab == "compare")
+					@navItem(p.ChangesURL, "История цен", "clock-3", p.Tab == "changes")
+					@navItem(p.SourcesURL, "Источники", "database", p.Tab == "sources")
+				</nav>
+				<main>
+					<div class="section-heading">
+						<h1>{ sectionTitle(p.Tab) }</h1>
+						<a href="./catalog.csv" class="btn btn-outline export-link" download>
+							@lucide.Icon("arrow-down-to-line", "size-4")
+							<span>Весь каталог в CSV</span>
+						</a>
+					</div>
+					if p.Tab != "sources" {
+						@filters(p)
+					}
+					@Results(p)
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+templ navItem(url, label, icon string, active bool) {
+	<a
+		href={ url }
+		if active {
+			aria-current="page"
+		}
+	>
+		@lucide.Icon(icon, "size-4")
+		<span>{ label }</span>
+	</a>
+}
+
+templ filters(p Page) {
+	<form method="get" action="./" hx-get="./" hx-trigger="submit" hx-target="#results" hx-swap="outerHTML" hx-push-url="true" class="search-panel">
+		<input type="hidden" name="tab" value={ p.Tab }/>
+		<label class="field field-wide">
+			if p.Tab == "compare" {
+				<span>Точный артикул</span>
+				<input class="input" type="search" name="q" value={ p.Query } placeholder="Например, KL4141RCEFS" autocomplete="off"/>
+			} else {
+				<span>Поиск</span>
+				<input class="input" type="search" name="q" value={ p.Query } placeholder="Название или артикул" autocomplete="off"/>
+			}
+		</label>
+		if p.Tab == "catalog" {
+			<label class="field">
+				<span>Магазин</span>
+				<select class="select" name="source">
+					<option value="">Все магазины</option>
+					for _, source := range p.Sources {
+						<option value={ source.ID } selected?={ p.Source == source.ID }>{ source.Name }</option>
+					}
+				</select>
+			</label>
+			<label class="field">
+				<span>Тип лицензии</span>
+				<select class="select" name="license">
+					<option value="">Все типы</option>
+					for _, opt := range p.Licenses {
+						<option value={ opt.Value } selected?={ p.License == opt.Value }>{ opt.Label }</option>
+					}
+				</select>
+			</label>
+		}
+		if p.Tab == "changes" {
+			<label class="field"><span>С даты (UTC)</span><input class="input" type="date" name="from" value={ p.From } required/></label>
+			<label class="field"><span>По дату (UTC)</span><input class="input" type="date" name="to" value={ p.To } required/></label>
+		}
+		<button type="submit" class="btn btn-primary">
+			<span class="air-action-icon">
+				@lucide.Icon("search", "air-action-icon-idle")
+				<span class="loading loading-spinner air-action-icon-busy" aria-hidden="true"></span>
+			</span>
+			if p.Tab == "compare" {
+				Сравнить
+			} else {
+				Найти
+			}
+		</button>
+	</form>
+}
+
+templ Results(p Page) {
+	<section id="results" aria-label="Результаты" aria-live="polite">
+		if p.Error != "" {
+			<p class="message" role="alert">
+				@lucide.Icon("circle-alert", "size-5")
+				<span>{ p.Error }</span>
+			</p>
+		} else {
+			if p.Notice != "" {
+				<p class="message">
+					@lucide.Icon("circle-alert", "size-4")
+					<span>{ p.Notice }</span>
+				</p>
+			}
+			switch p.Tab {
+				case "sources":
+					@sources(p)
+				case "compare":
+					if len(p.Groups) > 0 {
+						for _, g := range p.Groups {
+							<article class="result-panel">
+								<div class="panel-head">
+									<div>
+										<h2>{ g.Label }</h2>
+										if g.Note != "" {
+											<p class="muted">{ g.Note }</p>
+										}
+									</div>
+									if g.Lowest != "" {
+										<p class="lowest"><span>Минимальная цена</span><strong>{ g.Lowest }</strong></p>
+									}
+								</div>
+								@offers(g.Rows, "compare")
+							</article>
+						}
+					} else if p.Query == "" {
+						@emptyState("scale", "Введите точный артикул", "Скопируйте артикул производителя или откройте сравнение из каталога.")
+					} else {
+						@emptyState("scale", "Предложений для сравнения нет", "Проверьте артикул. В каталог попадают предложения с зафиксированной публичной ценой.")
+					}
+				default:
+					if len(p.Rows) > 0 {
+						<article class="result-panel">
+							<div class="panel-head">
+								if p.Tab == "changes" {
+									<h2>Зафиксированные изменения</h2>
+								} else {
+									<h2>Предложения магазинов</h2>
+								}
+								if p.Range != "" {
+									<span class="range">{ p.Range }</span>
+								}
+							</div>
+							@offers(p.Rows, p.Tab)
+							@pagination(p)
+						</article>
+					} else if p.Tab == "changes" {
+						@emptyState("clock-3", "Изменений цен за период не найдено", "Для фиксации изменения нужны наблюдения одного предложения с разными ценами.")
+					} else {
+						@emptyState("package-search", "Предложения не найдены", "Попробуйте другой запрос или измените фильтры. Здесь отображаются импортированные публичные цены.")
+						@pagination(p)
+					}
+			}
+		}
+	</section>
+}
+
+templ emptyState(icon, title, text string) {
+	<div class="empty-state">
+		@lucide.Icon(icon, "size-8")
+		<h2>{ title }</h2>
+		<p>{ text }</p>
+	</div>
+}
+
+templ offers(rows []Row, tab string) {
+	<div class="table-wrap">
+		<table class="offers">
+			<caption class="sr-only">{ sectionTitle(tab) }</caption>
+			<thead>
+				<tr>
+					<th scope="col">Предложение</th>
+					<th scope="col">Магазин</th>
+					if tab == "changes" {
+						<th scope="col">Предыдущая цена</th>
+					}
+					<th scope="col">Цена</th>
+					<th scope="col">Условия</th>
+					<th scope="col">Наблюдение</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, r := range rows {
+					<tr>
+						<td class="offer-title">
+							<strong>{ r.Name }</strong>
+							if r.SKU != "" {
+								<code>{ r.SKU }</code>
+							}
+							if (r.CompareURL != "" && tab != "compare") || (r.HistoryURL != "" && tab != "changes") {
+								<div class="row-links">
+									if r.CompareURL != "" && tab != "compare" {
+										<a href={ r.CompareURL }>Сравнить</a>
+									}
+									if r.HistoryURL != "" && tab != "changes" {
+										<a href={ r.HistoryURL }>История цен</a>
+									}
+								</div>
+							}
+						</td>
+						<td data-field="Магазин">
+							if r.URL != "" {
+								<a class="shop" href={ r.URL } target="_blank" rel="noopener noreferrer" aria-label={ "Открыть предложение: " + r.Store + ", " + r.Name }>
+									<span>{ r.Store }</span>
+									@lucide.Icon("external-link", "size-3")
+								</a>
+							} else {
+								<span>{ r.Store }</span>
+							}
+						</td>
+						if tab == "changes" {
+							<td data-field="Предыдущая цена"><span class="amount">{ r.Previous }</span><small>{ r.PreviousAt }</small></td>
+						}
+						<td data-field="Цена">
+							<strong class="amount">{ r.Price }</strong>
+							if r.Delta != "" {
+								<small class="delta">{ r.Delta }</small>
+							}
+						</td>
+						<td data-field="Условия"><span>{ r.Basis }</span><small>{ r.Quantity }</small></td>
+						<td data-field="Наблюдение"><span class="observed">{ r.At }</span></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+templ sources(p Page) {
+	<div class="source-summary">
+		<p><span>Предложений с ценой</span><strong>{ p.Total }</strong></p>
+		if p.Freshness != "" {
+			<p><span>Последнее наблюдение</span><strong class="freshness">{ p.Freshness }</strong></p>
+		}
+	</div>
+	<div class="source-grid">
+		for _, src := range p.Sources {
+			<article class="source-card">
+				<h2>
+					@lucide.Icon("store", "size-4")
+					<span>{ src.Name }</span>
+				</h2>
+				<p><strong>{ src.Count }</strong><span>Предложений с ценой</span></p>
+				<div class="source-time">
+					<span>Последнее наблюдение</span>
+					if src.Last != "" {
+						<time>{ src.Last }</time>
+					} else {
+						<span>Нет данных</span>
+					}
+				</div>
+				<section class="coverage-data">
+					<h3>Сверка URL лицензий</h3>
+					if src.CoverageAt != "" {
+						<p class="muted">{ src.CoverageAt }</p>
+					}
+					<dl>
+						if src.Expected != "" {
+							@statLine("URL в карте сайта", src.Expected)
+						} else {
+							@statLine("URL в карте сайта", "Знаменатель не подтверждён")
+						}
+						@statLine("URL с ценой", src.Priced)
+						@statLine("Без публичной цены", src.NoPrice)
+						@statLine("Недоступны", src.Unavailable)
+						@statLine("Не удалось разобрать", src.Unresolved)
+						@statLine("Исключены по правилам", src.Excluded)
+						@statLine("Ожидают проверки", src.Pending)
+					</dl>
+					if src.CoverageNote != "" {
+						<p class="coverage-detail">{ src.CoverageNote }</p>
+					}
+				</section>
+			</article>
+		}
+	</div>
+	<aside class="coverage-note">
+		@lucide.Icon("list-filter", "size-5")
+		<div><h2>Полнота каталогов</h2><p>Счётчики показывают предложения с ценой в базе Market Watch. Для оценки охвата нужна сверка URL лицензий с картой сайта каждого магазина. Страница может быть недоступна, не иметь публичной цены или ожидать разбора.</p></div>
+	</aside>
+}
+
+templ statLine(label, value string) {
+	if value != "" {
+		<div><dt>{ label }</dt><dd>{ value }</dd></div>
+	}
+}
+
+templ pagination(p Page) {
+	if p.PrevURL != "" || p.NextURL != "" {
+		<nav class="pager" aria-label="Страницы результатов">
+			if p.PrevURL != "" {
+				<a class="btn btn-outline" href={ p.PrevURL } hx-get={ p.PrevURL } hx-trigger="click" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">
+					@lucide.Icon("arrow-left", "size-4")
+					<span>Назад</span>
+				</a>
+			}
+			if p.NextURL != "" {
+				<a class="btn btn-outline" href={ p.NextURL } hx-get={ p.NextURL } hx-trigger="click" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">
+					<span>Далее</span>
+					@lucide.Icon("arrow-right", "size-4")
+				</a>
+			}
+		</nav>
+	}
+}

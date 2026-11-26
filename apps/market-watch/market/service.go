@@ -42,6 +42,9 @@ type Snapshot struct {
 	Warnings   []string      `json:"warnings"`
 }
 type ListInput struct {
+	Offset      int    `json:"offset,omitempty"`
+	ExactSKU    bool   `json:"exact_sku,omitempty"`
+	LicenseType string `json:"license_type,omitempty"`
 	Source      string `json:"source,omitempty"`
 	PriceBasis  string `json:"price_basis,omitempty"`
 	Quantity    *int64 `json:"quantity,omitempty"`
@@ -79,14 +82,8 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	return out, e
 }
 func (s *Service) List(ctx context.Context, in ListInput) (Evidence, error) {
-	if s.queries != nil {
-		return s.catalogList(ctx, in)
-	}
-	snap, e := s.Snapshot(ctx)
-	if e != nil {
-		return Evidence{}, e
-	}
-	return FromSnapshot(snap, in.ProductKey, in.Limit, s.now()), nil
+	ev, _, err := s.Browse(ctx, in)
+	return ev, err
 }
 func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error) {
 	s.mu.Lock()
@@ -213,7 +210,7 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 		return Evidence{}, e
 	}
 	if s.queries != nil {
-		ev, err := s.catalogList(ctx, ListInput{ProductKey: in.ProductKey})
+		ev, err := s.List(ctx, ListInput{ProductKey: in.ProductKey})
 		if in.ProductKey != "" {
 			fresh := map[string]bool{}
 			for _, r := range snap.Runs {

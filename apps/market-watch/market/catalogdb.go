@@ -69,7 +69,15 @@ func (s *Service) search(ctx context.Context, in ListInput, limit int) ([]catalo
 	if in.MaxQuantity != nil {
 		maxQty = *in.MaxQuantity
 	}
-	raw, err := s.queries.SearchOffers(ctx, db.SearchOffersParams{Query: strings.TrimSpace(in.ProductKey), Source: in.Source, Basis: in.PriceBasis, MinQty: minQty, MaxQty: maxQty, Maxrows: int32(limit)})
+	pattern, unknown, err := licenseFilter(in.LicenseType)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := s.queries.SearchOffers(ctx, db.SearchOffersParams{
+		Query: strings.TrimSpace(in.ProductKey), ExactSku: in.ExactSKU,
+		Source: in.Source, Basis: in.PriceBasis, MinQty: minQty, MaxQty: maxQty,
+		LicensePattern: pattern, Unclassified: unknown, Maxrows: int32(limit), SkipRows: int64(in.Offset),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -82,18 +90,16 @@ func (s *Service) search(ctx context.Context, in ListInput, limit int) ([]catalo
 	return out, nil
 }
 
-func (s *Service) catalogList(ctx context.Context, in ListInput) (Evidence, error) {
+func (s *Service) catalogPage(ctx context.Context, in ListInput) (Evidence, bool, error) {
 	limit := in.Limit
-	if limit <= 0 || limit > 100 {
-		limit = 100
-	}
 	rows, err := s.search(ctx, in, limit+1)
 	if err != nil {
-		return Evidence{}, err
+		return Evidence{}, false, err
 	}
 	ev := empty(s.now())
-	if len(rows) > limit {
-		ev.Warnings = append(ev.Warnings, "Showing the first matching offers. Narrow your query or download the full CSV.")
+	more := len(rows) > limit
+	if more {
+		ev.Warnings = append(ev.Warnings, moreOffersWarning)
 		rows = rows[:limit]
 	}
 	for _, row := range rows {
@@ -115,7 +121,7 @@ func (s *Service) catalogList(ctx context.Context, in ListInput) (Evidence, erro
 		ev.Status = "unavailable"
 		ev.Warnings = append(ev.Warnings, "No observed price matches this query.")
 	}
-	return ev, nil
+	return ev, more, nil
 }
 
 func (s *Service) storeOffers(ctx context.Context, rows []catalog.Offer) error {

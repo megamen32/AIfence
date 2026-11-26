@@ -3,6 +3,7 @@
 package main
 
 import (
+	"agent/internal/crawlreport"
 	"bufio"
 	"bytes"
 	"context"
@@ -69,6 +70,14 @@ func run() error {
 			return fmt.Errorf("%s: %w", p, err)
 		}
 		fmt.Printf("%s: %d new observations uploaded\n", filepath.Base(filepath.Dir(p)), count)
+	}
+	target := crawlreport.Target{CLI: u.air, AppDir: u.dir, Origin: u.origin, Agent: u.agent}
+	report, err := crawlreport.WithPrices(context.Background(), *root, target)
+	if err != nil {
+		return fmt.Errorf("price checkpoints saved; coverage import: %w", err)
+	}
+	if report.AsOf != "" {
+		fmt.Printf("Sitemap coverage imported at %s\n", report.AsOf)
 	}
 	return nil
 }
