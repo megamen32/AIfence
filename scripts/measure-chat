@@ -14,17 +14,33 @@ if args.context:
     docker += ["--context", args.context]
 query = """
 BEGIN READ ONLY;
-SELECT json_build_object(
-  'run_id', r.id, 'status', r.status, 'model_calls', r.llm_calls,
-  'usage_reported', r.llm_tokens_in > 0 OR r.llm_tokens_out > 0,
-  'input_tokens', CASE WHEN r.llm_tokens_in > 0 OR r.llm_tokens_out > 0 THEN r.llm_tokens_in END,
-  'output_tokens', CASE WHEN r.llm_tokens_in > 0 OR r.llm_tokens_out > 0 THEN r.llm_tokens_out END,
-  'run_seconds', ROUND(EXTRACT(EPOCH FROM (r.finished_at - r.started_at))::numeric, 2),
-  'meter', 'Airlock runs'
+WITH measured AS (
+  SELECT id, status, llm_calls AS calls, llm_tokens_in AS input, llm_tokens_out AS output,
+         started_at, finished_at, 'Airlock runs' AS meter
+  FROM runs WHERE trigger_ref = :'chat' AND trigger_type = 'prompt'
+  UNION ALL
+  SELECT r.id, r.status, COALESCE(u.calls, r.llm_calls),
+         CASE WHEN u.calls IS NULL THEN r.llm_tokens_in WHEN u.reported THEN u.input END,
+         CASE WHEN u.calls IS NULL THEN r.llm_tokens_out WHEN u.reported THEN u.output END,
+         r.started_at, r.finished_at, 'Airlock system chat'
+  FROM system_runs r
+  LEFT JOIN (
+    SELECT system_run_id, count(*) AS calls, sum(tokens_in) AS input, sum(tokens_out) AS output,
+           bool_and(tokens_in > 0 OR tokens_out > 0) AS reported
+    FROM llm_usage WHERE system_run_id IN (SELECT id FROM system_runs WHERE conversation_id = :'chat')
+    GROUP BY system_run_id
+  ) u ON u.system_run_id = r.id
+  WHERE r.conversation_id = :'chat'
 )
-FROM runs r
-WHERE r.trigger_ref = :'chat' AND r.trigger_type = 'prompt'
-ORDER BY r.started_at;
+SELECT json_build_object(
+  'run_id', id, 'status', status, 'model_calls', calls,
+  'usage_reported', COALESCE(input > 0 OR output > 0, false),
+  'input_tokens', CASE WHEN input > 0 OR output > 0 THEN input END,
+  'output_tokens', CASE WHEN input > 0 OR output > 0 THEN output END,
+  'run_seconds', ROUND(EXTRACT(EPOCH FROM (finished_at - started_at))::numeric, 2),
+  'meter', meter
+)
+FROM measured ORDER BY started_at;
 COMMIT;
 """
 command = docker + ["exec", "-i", args.postgres, "sh", "-c",
