@@ -38,6 +38,10 @@ func pulseControlName(p PulseItem) string {
 	return "Контроль из снимка"
 }
 
+func catalogTileIsFocus(tile CatalogTile) bool {
+	return strings.Contains(tile.Tone, "signal-associated") || strings.Contains(tile.Tone, "control-context")
+}
+
 templ Panel(v HomeView) {
 	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
 		<header class="dashboard-top">
@@ -220,23 +224,40 @@ templ catalogOtherDetails(m *Monitor) {
 }
 
 templ catalogLegend(m *Monitor) {
-	<details class="catalog-legend" aria-label="Подписи обычных групп каталога">
-		<summary>Подписи обычных групп</summary>
+	<section class="catalog-legend" aria-label="Подписи сигнала и контроля">
+		<div class="catalog-legend-heading">
+			<strong>Сигнал и контроль</strong>
+			<small>Выделены на карте</small>
+		</div>
 		<ul>
 			for _, tile := range m.Catalog.Tiles {
-				if tile.Name != "Другие" {
-					<li class={ "catalog-legend-item", tile.Tone }>
-						<span class="catalog-legend-mark" aria-hidden="true"></span>
-						<span class="catalog-legend-name">{ tile.Name }</span>
-						<strong>{ tile.Value }</strong>
-						if meaning := catalogToneLabel(tile.Tone); meaning != "" {
-							<small>{ meaning }</small>
-						}
-					</li>
+				if tile.Name != "Другие" && catalogTileIsFocus(tile) {
+					@catalogLegendItem(tile)
 				}
 			}
 		</ul>
-	</details>
+		<details class="catalog-legend-other">
+			<summary>Обычные вендоры</summary>
+			<ul>
+				for _, tile := range m.Catalog.Tiles {
+					if tile.Name != "Другие" && !catalogTileIsFocus(tile) {
+						@catalogLegendItem(tile)
+					}
+				}
+			</ul>
+		</details>
+	</section>
+}
+
+templ catalogLegendItem(tile CatalogTile) {
+	<li class={ "catalog-legend-item", tile.Tone }>
+		<span class="catalog-legend-mark" aria-hidden="true"></span>
+		<span class="catalog-legend-name">{ tile.Name }</span>
+		<strong>{ tile.Value }</strong>
+		if meaning := catalogToneLabel(tile.Tone); meaning != "" {
+			<small>{ meaning }</small>
+		}
+	</li>
 }
 
 templ catalogRectangle(tile CatalogTile) {
