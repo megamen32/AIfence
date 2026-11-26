@@ -54,3 +54,19 @@ func TestMinimumDisplayedPriceKeepsItsBasis(t *testing.T) {
 		t.Fatal(p, e)
 	}
 }
+func TestMerchantHardwareClassification(t *testing.T) {
+	s := sources(t)[0]
+	h := `<div class="hard-tovar-style"><h1>Laptop</h1></div><div class="offers"><span class="articul" title="HW">HW</span><a class="name" href="/v/laptop/">Laptop</a><span class="price" content="150000 руб"></span></div>`
+	p, e := InspectPage(s, s.Seeds[0], strings.NewReader(h), time.Now())
+	if e != nil || p.Category != "hardware" || p.State != "out_of_scope" || len(p.Offers) > 0 || len(p.ExcludedURLs) != 1 {
+		t.Fatal(p, e)
+	}
+}
+func TestStandaloneSoftwareRequest(t *testing.T) {
+	s := sources(t)[0]
+	h := `<div class="offer-tovar-style"><h1>License</h1><div class="articul-manufacturer"><h2><span>NAC DALLAS LOCK</span></h2></div><div class="price-block"><span class="price-field no-price">Запрос цены</span></div><div class="info-category"><div class="base-links-tovar-item"><a href="/soft/security/">Security</a></div></div></div>`
+	p, e := InspectPage(s, s.Seeds[0], strings.NewReader(h), time.Now())
+	if e != nil || p.Category != "software" || p.State != "no_public_price" || len(p.Variants) != 1 || p.Variants[0].SKU != "NAC DALLAS LOCK" {
+		t.Fatal(p, e)
+	}
+}

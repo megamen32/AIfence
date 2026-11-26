@@ -18,14 +18,18 @@ type Variant struct {
 }
 
 type PageResult struct {
-	URL         string    `json:"url"`
-	At          string    `json:"at"`
-	State       string    `json:"state"`
-	Title       string    `json:"title,omitempty"`
-	EvidenceURL string    `json:"evidence_url,omitempty"`
-	Offers      []Offer   `json:"offers,omitempty"`
-	Variants    []Variant `json:"variants,omitempty"`
-	Error       string    `json:"error,omitempty"`
+	URL          string    `json:"url"`
+	At           string    `json:"at"`
+	State        string    `json:"state"`
+	Title        string    `json:"title,omitempty"`
+	EvidenceURL  string    `json:"evidence_url,omitempty"`
+	Category     string    `json:"category,omitempty"`
+	CategoryURL  string    `json:"category_url,omitempty"`
+	ExcludedURLs []string  `json:"excluded_urls,omitempty"`
+	Offers       []Offer   `json:"offers,omitempty"`
+	Variants     []Variant `json:"variants,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	Attempts     int       `json:"attempts,omitempty"`
 }
 
 // InspectPage uses the same producer of prices as the native app and records
@@ -42,6 +46,27 @@ func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time)
 	p := PageResult{URL: page, At: at.UTC().Format(time.RFC3339), State: "unclassified"}
 	var err error
 	p.Title = strings.Join(strings.Fields(doc.Find("h1").First().Text()), " ")
+	if s.ID == "softmap" && doc.Find(".products-list .brand-name h1").Length() > 0 && doc.Find(".products-detail").Length() == 0 {
+		p.State = "not_product"
+		return p, nil
+	}
+	if s.ID == "softmagazin" {
+		switch {
+		case doc.Find(".hard-tovar-style, .info-category .base-links-tovar-item a[href^='/hard/']").Length() > 0:
+			p.Category = "hardware"
+		case doc.Find(".soft-tovar-style, .info-category .base-links-tovar-item a[href^='/soft/']").Length() > 0:
+			p.Category = "software"
+		default:
+			p.Category = "unknown"
+		}
+		if doc.Find(".offer-tovar-style").Length() > 0 {
+			s.Rule.Row = ".offer-tovar-style"
+			s.Rule.SKU = Field{Selector: ".articul-manufacturer h2 span"}
+			s.Rule.Name = Field{Selector: "h1"}
+			s.Rule.Price = Field{Selector: ".price-block .price-field:not(.no-price)"}
+			s.Rule.Link = Field{}
+		}
+	}
 	p.Offers, err = extractDoc(s, page, doc, at)
 	priced := map[string]bool{}
 	for _, o := range p.Offers {
@@ -87,6 +112,13 @@ func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time)
 		p.State = "no_public_price"
 		p.Variants = []Variant{{URL: page, Name: p.Title, Status: "no_public_price"}}
 	}
+	if s.ID == "softmagazin" && p.Category == "hardware" {
+		p.State = "out_of_scope"
+		p.Offers = nil
+		for _, v := range p.Variants {
+			p.ExcludedURLs = append(p.ExcludedURLs, v.URL)
+		}
+	}
 	return p, err
 }
 
@@ -118,11 +150,14 @@ func VendorListing(s Source, page string, html io.Reader, at time.Time) ([]PageR
 		}
 		sub := goquery.NewDocumentFromNode(block.Nodes[0])
 		record, e := inspectDocument(listingSource, family.String(), sub, at)
-		if e != nil || len(record.Variants) == 0 {
+		if e != nil {
 			return
 		}
 		record.Title = strings.Join(strings.Fields(link.Text()), " ")
 		record.EvidenceURL = page
+		if strings.HasPrefix(base.Path, "/soft/") {
+			record.Category = "software"
+		}
 		out = append(out, record)
 	})
 	raw, _ := doc.Find(".navigation a#navigation_1_next_page").First().Attr("href")

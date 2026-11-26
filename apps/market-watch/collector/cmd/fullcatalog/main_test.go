@@ -88,3 +88,32 @@ func TestCoverageDistinguishesDeniedAndRemovedVariants(t *testing.T) {
 		t.Fatal(st, err)
 	}
 }
+func TestRetryTransientFailureInCurrentGeneration(t *testing.T) {
+	dir := t.TempDir()
+	sd := filepath.Join(dir, "demo")
+	if err := os.Mkdir(sd, 0700); err != nil {
+		t.Fatal(err)
+	}
+	s, err := catalog.Sources()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := s[2]
+	src.ID = "demo"
+	url := src.Seeds[0]
+	inv := inventory{Source: "demo", DiscoveredAt: "2025-01-01T00:00:00Z", URLs: []string{url}}
+	if err := saveJSON(filepath.Join(sd, "inventory.json"), inv); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	err = worker(context.Background(), src, dir, func(context.Context, catalog.Source, string) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return nil, context.DeadlineExceeded
+		}
+		return []byte(`<body><h1>Product</h1><button class="js-sku-btn" data-code="SKU"></button><span class="js-price-with-discount">180</span></body>`), nil
+	}, 0)
+	if err != nil || calls != 2 {
+		t.Fatal(calls, err)
+	}
+}

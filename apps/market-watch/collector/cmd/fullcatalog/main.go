@@ -192,8 +192,18 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 	}
 	seen := map[key]bool{}
 	observed := map[string]bool{}
+	excluded := map[string]string{}
 	var offers []catalog.Offer
 	appendOffers := func(p catalog.PageResult) {
+		if inv.Source == "softmagazin" && p.Category != "software" {
+			if p.Category == "hardware" {
+				excluded[p.URL] = p.At
+				for _, url := range p.ExcludedURLs {
+					excluded[url] = p.At
+				}
+			}
+			return
+		}
 		for _, o := range p.Offers {
 			k := key{url: o.URL, sku: o.SKU, price: o.PriceMinor}
 			if o.Quantity != nil {
@@ -214,10 +224,12 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 			continue
 		}
 		if p.At >= inv.DiscoveredAt {
-			if p.EvidenceURL == "" {
+			if inv.Source == "softmagazin" && p.Category == "" && (p.State == "priced" || p.State == "no_public_price" || p.State == "unclassified") {
+				// Legacy rows will be reclassified from the publisher's HTML.
+			} else if p.EvidenceURL == "" {
 				status.ProcessedPages++
 				status.States[p.State]++
-			} else {
+			} else if p.Category == "software" {
 				status.ListedPages++
 			}
 			if p.State != "error" {
@@ -290,6 +302,27 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 	}); err != nil {
 		return status, err
 	}
+	if inv.Source == "softmagazin" {
+		if err := writeAtomic(filepath.Join(dir, "excluded.jsonl"), func(w io.Writer) error {
+			urls := make([]string, 0, len(excluded))
+			for u := range excluded {
+				urls = append(urls, u)
+			}
+			sort.Strings(urls)
+			enc := json.NewEncoder(w)
+			for _, u := range urls {
+				if e := enc.Encode(struct {
+					URL string `json:"url"`
+					At  string `json:"at"`
+				}{u, excluded[u]}); e != nil {
+					return e
+				}
+			}
+			return nil
+		}); err != nil {
+			return status, err
+		}
+	}
 	return status, saveJSON(filepath.Join(dir, "progress.json"), status)
 }
 
@@ -304,6 +337,9 @@ func readPage(ctx context.Context, s catalog.Source, u string, fetch catalog.Fet
 	b, err := fetch(ctx, s, u)
 	if err == nil {
 		p, err = catalog.InspectPage(s, u, bytes.NewReader(b), at)
+		if s.ID == "softmagazin" && p.Category == "unknown" && (p.State == "priced" || p.State == "no_public_price") {
+			p.State = "unclassified"
+		}
 	}
 	if ctx.Err() != nil {
 		return p, ctx.Err()
@@ -435,18 +471,24 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	enc := json.NewEncoder(f)
 	since := 0
 	lastExport := time.Now()
-	var pending []string
-	for _, u := range inv.URLs {
-		p, ok := pages[u]
-		if !ok || p.At < inv.DiscoveredAt || p.EvidenceURL != "" || p.State == "error" || p.State == "unclassified" {
-			pending = append(pending, u)
-		}
-	}
 	consume := func(p catalog.PageResult) error {
 		u := p.URL
+		if p.State == "error" {
+			p.Attempts = 1
+			if old, ok := pages[u]; ok && old.State == "error" && old.At >= inv.DiscoveredAt {
+				p.Attempts = max(1, old.Attempts) + 1
+			}
+		}
 		if p.State == "error" && len(p.Offers) == 0 {
 			p.Offers = pages[u].Offers
 			p.Variants = pages[u].Variants
+			p.Category = pages[u].Category
+		}
+		if p.Category == "hardware" {
+			for _, o := range pages[u].Offers {
+				p.ExcludedURLs = append(p.ExcludedURLs, o.URL)
+			}
+			p.ExcludedURLs = unique(append(p.ExcludedURLs, pages[u].ExcludedURLs...))
 		}
 		if e = enc.Encode(p); e != nil {
 			return e
@@ -468,8 +510,26 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 		return nil
 	}
 	if s.ID == "softmagazin" {
-		if e = collectListings(ctx, s, dir, inv, pages, fetch, consume); e != nil {
+		for _, u := range s.Seeds {
+			if p, ok := pages[u]; ok && p.Category == "software" && p.At >= inv.DiscoveredAt {
+				continue
+			}
+			if err := process(ctx, s, []string{u}, fetch, consume); err != nil {
+				return err
+			}
+		}
+		if _, err := snapshot(dir, inv, pages); err != nil {
+			return err
+		}
+		if e = collectListings(ctx, s, dir, &inv, pages, fetch, consume); e != nil {
 			return e
+		}
+	}
+	var pending []string
+	for _, u := range inv.URLs {
+		p, ok := pages[u]
+		if !ok || p.At < inv.DiscoveredAt || s.ID == "softmagazin" && p.Category == "" && (p.State == "priced" || p.State == "no_public_price" || p.State == "unclassified") || p.EvidenceURL != "" || p.State == "error" && p.Attempts < 3 || p.State == "unclassified" {
+			pending = append(pending, u)
 		}
 	}
 	if e = process(ctx, s, pending, fetch, consume); e != nil {
@@ -490,11 +550,29 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 		var gaps []string
 		for _, u := range inv.VariantURLs {
 			p, ok := pages[u]
-			if !observed[u] && (!ok || p.At < inv.DiscoveredAt || p.State == "error" || p.State == "unclassified") {
+			if !observed[u] && (!ok || p.At < inv.DiscoveredAt || p.State == "error" && p.Attempts < 3 || p.State == "unclassified") {
 				gaps = append(gaps, u)
 			}
 		}
 		if e = process(ctx, s, gaps, fetch, consume); e != nil {
+			return e
+		}
+	}
+	// Transient transport failures get a second opportunity in the same
+	// generation. Control responses (403, 429, 503 and Retry-After) stop a run.
+	candidates := append(append([]string{}, inv.URLs...), inv.VariantURLs...)
+	for attempt := 1; attempt < 3; attempt++ {
+		var failed []string
+		for _, u := range candidates {
+			p := pages[u]
+			if p.State == "error" && p.At >= inv.DiscoveredAt && p.Attempts < 3 {
+				failed = append(failed, u)
+			}
+		}
+		if len(failed) == 0 {
+			break
+		}
+		if e = process(ctx, s, failed, fetch, consume); e != nil {
 			return e
 		}
 	}
