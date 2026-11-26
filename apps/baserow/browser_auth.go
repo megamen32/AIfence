@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const browserAuthPath = "/__baserow/airlock-client-v2.js"
+const browserAuthPath = "/__baserow/airlock-client-v3.js"
 
 //go:embed airlock-client.js
 var browserAuthJS []byte

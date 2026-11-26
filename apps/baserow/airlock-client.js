@@ -45,7 +45,23 @@
   let scheduled = false;
 
   const style = document.createElement("style");
-  style.textContent = "html[data-airlock-narrow-grid] .guided-tour-step__container {display:none !important}";
+  style.textContent = `
+    html[data-airlock-narrow-grid] .guided-tour-step__container { display: none !important; }
+    html[data-airlock-narrow-grid] .grid-view__description { padding-inline-start: 6px; gap: 0; }
+    html[data-airlock-narrow-grid] .grid-view__description-icon-container { display: none; }
+    html[data-airlock-narrow-grid] .grid-view__description-name { flex: 1; min-width: 0; }
+    html[data-airlock-narrow-grid] .grid-view__description-options { flex: 0 0 auto; }
+    html[data-airlock-narrow-grid] .grid-view__description-icon-trigger {
+      padding: 0 3px 0 1px;
+      font-size: 10px;
+    }
+    html[data-airlock-narrow-grid] .grid-view__description-options > :not(.grid-view__description-icon-trigger) {
+      display: none;
+    }
+    html[data-airlock-narrow-grid] .grid-view__description:is(:hover, :focus-within) .grid-view__description-icon-trigger {
+      color: #202128;
+    }
+  `;
   document.head.append(style);
 
   function update() {
