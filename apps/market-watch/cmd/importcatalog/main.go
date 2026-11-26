@@ -142,17 +142,27 @@ func (u *uploader) importFile(path string) (int, error) {
 		size = 0
 		return nil
 	}
+	line, excluded := 0, 0
 	for scan.Scan() {
+		line++
 		row := bytes.TrimSpace(scan.Bytes())
 		if len(row) == 0 {
 			continue
 		}
-		if !json.Valid(row) {
-			return count, errors.New("invalid collector JSONL record")
-		}
 		digest := sha256.Sum256(row)
 		key := hex.EncodeToString(digest[:])
 		if u.uploaded[key] {
+			continue
+		}
+		tier, reversed, err := reversedTier(row)
+		if err != nil {
+			return count, fmt.Errorf("line %d: %w", line, err)
+		}
+		if reversed {
+			if err := quarantineReversedTier(u.state.Name(), path, line, key, scan.Bytes(), tier); err != nil {
+				return count, fmt.Errorf("preserve contradictory quantity at line %d: %w", line, err)
+			}
+			excluded++
 			continue
 		}
 		if len(row) > 90000 {
@@ -172,6 +182,9 @@ func (u *uploader) importFile(path string) (int, error) {
 	}
 	if err := flush(); err != nil {
 		return count, err
+	}
+	if excluded > 0 {
+		fmt.Fprintf(os.Stderr, "%s: %d rows excluded for contradictory quantity; audit: %s.quarantine\n", path, excluded, u.state.Name())
 	}
 	return count, nil
 }
