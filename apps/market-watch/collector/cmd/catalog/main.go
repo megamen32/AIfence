@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	catalog "aifence.local/catalog"
+	catalog "agent/collector"
 )
 
 func atomic(path string, write func(*os.File) error) error {
