@@ -24,6 +24,15 @@ func LocalHTTP(next agentsdk.RouteHandlerFunc) agentsdk.RouteHandlerFunc {
 	}
 }
 
+// IsLocalHTTP reports whether the request entered through an authenticated PM route.
+func IsLocalHTTP(ctx context.Context) bool {
+	return ctx.Value(localHTTPKey{}) == true
+}
+
+func (s *Service) CanReadLocal(ctx context.Context) bool {
+	return s.localRead(ctx)
+}
+
 func (s *Service) localRead(ctx context.Context) bool {
 	return localAccess(ctx, func(ctx context.Context) bool {
 		if s.privateRoute == nil {
@@ -41,7 +50,7 @@ func localAccess(ctx context.Context, approvedModel func(context.Context) bool) 
 	}
 	switch caller.Origin().Interface {
 	case agentsdk.InterfaceHTTP:
-		return ctx.Value(localHTTPKey{}) == true && caller.Origin().Execution == agentsdk.ExecutionRequest
+		return IsLocalHTTP(ctx) && caller.Origin().Execution == agentsdk.ExecutionRequest
 	case agentsdk.InterfaceChat:
 		return approvedModel(ctx)
 	}

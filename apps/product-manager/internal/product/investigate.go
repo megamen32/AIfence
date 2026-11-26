@@ -77,6 +77,9 @@ func (s Service) Investigate(ctx context.Context, in InvestigateInput) (decision
 		}
 	}
 	if err == nil {
+		_, err = s.SetFocus(ctx, Focus{HypothesisID: rec.Hypothesis.ID})
+	}
+	if err == nil {
 		s.Mail.publish(ctx, rec, draft, rows)
 	}
 	return rec, err

@@ -21,30 +21,37 @@ func TestAgentComposition(t *testing.T) {
 	if len(manifest.Routes) == 0 {
 		t.Fatal("app must declare its HTTP routes")
 	}
-	for _, name := range []string{"save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis"} {
+	for _, name := range []string{"save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis", "get_product_focus", "set_product_focus"} {
 		if !slices.ContainsFunc(manifest.Tools, func(tool wire.ToolDef) bool {
 			return tool.Name == name && tool.Access == wire.AccessUser && len(tool.InputSchema) > 0
 		}) {
 			t.Errorf("missing typed user tool %s", name)
 		}
 	}
+	for _, tool := range manifest.Tools {
+		if tool.Name == "send_to_backlog" && strings.Contains(string(tool.InputSchema), "confirmed") {
+			t.Fatal("chat receipt schema must not expose an approval flag")
+		}
+	}
+
 	if len(manifest.SuggestedPrompts) != 3 {
 		t.Fatalf("expected three suggested prompts, got %d", len(manifest.SuggestedPrompts))
 	}
 	for i, want := range []struct{ title, prompt string }{
-		{"Запустить учебного сторожа", "Запусти учебного сторожа."},
-		{"Сохранить карточку; создать задачу", "Запусти учебного сторожа, сохрани карточку и создай учебную задачу."},
+		{"Что требует внимания?", "Что сейчас требует внимания в продажах?"},
+		{"Что стоит проверить?", "Посмотри, где могло возникнуть изменение, и предложи, что проверить первым."},
 	} {
 		got := manifest.SuggestedPrompts[i]
 		if got.Title != want.title || got.Prompt != want.prompt {
-			t.Fatalf("unexpected tutorial prompt: %+v", got)
+			t.Fatalf("unexpected user prompt: %+v", got)
 		}
 	}
 	if !slices.ContainsFunc(manifest.Instructions, func(instruction wire.InstructionDef) bool {
-		return strings.Contains(instruction.Text, `source_path:"fixtures/synthetic-watch.json", context_path:"fixtures/synthetic-watch-context.json"}, keywords:["order"]`) &&
-			strings.Contains(instruction.Text, "collect_watchdog_case(caseInput)")
+		return strings.Contains(instruction.Text, "scan_watchdog_series({})") &&
+			strings.Contains(instruction.Text, "отдельной репликой") &&
+			!strings.Contains(instruction.Text, "demo_target") && !strings.Contains(instruction.Text, "synthetic-watch")
 	}) {
-		t.Fatal("missing tutorial preset in runtime instructions")
+		t.Fatal("watchdog must discover the available series and require separate confirmation")
 	}
 
 	if !slices.ContainsFunc(manifest.Topics, func(topic wire.TopicDef) bool {

@@ -46,6 +46,7 @@ type Query struct {
 	SnapshotID string   `json:"snapshot_id"`
 	Source     string   `json:"source,omitempty"`
 	MetricKey  string   `json:"metric_key,omitempty"`
+	ProductKey string   `json:"product_key,omitempty"`
 	Status     string   `json:"status,omitempty"`
 	Value      string   `json:"value,omitempty"`
 	Offset     int      `json:"offset,omitempty"`
@@ -304,7 +305,7 @@ func selectRows(d Document, q Query) (Result, error) {
 			if err := json.Unmarshal(raw, &o); err != nil {
 				return Result{}, err
 			}
-			if (len(ids) > 0 && !ids[o.ID]) || (q.MetricKey != "" && q.MetricKey != o.MetricKey) ||
+			if (len(ids) > 0 && !ids[o.ID]) || (q.MetricKey != "" && q.MetricKey != o.MetricKey) || (q.ProductKey != "" && q.ProductKey != o.ProductKey) ||
 				(q.Status != "" && q.Status != o.Status) || (q.Value != "" && q.Value != string(o.Value)) {
 				continue
 			}

@@ -228,10 +228,24 @@ func (s Service) List(ctx context.Context, _ evidence.Empty) (decision.ListResul
 	return result, nil
 }
 func (s Service) Send(ctx context.Context, in decision.SendInput) (decision.Task, error) {
+	if ctx.Value(backlogApprovalKey{}) != true || in.ExpectedVersion == nil || *in.ExpectedVersion < 1 {
+		return decision.Task{}, errors.New("подтвердите задачу на актуальной карточке в панели Product Manager")
+	}
 	if _, err := s.Get(ctx, decision.GetInput{HypothesisID: in.HypothesisID}); err != nil {
 		return decision.Task{}, err
 	}
 	return s.Decisions.Send(ctx, in)
+}
+
+func (s Service) BacklogReceipt(ctx context.Context, in decision.GetInput) (decision.Task, error) {
+	r, err := s.Get(ctx, in)
+	if err != nil {
+		return decision.Task{}, err
+	}
+	if r.Task == nil {
+		return decision.Task{}, errors.New("задача ещё не создана, подтвердите её на карточке в панели Product Manager")
+	}
+	return *r.Task, nil
 }
 
 func (s Service) samePolicy(ctx context.Context, first, second string) error {

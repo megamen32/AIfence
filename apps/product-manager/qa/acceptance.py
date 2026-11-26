@@ -9,6 +9,7 @@ import re
 import subprocess
 import uuid
 from pathlib import Path
+from urllib.parse import urlencode
 
 HERE = Path(__file__).resolve().parent
 APP = HERE.parent
@@ -55,6 +56,16 @@ class SDK:
         check(not failure and "output" in result, f"{name}: SDK status={envelope.get('status')}, detail={str(error)[:350]}")
         output = result["output"]
         return json.loads(output) if isinstance(output, str) else output
+
+
+    def approve(self, identifier, version, confirmed=True, want=(303, 200)):
+        form = urlencode({"id": identifier, "version": version, "confirmed": "yes" if confirmed else "no"})
+        cmd = [str(self.air), "request", "POST", "/approve", "--data", form, "--header",
+               "Content-Type: application/x-www-form-urlencoded", *self.options]
+        reply = subprocess.run(cmd, capture_output=True, text=True, timeout=49)
+        payload = json.loads(reply.stdout)
+        status = payload.get("data", {}).get("statusCode")
+        check(status in want, f"unexpected approval route status: {status}")
 
 
 def register(sdk, document):
@@ -111,18 +122,14 @@ def run_lifecycle(sdk, initial, identifier):
     check(first["version"] == 1 and first["hypothesis"] == h and first["evidence_snapshot_id"] == initial, "proposal mismatch")
     check(sdk.call("get_hypothesis", key) == first, "proposal was not persisted exactly")
     sdk.call("save_hypothesis", save, reject="версия")
-    send = {**key, "idempotency_key": f"{identifier}/backlog", "confirmed": False}
-    sdk.call("send_to_backlog", send, reject="подтверждения")
+    sdk.call("send_to_backlog", key, reject="ещё не создана")
+    sdk.approve(identifier, first["version"], confirmed=False, want=(400,))
     check(sdk.call("get_hypothesis", key) == first, "declined send changed the record")
     awaiting(sdk.call("evaluate_hypothesis", key))
-    send["confirmed"] = True
-    task = sdk.call("send_to_backlog", send)
-    retry = sdk.call("send_to_backlog", send)
-    alias = {**send, "idempotency_key": f"{identifier}/backlog-alias"}
-    check(sdk.call("send_to_backlog", alias) == task, "second key did not replay the receipt")
-    other = f"{identifier}/other"
-    sdk.call("save_hypothesis", {**save, "hypothesis": hypothesis(other)})
-    sdk.call("send_to_backlog", {**alias, "hypothesis_id": other}, reject="другой карточкой")
+    sdk.approve(identifier, first["version"])
+    task = sdk.call("send_to_backlog", key)
+    sdk.approve(identifier, first["version"])
+    retry = sdk.call("send_to_backlog", key)
     check(retry == task and task["hypothesis_id"] == identifier and task["tag"] == TAG and
           task["tracker"] == "local_prototype_backlog" and task["evidence_snapshot_id"] == initial and
           task["success_criterion"] == h["success_criterion"] and bool(task["url"]) and bool(task["id"]),
@@ -160,32 +167,25 @@ def run_lifecycle(sdk, initial, identifier):
             "followup_snapshot": follow, "task_id": task["id"], "version": final["version"], "effect_pp": answer["value"]}
 
 
-def prepare_chat(sdk, initial):
-    # Keep private observations and prewritten solutions away from the model during QA.
-    snapshots = sdk.call("list_evidence", {})["snapshots"]
-    check({x["snapshot_id"] for x in snapshots} == {initial}, "Use a clean QA account or run before private import.")
-    check(sdk.call("list_hypotheses", {})["records"] == [], "Use a clean QA account before seeding solutions.")
-    identifier = "qa/synthetic/chat/" + uuid.uuid4().hex[:12]
-    return {"scenario": "synthetic", "snapshot_id": initial, "hypothesis_id": identifier,
-            "prompt": f"На учебных данных Atlas и Lumen исследуй падение самостоятельных заказов. В Product Manager "
-            f"изучи только снимок {initial}, используй исходные ключи продукта и метрики. Объясни размер изменения и альтернативу со ссылками на строки. "
-            f"Сохрани гипотезу с ID {identifier} и проверяемым критерием. Подтверждаю создание одной учебной задачи "
-            f"в локальном бэклоге по этой гипотезе. Перечитай её и сообщи номер задачи и статус из evaluate_hypothesis."}
+def prepare_chat(sdk, initial=None):
+    return {"hypothesis_id": None, "prompt": "Что сейчас требует внимания в продажах?"}
 
 
-def check_chat(sdk, identifier):
+def check_chat(sdk, identifier, confirmed=False):
     r = sdk.call("get_hypothesis", {"hypothesis_id": identifier})
-    h, t = r["hypothesis"], r["task"]
-    rows = sdk.call("read_evidence", {"snapshot_id": r["evidence_snapshot_id"], "limit": 100})["rows"]
+    h, task = r["hypothesis"], r.get("task")
     ids = set(h["signal_ids"] + h["support_ids"] + h["counter_ids"])
-    known = {row["id"] for row in rows if row["source_ref"]["source_id"] == "synthetic/shop-lab-v1"}
-    check(identifier.startswith("qa/synthetic/chat/") and h["id"] == identifier and h["product_key"] == SYNTHETIC
-          and h["status"] == "in_backlog" and h["economic_effect"]["status"] == "unknown" and
-          t["tag"] == TAG and t["tracker"] == "local_prototype_backlog" and t["hypothesis_id"] == identifier
-          and t["id"] == h["backlog_ref"]["id"] and t["evidence_snapshot_id"] == r["evidence_snapshot_id"] and
-          h["success_criterion"] == t["success_criterion"] and ids and ids <= known, "chat task failed saved-state verification")
-    awaiting(sdk.call("evaluate_hypothesis", {"hypothesis_id": identifier}))
-    return {"scenario": "synthetic_chat_readback", "hypothesis_id": identifier, "task_id": t["id"],
+    rows = sdk.call("read_evidence", {"snapshot_id": r["evidence_snapshot_id"], "ids": sorted(ids), "limit": 100})["rows"]
+    check(h["id"] == identifier and h["economic_effect"]["status"] == "unknown" and
+          ids and ids == {row["id"] for row in rows}, "chat card missing traceable evidence")
+    if confirmed:
+        check(h["status"] == "in_backlog" and task and task["tag"] == TAG and
+              task["tracker"] == "local_prototype_backlog" and task["hypothesis_id"] == identifier and
+              task["id"] == h["backlog_ref"]["id"] and task["evidence_snapshot_id"] == r["evidence_snapshot_id"] and
+              h["success_criterion"] == task["success_criterion"], "confirmed task failed saved-state verification")
+    else:
+        check(h["status"] == "proposed" and not task, "initial request created a task before confirmation")
+    return {"hypothesis_id": identifier, "task_id": task["id"] if task else None,
             "evidence_ids": sorted(ids), "status": h["status"]}
 
 
@@ -196,16 +196,16 @@ def main():
     action = p.add_mutually_exclusive_group()
     action.add_argument("--prepare-chat", action="store_true")
     action.add_argument("--check-chat", metavar="HYPOTHESIS_ID")
+    action.add_argument("--check-confirmed", metavar="HYPOTHESIS_ID")
     args = p.parse_args()
     sdk = SDK(args)
-    if args.check_chat:
-        result = check_chat(sdk, args.check_chat)
+    if args.prepare_chat:
+        result = prepare_chat(sdk)
+    elif args.check_chat or args.check_confirmed:
+        result = check_chat(sdk, args.check_chat or args.check_confirmed, bool(args.check_confirmed))
     else:
         first = register(sdk, fixture("synthetic-input.json"))
-        if args.prepare_chat:
-            result = prepare_chat(sdk, first)
-        else:
-            result = run_lifecycle(sdk, first, "qa/synthetic/atlas/" + uuid.uuid4().hex[:12])
+        result = run_lifecycle(sdk, first, "qa/synthetic/atlas/" + uuid.uuid4().hex[:12])
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
