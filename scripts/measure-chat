@@ -16,7 +16,9 @@ query = """
 BEGIN READ ONLY;
 SELECT json_build_object(
   'run_id', r.id, 'status', r.status, 'model_calls', r.llm_calls,
-  'input_tokens', r.llm_tokens_in, 'output_tokens', r.llm_tokens_out,
+  'usage_reported', r.llm_tokens_in > 0 OR r.llm_tokens_out > 0,
+  'input_tokens', CASE WHEN r.llm_tokens_in > 0 OR r.llm_tokens_out > 0 THEN r.llm_tokens_in END,
+  'output_tokens', CASE WHEN r.llm_tokens_in > 0 OR r.llm_tokens_out > 0 THEN r.llm_tokens_out END,
   'run_seconds', ROUND(EXTRACT(EPOCH FROM (r.finished_at - r.started_at))::numeric, 2),
   'meter', 'Airlock runs'
 )
