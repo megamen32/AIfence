@@ -74,7 +74,7 @@ class SDK:
 def register(sdk, document):
     evidence = {"document": json.dumps(document, ensure_ascii=False)}
     summary = sdk.call("import_evidence", evidence)
-    repeated = sdk.call("import_evidence", {"document": json.dumps(document, indent=2, ensure_ascii=False)})
+    repeated = sdk.call("import_evidence", {"document": document})
     rows = [row for batch in document["batches"] for row in batch["observations"]]
     for receipt in (summary, repeated):
         check(not receipt.get("followup_error") and all(x["status"] != "retry" for x in receipt.get("followup", [])),
