@@ -49,7 +49,7 @@ VIEWS = (
     ("Сопоставимые цены",("status","equal","Сопоставимо"),("spread","DESC")),
     ("Подешевело за 7 дней",("biggest_drop","higher_than","0"),("biggest_drop","DESC")),
     ("Смена лидера за 7 дней",("leader","equal","Да"),("biggest_drop","DESC")),
-    ("Условия требуют проверки",("status","equal","Вне сравнения"),None),
+    ("Без сопоставимой пары",("status","equal","Вне сравнения"),None),
 )
 NAMES = {key:name for key,name,_,_ in COLUMNS}
 DIRECT_URL = "http://localhost:42080"
@@ -111,6 +111,10 @@ def configure(configure_views=False):
     view_ids = {}
     for idx,(name,rule,sort) in enumerate(VIEWS):
         view = find_one(views,name)
+        if not view and name == "Без сопоставимой пары":
+            previous = find_one(views, "Условия требуют проверки")
+            if previous:
+                view = api("PATCH", f"database/views/{previous['id']}/", {"name": name})
         new_view = view is None
         if not view and idx == 0 and len(views)==1 and views[0]["name"]=="Grid":
             view = api("PATCH",f"database/views/{views[0]['id']}/",{"name":name})
