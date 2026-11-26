@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	watchMetric = "watchdog.alert"
-	watchWeeks  = 4
+	watchMetric        = "watchdog.alert"
+	watchWeeks         = 4
+	watchDropPct       = 20
+	watchControlMaxPct = 20
 )
 
 type SignalBatch = EvidenceBatch[bool]
@@ -67,10 +69,10 @@ func (w Watch) run(ctx context.Context, in SignalInput, replay bool) (SignalBatc
 		return out, fmt.Errorf("set a metric and distinct target and control product keys")
 	}
 	if in.DropPct == 0 {
-		in.DropPct = 20
+		in.DropPct = watchDropPct
 	}
 	if in.ControlMaxPct == 0 {
-		in.ControlMaxPct = 20
+		in.ControlMaxPct = watchControlMaxPct
 	}
 	for _, pct := range []float64{in.DropPct, in.ControlMaxPct} {
 		if pct <= 0 || pct >= 100 || math.IsNaN(pct) {

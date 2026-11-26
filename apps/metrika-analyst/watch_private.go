@@ -83,8 +83,13 @@ const privateWatchPage = `<!doctype html><html lang="ru"><meta charset="utf-8">
 <form method="post" enctype="multipart/form-data">
 <h2>Загрузить снимок</h2>
 <p><label>Недельные данные <input type="file" name="series" accept=".json" required></label></p>
-<p><label>Контекст и разрывы <input type="file" name="context" accept=".json" required></label></p>
+<p><label>Контекст и разрывы (необязательно) <input type="file" name="context" accept=".json"></label></p>
 <button>Сохранить в моём пространстве</button>
+</form>
+<form method="post">
+<p>Выберите последний загруженный снимок для обнаружения измерений и слепого анализа в чате.</p>
+<button name="action" value="select_blind">Разрешить анализ этого снимка в чате</button>
+<button name="action" value="unselect_blind">Отозвать доступ чата</button>
 </form>
 <form method="post">
 <h2>Проверить историю или запустить ежедневно</h2>
@@ -114,7 +119,7 @@ func (s *privateWatch) submit(w http.ResponseWriter, r *http.Request) error {
 		r.Body = http.MaxBytesReader(w, r.Body, 2*privateFileMax+(64<<10))
 		pair, err := readWatchPair(r)
 		if err != nil {
-			http.Error(w, "Загрузите два JSON-файла до 8 МиБ каждый.", http.StatusBadRequest)
+			http.Error(w, "Загрузите JSON ряда и, при наличии, контекст. До 8 МиБ на файл.", http.StatusBadRequest)
 			return nil
 		}
 		if err := validateWatchPair(r.Context(), pair); err != nil {
@@ -135,6 +140,24 @@ func (s *privateWatch) submit(w http.ResponseWriter, r *http.Request) error {
 	}
 	ctx := r.Context()
 	action := r.PostForm.Get("action")
+	if action == "select_blind" || action == "unselect_blind" {
+		on := action == "select_blind"
+		result, err := s.db.ExecContext(ctx, `UPDATE watchdog_owners SET blind_selected=$2 WHERE owner_id=$1`, owner, on)
+		if err != nil {
+			http.Error(w, "Не удалось выбрать снимок.", http.StatusServiceUnavailable)
+			return nil
+		}
+		count, err := result.RowsAffected()
+		if err != nil || (on && count != 1) {
+			http.Error(w, "Сначала загрузите снимок.", http.StatusConflict)
+			return nil
+		}
+		state := "unselected"
+		if on {
+			state = "selected"
+		}
+		return replyWatch(w, http.StatusOK, map[string]string{"status": state})
+	}
 	if action == "stop" {
 		if err := s.stop(ctx, owner); err != nil {
 			http.Error(w, "Не удалось остановить расписание.", http.StatusServiceUnavailable)
@@ -233,8 +256,8 @@ func readWatchPair(r *http.Request) (watchPair, error) {
 		}
 		files[name] = b
 	}
-	if len(files) != 2 {
-		return nil, errors.New("an evidence pair is required")
+	if files[privateSeries] == nil {
+		return nil, errors.New("a numeric series is required")
 	}
 	return files, nil
 }
@@ -247,12 +270,24 @@ func validateWatchPair(ctx context.Context, pair watchPair) error {
 	if err != nil {
 		return err
 	}
+	if (input.Status != "ok" && input.Status != "partial") || len(input.Observations) == 0 {
+		return errors.New("expected a nonempty imported series")
+	}
+	if pair[privateContext] == nil {
+		synthetic, known := input.Observations[0].Details["synthetic"].(bool)
+		if !known {
+			return errors.New("series must declare its origin")
+		}
+		pair[privateContext], err = json.Marshal(WatchContext{
+			SchemaVersion: "aifence.watch-context.v1", Synthetic: &synthetic, Batches: map[string]ContextBatch{},
+		})
+		if err != nil {
+			return err
+		}
+	}
 	catalog, err := w.loadContext(ctx, privateContext)
 	if err != nil {
 		return err
-	}
-	if input.Status != "ok" || len(input.Observations) == 0 {
-		return errors.New("expected a nonempty imported series")
 	}
 	for _, batch := range catalog.Batches {
 		if batch.AsOf != input.AsOf {
@@ -315,7 +350,7 @@ func (s *privateWatch) storePair(ctx context.Context, owner uuid.UUID, pair watc
 		if old == snapshot {
 			return nil
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE watchdog_owners SET snapshot_id=$2 WHERE owner_id=$1`, owner, snapshot)
+		_, err := tx.ExecContext(ctx, `UPDATE watchdog_owners SET snapshot_id=$2, blind_selected=false WHERE owner_id=$1`, owner, snapshot)
 		return err
 	})
 	if err == nil && old != snapshot {

@@ -154,8 +154,8 @@ func (s Service) historical(ctx context.Context, p string) (Batch, error) {
 		return Batch{}, fmt.Errorf("file too large")
 	}
 	var x Batch
-	if json.Unmarshal(b, &x) != nil || x.SchemaVersion != "aifence.v1" || x.Source != "metrika" || x.Observations == nil {
-		return Batch{}, fmt.Errorf("not a metrika evidence-v1 batch")
+	if json.Unmarshal(b, &x) != nil || x.SchemaVersion != "aifence.v1" || (x.Source != "metrika" && x.Source != "sales") || x.Observations == nil {
+		return Batch{}, fmt.Errorf("not a numeric metrika or sales evidence-v1 batch")
 	}
 	if _, e := time.Parse(time.RFC3339, x.AsOf); e != nil {
 		return Batch{}, fmt.Errorf("invalid evidence timestamp")

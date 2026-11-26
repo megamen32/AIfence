@@ -68,6 +68,7 @@ func registerWatchSchedule(a *agentsdk.Agent) {
 		Description: "Daily detector canary on embedded synthetic evidence. Caller-owned schedules start from the closed watchdog page.",
 	})
 	s.registerRoutes(a)
+	s.registerBlindTools(a)
 }
 
 func watchSummary(batch SignalBatch) watchdogResult {
