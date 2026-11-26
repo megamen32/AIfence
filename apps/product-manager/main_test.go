@@ -2,6 +2,7 @@ package main
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/airlockrun/agentsdk/wire"
@@ -27,6 +28,25 @@ func TestAgentComposition(t *testing.T) {
 			t.Errorf("missing typed user tool %s", name)
 		}
 	}
+	if len(manifest.SuggestedPrompts) != 3 {
+		t.Fatalf("expected three suggested prompts, got %d", len(manifest.SuggestedPrompts))
+	}
+	for i, want := range []struct{ title, prompt string }{
+		{"Запустить учебного сторожа", "Запусти учебного сторожа."},
+		{"Сохранить карточку; создать задачу", "Запусти учебного сторожа, сохрани карточку и создай учебную задачу."},
+	} {
+		got := manifest.SuggestedPrompts[i]
+		if got.Title != want.title || got.Prompt != want.prompt {
+			t.Fatalf("unexpected tutorial prompt: %+v", got)
+		}
+	}
+	if !slices.ContainsFunc(manifest.Instructions, func(instruction wire.InstructionDef) bool {
+		return strings.Contains(instruction.Text, `source_path:"fixtures/synthetic-watch.json", context_path:"fixtures/synthetic-watch-context.json"}, keywords:["order"]`) &&
+			strings.Contains(instruction.Text, "collect_watchdog_case(caseInput)")
+	}) {
+		t.Fatal("missing tutorial preset in runtime instructions")
+	}
+
 	if !slices.ContainsFunc(manifest.Topics, func(topic wire.TopicDef) bool {
 		return topic.Slug == "product_signals" && topic.PerUser && topic.Enrollment == wire.TopicEnrollmentDefaultOff
 	}) {

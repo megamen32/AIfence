@@ -50,10 +50,15 @@ func newAgent() *agentsdk.Agent {
 
 Для сторожа используй hosted run_js с inline-кодом ниже. Подставь параметры серии из запроса или настроенного сценария. Используй snake_case для ключей продуктов. Для KES возьми точный SKU из запроса или найди через list_offers единственное точное совпадение запрошенного варианта. При неоднозначности оставь sku пустым и объясни почему. Дополнительные поля сборщика передавай по схеме inspectApp. Включай browser и vision только по соответствующей просьбе. Включай confirmBacklog только после явного подтверждения пользователя.
 
-const series = {product_key:"TARGET_KEY", control_product_key:"CONTROL_KEY", metric_key:"orders_index", from:"YYYY-MM-DD", to:"YYYY-MM-DD"};
+Предустановленный учебный сценарий. Запросы «Запусти учебного сторожа» и «Запусти учебного сторожа, сохрани карточку и создай учебную задачу» используют один и тот же набор. В шаблоне замени caseInput следующим объектом без уточнений у пользователя:
+{series:{product_key:"demo_target", control_product_key:"demo_control", metric_key:"orders_index", from:"2023-02-13", to:"2023-03-05", as_of:"2023-03-03", source_path:"fixtures/synthetic-watch.json", context_path:"fixtures/synthetic-watch-context.json"}, keywords:["order"]}
+Для обоих запросов оставь browser и vision выключенными и sku пустым. В первом запросе сохрани карточку при тревоге и оставь confirmBacklog=false. Второй запрос явно подтверждает создание учебной задачи и разрешает confirmBacklog=true. Наличие варианта с задачей среди подсказок само по себе её не подтверждает. Для учебного сценария расскажи результат простыми словами, без имён инструментов и файлов.
+
+const caseInput = {series:{product_key:"TARGET_KEY", control_product_key:"CONTROL_KEY", metric_key:"orders_index", from:"YYYY-MM-DD", to:"YYYY-MM-DD"}};
+const {series} = caseInput;
 const sku = "", browser = false, vision = false, confirmBacklog = false;
 await platform.inspectApp({app:"metrika-analyst", section:"tools"});
-const bundle = await apps.metrika_analyst.tools.collect_watchdog_case({series});
+const bundle = await apps.metrika_analyst.tools.collect_watchdog_case(caseInput);
 if (bundle.status !== "alert") return {status:bundle.status, timeline:bundle.timeline, warnings:bundle.warnings};
 await platform.inspectApp({app:"product-manager", section:"tools"});
 const pm = apps.product_manager.tools;
@@ -98,7 +103,8 @@ return {status:"alert", timeline:bundle.timeline, record, task, current_prices:c
 Для ручного разбора уже импортированных данных используй list_evidence и read_evidence с пагинацией. Для отдельного запроса свежих данных используй доступные Market Watch и Metrika Analyst через platform.inspectApp и collect-evidence. Используй разрешённые источники. Приводи период и источник у чисел. Ссылайся на обе точки каждого сравниваемого ряда, включая контроль, или на вычисленное наблюдение со всеми выборками. Учитывай ограничения, альтернативы и существующие задачи. Индекс заказов не выражает количество или прибыль.
 
 Для ручного save_hypothesis сначала проверь list_hypotheses, затем заполни aifence.v1, proposed, списки ID, даты, критерий будущего измерения и economic_effect {status: unknown, assumptions: []}. Разделяй исходное падение и критерий улучшения после релиза. Для вывода о выполнении критерия вызывай evaluate_hypothesis. При awaiting_measurement укажи недостающий релиз или наблюдение. Создавай задачу только после явного подтверждения пользователя и помечай бэклог как локальный.`})
-	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Разобрать падение заказов", Prompt: "Что изменилось в самостоятельных заказах по доступным источникам? Сопоставь продажи, релизы, исследования и бэклог. Сохрани гипотезу с самым дешевым способом проверки."})
+	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Запустить учебного сторожа", Prompt: "Запусти учебного сторожа."})
+	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Сохранить карточку; создать задачу", Prompt: "Запусти учебного сторожа, сохрани карточку и создай учебную задачу."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Проверить эффект", Prompt: "По каким гипотезам уже можно оценить эффект релиза? Покажи критерии, доступные замеры и недостающие данные."})
 	return a
 }
