@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 from urllib.parse import unquote, urlsplit
 
 HOSTS = {
@@ -49,7 +51,10 @@ def vendor_from_url(store, url):
 
 def aggregate(path):
     with path.open('rb') as stream:
-        checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+        checksum = digest.hexdigest()
     products = defaultdict(set)
     sellers = Counter()
     latest = None
@@ -80,9 +85,39 @@ def aggregate(path):
             'total_products': len(products), 'source': source, 'vendors': vendors}
 
 
+def publish(air, origin, doc):
+    encoded = json.dumps(doc, ensure_ascii=False, separators=(',', ':'))
+    result = subprocess.run([air, 'tools', 'invoke', 'import_catalog_overview', '--input', encoded,
+                             '--url', origin, '--agent', 'product-manager', '--json'],
+                            stdout=subprocess.PIPE, timeout=120)
+    reply = json.loads(result.stdout)
+    if result.returncode:
+        raise RuntimeError(reply.get('error', {}).get('message', 'Catalog import failed'))
+    receipt = reply['data']['result']['output']
+    if isinstance(receipt, str):
+        receipt = json.loads(receipt)
+    if receipt.get('total_products') != doc['total_products'] or receipt.get('vendor_count') != len(doc['vendors']):
+        raise RuntimeError('Catalog import receipt does not match this export')
+    return receipt
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('export', type=Path)
+    parser.add_argument('export', nargs='?', type=Path, help='Market Watch /catalog.csv')
+    parser.add_argument('--publish', metavar='AIRLOCK_URL', help='Save the result to the signed-in PM account')
+    parser.add_argument('--air', default='air', help='Pinned Airlock SDK CLI')
     args = parser.parse_args()
-    json.dump(aggregate(args.export), sys.stdout, ensure_ascii=False, separators=(',', ':'))
+    if not args.export and not args.publish:
+        parser.error('provide the export file or --publish to fetch it from Market Watch')
+    if args.export:
+        doc = aggregate(args.export)
+    else:
+        with tempfile.NamedTemporaryFile() as snapshot:
+            result = subprocess.run([args.air, 'request', 'GET', '/catalog.csv', '--url', args.publish,
+                                     '--agent', 'market-watch'], stdout=snapshot, timeout=180)
+            if result.returncode:
+                sys.exit('Market Watch export failed')
+            doc = aggregate(Path(snapshot.name))
+    outcome = publish(args.air, args.publish, doc) if args.publish else doc
+    json.dump(outcome, sys.stdout, ensure_ascii=False, separators=(',', ':'))
     print()
