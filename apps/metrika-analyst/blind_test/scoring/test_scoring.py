@@ -61,6 +61,50 @@ class BlindScoreTests(unittest.TestCase):
             proc=subprocess.run([sys.executable,str(Path(__file__).with_name("score_agent.py")),"--answers",str(root/"answers"),"--cards",str(root/"cards"),"--out",str(out)],capture_output=True,text=True)
             self.assertEqual(proc.returncode,0); self.assertIn('"correct": 1',out.read_text())
 
+    def test_new_cause_aliases(self):
+        scorer = load("scorer", "score_agent.py")
+        self.assertEqual(scorer.type_norm("bot traffic"), "traffic_quality")
+        self.assertEqual(scorer.type_norm("переименование"), "taxonomy_migration")
+        self.assertEqual(scorer.type_norm("late attribution"), "late_event_delivery")
+        self.assertEqual(scorer.type_norm("masked regression"), "masked_multi_cause_regression")
+        self.assertEqual(scorer.type_norm("experiment contamination"), "experiment_allocation_shift")
+
+    def test_s12_accepts_no_alert_and_insufficient_data(self):
+        scorer = load("scorer", "score_agent.py")
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            answer=root/"S12.json"
+            answer.write_text(json.dumps({
+                "scenario":"S12", "family":None, "week":None,
+                "cause_type":"honest_refusal",
+                "accepted_outcomes":["no_alert", "insufficient_data"]
+            }))
+            no_alert=root/"no-alert.json"
+            no_alert.write_text(json.dumps({"outcome":"no_alert"}))
+            insufficient=root/"insufficient.json"
+            insufficient.write_text(json.dumps({"status":"insufficient_data"}))
+            row1=scorer.score_one(answer,no_alert)
+            row2=scorer.score_one(answer,insufficient)
+            self.assertEqual(row1["status"], "correct_no_alert")
+            self.assertTrue(row1["outcome_correct"])
+            self.assertEqual(row2["status"], "correct_insufficient_data")
+            self.assertTrue(row2["outcome_correct"])
+
+    def test_s12_alert_is_false_alarm(self):
+        scorer = load("scorer", "score_agent.py")
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            answer=root/"S12.json"
+            answer.write_text(json.dumps({
+                "scenario":"S12", "cause_type":"honest_refusal",
+                "accepted_outcomes":["no_alert", "insufficient_data"]
+            }))
+            card=root/"card.json"
+            card.write_text(json.dumps({"found":True, "family":"KES", "week":"2026-10-05", "cause_type":"traffic_quality"}))
+            row=scorer.score_one(answer,card)
+            self.assertEqual(row["status"], "false_alarm")
+            self.assertTrue(row["false_alarm"])
+
     def test_sales_xlsx(self):
         exporter=load("exporter","export_sales.py")
         with tempfile.TemporaryDirectory() as td:

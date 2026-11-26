@@ -32,8 +32,19 @@ TYPE_ALIASES = {
     "mobile_regression": {"mobile_regression", "mobile", "мобильный регресс", "регресс мобильного"},
     "price_competition": {"price_competition", "price", "цена", "конкурент", "конкурентная цена"},
     "release_regression": {"release_regression", "release", "релиз", "регресс после релиза"},
+    "traffic_quality": {"traffic_quality", "bot_traffic", "bots", "боты", "ботовый трафик", "некачественный трафик"},
+    "taxonomy_migration": {"taxonomy_migration", "catalog_rename", "product_rename", "переименование", "миграция справочника"},
+    "late_event_delivery": {"late_event_delivery", "late_attribution", "delayed_attribution", "задержка событий", "запаздывающие события"},
+    "masked_multi_cause_regression": {"masked_multi_cause_regression", "multi_cause", "masked_regression", "замаскированный регресс", "две причины"},
+    "experiment_allocation_shift": {"experiment_allocation_shift", "experiment_contamination", "ab_allocation", "a_b", "алокация эксперимента", "эксперимент"},
     "clean": {"clean", "none", "no_issue", "нет проблемы", "чистый набор", "проблема не найдена"},
 }
+
+OUTCOME_ALIASES = {
+    "no_alert": {"no_alert", "no alert", "silent", "silence", "correct_silence", "no_issue", "clean", "нет тревоги", "без тревоги", "молчание"},
+    "insufficient_data": {"insufficient_data", "insufficient", "inconclusive", "unavailable", "incomparable", "not_enough_data", "недостаточно данных", "данных недостаточно", "нельзя сделать вывод", "неопределенно"},
+}
+
 
 
 def norm(value: Any) -> str:
@@ -47,6 +58,32 @@ def type_norm(value: Any) -> str:
         if key == canonical or key in {norm(x) for x in aliases}:
             return canonical
     return key
+
+
+def outcome_norm(value: Any) -> str:
+    key = norm(value)
+    for canonical, aliases in OUTCOME_ALIASES.items():
+        if key == canonical or key in {norm(x) for x in aliases}:
+            return canonical
+    return key
+
+
+def _outcome_values(data: dict[str, Any]) -> list[str]:
+    values: list[Any] = []
+    for key in ("outcome", "expected_outcome", "expected_response", "decision", "disposition", "response", "status"):
+        raw = data.get(key)
+        if raw not in (None, ""):
+            values.extend(raw if isinstance(raw, list) else [raw])
+    for key in ("accepted_outcomes", "expected_outcomes", "accepted_responses"):
+        raw = data.get(key)
+        if raw not in (None, ""):
+            values.extend(raw if isinstance(raw, list) else [raw])
+    result = []
+    for value in values:
+        normalized = outcome_norm(value)
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
 
 
 def read_any(path: Path) -> Any:
@@ -74,19 +111,32 @@ def answer_fields(raw: Any, scenario: str) -> dict[str, Any]:
         signals = data.get("signals") or data.get("expected_signals") or []
         if isinstance(signals, dict):
             signals = [signals]
+        normalized_cause = type_norm(cause)
+        accepted = _outcome_values(data)
+        if normalized_cause == "clean" and "no_alert" not in accepted:
+            accepted.append("no_alert")
         return {"scenario": str(scenario_value), "family": str(family or ""), "week": str(week or ""),
-                "cause_type": type_norm(cause), "signals": signals}
+                "cause_type": normalized_cause, "signals": signals,
+                "accepted_outcomes": sorted(set(accepted))}
     text = str(raw)
     def find(*patterns: str) -> str:
         for pattern in patterns:
             match = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
             if match:
-                return match.group(1).strip().strip("`* ")
+                return match.group(1).strip().strip(" *")
         return ""
-    return {"scenario": scenario, "family": find(r"(?:family|product_family|семейств[оа])\s*[:=]\s*([^\n,;]+)"),
+    cause_value = type_norm(find(r"(?:cause_type|reason|причин[аы])\s*[:=]\s*([^\n,;]+)"))
+    accepted = []
+    response_value = find(r"(?:outcome|decision|response|решение|ответ)\s*[:=]\s*([^\n,;]+)")
+    if response_value:
+        accepted.append(outcome_norm(response_value))
+    if cause_value == "clean":
+        accepted.append("no_alert")
+    return {"scenario": scenario,
+            "family": find(r"(?:family|product_family|семейств[оа])\s*[:=]\s*([^\n,;]+)"),
             "week": find(r"(?:week|week_start|недел[яи])\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})"),
-            "cause_type": type_norm(find(r"(?:cause_type|reason|причин[аы])\s*[:=]\s*([^\n,;]+)")),
-            "signals": []}
+            "cause_type": cause_value, "signals": [],
+            "accepted_outcomes": sorted(set(x for x in accepted if x))}
 
 
 def card_fields(raw: Any) -> dict[str, Any]:
@@ -97,13 +147,22 @@ def card_fields(raw: Any) -> dict[str, Any]:
         family = _first(raw, "family", "product_family", "product", "target_family")
         week = _first(raw, "week", "week_start", "failure_week", "release_week")
         cause = _first(raw, "cause_type", "reason_type", "type", "root_cause")
-        return {"family": str(family or ""), "week": str(week or ""), "cause_type": type_norm(cause), "signals": signals,
-                "found": raw.get("found"), "text": json.dumps(raw, ensure_ascii=False)}
+        outcomes = _outcome_values(raw)
+        return {"family": str(family or ""), "week": str(week or ""),
+                "cause_type": type_norm(cause), "signals": signals,
+                "found": raw.get("found"), "outcome": outcomes[0] if outcomes else "",
+                "text": json.dumps(raw, ensure_ascii=False)}
     text = str(raw)
-    return {"family": re.search(r"(?:family|product_family|семейств[оа])\s*[:=]\s*([^\n,;]+)", text, re.I).group(1).strip() if re.search(r"(?:family|product_family|семейств[оа])\s*[:=]\s*([^\n,;]+)", text, re.I) else "",
-            "week": re.search(r"(?:week|week_start|недел[яи])\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text, re.I).group(1) if re.search(r"(?:week|week_start|недел[яи])\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text, re.I) else "",
-            "cause_type": type_norm(re.search(r"(?:cause_type|reason|причин[аы])\s*[:=]\s*([^\n,;]+)", text, re.I).group(1) if re.search(r"(?:cause_type|reason|причин[аы])\s*[:=]\s*([^\n,;]+)", text, re.I) else ""),
-            "signals": [], "text": text}
+    family_match = re.search(r"(?:family|product_family|семейств[оа])\s*[:=]\s*([^\n,;]+)", text, re.I)
+    week_match = re.search(r"(?:week|week_start|недел[яи])\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text, re.I)
+    cause_match = re.search(r"(?:cause_type|reason|причин[аы])\s*[:=]\s*([^\n,;]+)", text, re.I)
+    outcome_match = re.search(r"(?:outcome|decision|response|решение|ответ|status)\s*[:=]\s*([^\n,;]+)", text, re.I)
+    return {"family": family_match.group(1).strip() if family_match else "",
+            "week": week_match.group(1) if week_match else "",
+            "cause_type": type_norm(cause_match.group(1) if cause_match else ""),
+            "signals": [], "found": None,
+            "outcome": outcome_norm(outcome_match.group(1) if outcome_match else ""),
+            "text": text}
 
 
 def signal_matches(card: dict[str, Any], answer: dict[str, Any]) -> bool:
@@ -134,17 +193,35 @@ def score_one(answer_path: Path, card_path: Path) -> dict[str, Any]:
     answer = answer_fields(read_any(answer_path), scenario)
     card = card_fields(read_any(card_path))
     clean_expected = answer["cause_type"] == "clean"
+    accepted_outcomes = set(answer.get("accepted_outcomes") or [])
+    refusal_expected = (not clean_expected) and bool(accepted_outcomes) and (
+        accepted_outcomes <= {"no_alert", "insufficient_data"}
+        or answer["cause_type"] in {"no_alert", "insufficient_data"}
+        or scenario.endswith("/S12")
+        or scenario == "S12"
+    )
+    response_ok = bool(card.get("outcome")) and card.get("outcome") in accepted_outcomes
     has_signal = signal_matches(card, answer)
     has_false_alarm = false_alarm(card, answer)
     cause_correct = card["cause_type"] == answer["cause_type"] if answer["cause_type"] else False
-    if clean_expected:
+    if refusal_expected:
+        if response_ok:
+            status = "correct_no_alert" if card["outcome"] == "no_alert" else "correct_insufficient_data"
+            found, missed, false, cause = False, False, False, True
+        else:
+            status = "false_alarm" if has_signal or has_false_alarm or card.get("cause_type") or card.get("family") or card.get("week") else "missed"
+            found, missed, false, cause = False, status == "missed", status == "false_alarm", False
+    elif clean_expected:
         status = "false_alarm" if has_false_alarm or card["cause_type"] not in ("", "clean") or card["family"] or card["week"] else "correct_silence"
+        found, missed, false, cause = False, False, status == "false_alarm", status == "correct_silence"
     else:
         status = "correct" if has_signal and cause_correct else ("found_wrong_cause" if has_signal else "missed")
+        found, missed, false, cause = has_signal, not has_signal, has_false_alarm, cause_correct
     return {"scenario": scenario, "expected_family": answer["family"], "expected_week": answer["week"],
-            "expected_cause_type": answer["cause_type"], "found": has_signal, "missed": not has_signal,
-            "false_alarm": has_false_alarm, "cause_type_correct": cause_correct, "status": status,
-            "answer_file": str(answer_path), "card_file": str(card_path)}
+            "expected_cause_type": answer["cause_type"], "expected_outcomes": sorted(accepted_outcomes),
+            "outcome": card.get("outcome", ""), "found": found, "missed": missed,
+            "false_alarm": false, "cause_type_correct": cause, "outcome_correct": response_ok,
+            "status": status, "answer_file": str(answer_path), "card_file": str(card_path)}
 
 
 def ensure_isolated(input_root: Path | None, answers_root: Path) -> None:
@@ -184,9 +261,11 @@ def main() -> int:
             rows.append({"scenario": scenario_name,
                          "status": "correct_silence" if clean else "missed",
                          "found": False, "missed": not clean, "false_alarm": False,
-                         "cause_type_correct": clean, "expected_family": answer["family"],
-                         "expected_week": answer["week"], "expected_cause_type": answer["cause_type"],
-                         "answer_file": str(answer_path), "card_file": str(card_path)})
+                         "cause_type_correct": clean, "outcome_correct": False,
+                         "expected_family": answer["family"], "expected_week": answer["week"],
+                         "expected_cause_type": answer["cause_type"],
+                         "expected_outcomes": answer.get("accepted_outcomes", []),
+                         "outcome": "", "answer_file": str(answer_path), "card_file": str(card_path)})
         else:
             row = score_one(answer_path, card_path)
             row["scenario"] = scenario_name
@@ -199,7 +278,7 @@ def main() -> int:
                            "cause_type_correct": sum(r["cause_type_correct"] for r in rows)}}
     args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     csv_path = args.out.with_suffix(".csv")
-    fields = ["scenario", "status", "found", "missed", "false_alarm", "cause_type_correct", "expected_family", "expected_week", "expected_cause_type"]
+    fields = ["scenario", "status", "found", "missed", "false_alarm", "cause_type_correct", "outcome_correct", "outcome", "expected_outcomes", "expected_family", "expected_week", "expected_cause_type"]
     with csv_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields); writer.writeheader(); writer.writerows({k: row.get(k, "") for k in fields} for row in rows)
     print(json.dumps(payload["summary"], ensure_ascii=False))
