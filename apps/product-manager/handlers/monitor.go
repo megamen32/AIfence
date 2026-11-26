@@ -52,6 +52,15 @@ func productName(key string) string {
 	}
 }
 
+func educationalProduct(key string) bool {
+	return key == "demo_target" || key == "demo_control"
+}
+
+func educationalObservation(row evidence.Row, d monitorDetails) bool {
+	return d.Synthetic || d.Origin == "synthetic_fixture" || educationalProduct(row.Product) ||
+		row.Ref.SourceID == "synthetic" || strings.HasPrefix(row.Ref.SourceID, "synthetic/")
+}
+
 func originText(d monitorDetails) string {
 	if d.Synthetic || d.Origin == "synthetic_fixture" {
 		return "Учебные данные"
@@ -60,6 +69,13 @@ func originText(d monitorDetails) string {
 		return "Исторические данные"
 	}
 	return ""
+}
+
+func observationOrigin(row monitorObservation) string {
+	if educationalObservation(row.Row, row.details) {
+		return "Учебные данные"
+	}
+	return originText(row.details)
 }
 
 func signalTime(detected string, received *time.Time) string {
@@ -149,7 +165,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 	fresh, active := watchdogState(rows)
 	if autoOpen && selected == "" {
 		for _, row := range active {
-			if originText(row.details) != "Учебные данные" {
+			if !educationalObservation(row.Row, row.details) {
 				selected, pinned, alert = row.Product, row.snapshot, row.ID
 				break
 			}
@@ -171,10 +187,10 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		if !ok {
 			i = len(m.Products)
 			products[row.Product] = i
-			m.Products = append(m.Products, views.MonitorProduct{Name: productName(row.Product), URL: link, Origin: originText(row.details)})
+			m.Products = append(m.Products, views.MonitorProduct{Name: productName(row.Product), URL: link, Origin: observationOrigin(row)})
 		}
 		p := &m.Products[i]
-		if p.Origin == "" && originText(row.details) == "Учебные данные" {
+		if p.Origin == "" && observationOrigin(row) == "Учебные данные" {
 			p.Origin = "Учебные данные"
 		}
 		if old := p.Cells[col].Label; old == "" || col == 0 && row.Metric == watchdogMetric &&
@@ -200,7 +216,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		m.Pulse = append(m.Pulse, views.PulseItem{
 			Product: p.Name, URL: link,
 			Week: span(row.Period.From, row.Period.To), Detected: signalTime(row.details.Detected, row.received),
-			Change: change, Comparison: comparison, Origin: originText(row.details),
+			Change: change, Comparison: comparison, Origin: observationOrigin(row),
 		})
 	}
 	for _, row := range rows {
@@ -210,7 +226,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 				continue
 			}
 			products[key] = len(m.Products)
-			p := views.MonitorProduct{Name: productName(key), URL: href("monitor", row.Product, "snapshot", row.snapshot), Origin: originText(row.details)}
+			p := views.MonitorProduct{Name: productName(key), URL: href("monitor", row.Product, "snapshot", row.snapshot), Origin: observationOrigin(row)}
 			p.Cells[0] = views.MonitorCell{Label: "Контроль", Tone: "quiet"}
 			m.Products = append(m.Products, p)
 		}
@@ -231,7 +247,7 @@ type watchdogSeries struct{ product, segment, metric, control, origin, scenario,
 
 func seriesOf(o monitorObservation) watchdogSeries {
 	source, _, _ := strings.Cut(o.Ref.Locator, "#")
-	return watchdogSeries{o.Product, o.Segment, o.details.Metric, o.details.Control, originText(o.details), o.details.Scenario, source}
+	return watchdogSeries{o.Product, o.Segment, o.details.Metric, o.details.Control, observationOrigin(o), o.details.Scenario, source}
 }
 
 // A missing week says nothing about recovery. Only compare observed decisions
@@ -309,7 +325,7 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 		}
 	}
 	if signal != nil {
-		v.Origin, v.Detected, v.Week = originText(signal.details), signalTime(signal.details.Detected, signal.received), span(signal.Period.From, signal.Period.To)
+		v.Origin, v.Detected, v.Week = observationOrigin(*signal), signalTime(signal.details.Detected, signal.received), span(signal.Period.From, signal.Period.To)
 		if signal.details.Control != "" {
 			v.Control = productName(signal.details.Control)
 		}
@@ -375,7 +391,7 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 		var source *monitorObservation
 		v.Chart, v.Control, source = legacyTrend(*record, rows, v.ReleaseDate)
 		if source != nil {
-			v.Origin = originText(source.details)
+			v.Origin = observationOrigin(*source)
 			v.Detected = signalTime(source.details.Detected, source.received)
 		}
 	}

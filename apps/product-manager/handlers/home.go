@@ -307,13 +307,7 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	if err != nil {
 		return views.HomeView{}, err
 	}
-	seen := focusFingerprint(focus)
-	changed := q.Has("focus_seen") && q.Get("focus_seen") != seen
-	if changed && focus.ProductKey != "" {
-		// An explicit focus from chat resets only the panel's manual navigation.
-		q = url.Values{}
-	}
-	q.Set("focus_seen", seen)
+	q, focus = panelFocusQuery(q, focus)
 	v := views.HomeView{BoardURL: "./board?" + q.Encode()}
 	id, snap, selected := cardIDForView(q, focus), q.Get("snapshot"), q.Get("monitor")
 	for _, rec := range records.Records {
@@ -445,8 +439,27 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	}
 	return v, nil
 }
+func hasPanelSelection(q url.Values) bool {
+	return q.Get("id") != "" || q.Get("monitor") != "" || q.Get("snapshot") != "" || q.Get("overview") != ""
+}
+
+func panelFocusQuery(q url.Values, focus product.Focus) (url.Values, product.Focus) {
+	seen := focusFingerprint(focus)
+	if q.Has("focus_seen") && q.Get("focus_seen") != seen && (focus.ProductKey != "" || q.Has("focus_open")) {
+		q = url.Values{}
+		if focus.ProductKey != "" {
+			q.Set("focus_open", seen)
+		}
+	}
+	q.Set("focus_seen", seen)
+	if focus.Synthetic && q.Get("focus_open") != seen && !hasPanelSelection(q) {
+		return q, product.Focus{}
+	}
+	return q, focus
+}
+
 func cardIDForView(q url.Values, focus product.Focus) string {
-	if q.Get("id") == "" && q.Get("monitor") == "" && q.Get("snapshot") == "" && q.Get("overview") == "" {
+	if !hasPanelSelection(q) {
 		return focus.HypothesisID
 	}
 	return q.Get("id")

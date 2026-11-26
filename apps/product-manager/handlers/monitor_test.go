@@ -7,6 +7,7 @@ import (
 	"agent/views"
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -193,5 +194,48 @@ func TestWatchdogEvidenceUsesTheSameValidatedWindowAsPanel(t *testing.T) {
 	row.Details = strings.ReplaceAll(row.Details, "2025-12-22", "2025-12-29")
 	if view := rowView("snapshot", row); strings.Contains(view.Summary, "%") {
 		t.Fatalf("invalid window exposes competing percentages: %q", view.Summary)
+	}
+}
+
+func TestColdOverviewAndChangedChatFocusAreDistinct(t *testing.T) {
+	old := product.Focus{ProductKey: "demo_target", SnapshotID: "demo", HypothesisID: "demo-card", Synthetic: true}
+	q, shown := panelFocusQuery(url.Values{}, old)
+	if shown.ProductKey != "" || hasPanelSelection(q) {
+		t.Fatal("cold entry must not resume a saved educational card")
+	}
+	if _, shown := panelFocusQuery(q, old); shown.ProductKey != "" {
+		t.Fatal("initial subscription refresh resumed an unchanged educational focus")
+	}
+	explicit := url.Values{"id": {old.HypothesisID}}
+	if !hasPanelSelection(explicit) || cardIDForView(explicit, old) != old.HypothesisID {
+		t.Fatal("saved educational card must remain reachable by its normal link")
+	}
+	fresh := product.Focus{ProductKey: "new-training-product", SnapshotID: "case", HypothesisID: "new-asked-card", Synthetic: true}
+	q, shown = panelFocusQuery(q, fresh)
+	if shown.HypothesisID != fresh.HypothesisID {
+		t.Fatal("explicit new focus from chat was lost")
+	}
+	if _, shown := panelFocusQuery(q, fresh); shown.HypothesisID != fresh.HypothesisID {
+		t.Fatal("same open panel stopped following an active chat selection")
+	}
+	if updated, shown := panelFocusQuery(q, product.Focus{}); updated.Has("focus_open") || shown.ProductKey != "" {
+		t.Fatal("cleared chat focus stayed open")
+	}
+}
+
+func TestColdOverviewDoesNotExpandLegacyDemoRows(t *testing.T) {
+	alert := monitorObservation{
+		Row: evidence.Row{ID: "demo-alert", Product: "demo_target", Source: "sales", Metric: watchdogMetric,
+			Status: "observed", Value: "true", Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"},
+			Details: windowJSON(80, 55, 70, 71)},
+		snapshot: "demo",
+	}
+	auto := monitorView([]monitorObservation{alert}, nil, "", "", "", true)
+	if auto.Selected != nil || len(auto.Products) == 0 || auto.Products[0].Origin != "Учебные данные" {
+		t.Fatalf("legacy demo became the default view: %+v", auto)
+	}
+	explicit := monitorView([]monitorObservation{alert}, nil, alert.Product, alert.snapshot, alert.ID, true)
+	if explicit.Selected == nil || explicit.Selected.Chart.Target == "" {
+		t.Fatal("selecting the educational alert should still open its graph")
 	}
 }
