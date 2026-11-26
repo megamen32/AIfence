@@ -47,6 +47,7 @@ type progress struct {
 	CheckedVariantURLs     int            `json:"checked_variant_urls"`
 	UnavailableVariantURLs int            `json:"unavailable_variant_urls"`
 	UnresolvedVariantURLs  int            `json:"unresolved_variant_urls"`
+	ExcludedVariantURLs    int            `json:"excluded_variant_urls"`
 	PendingVariantURLs     int            `json:"pending_variant_urls"`
 }
 
@@ -248,8 +249,10 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 		case "priced", "no_public_price":
 			status.ObservedVariantURLs++
 			status.Variants += len(detail.Variants)
-		case "unavailable", "robots_excluded":
+		case "unavailable":
 			status.UnavailableVariantURLs++
+		case "robots_excluded", "access_denied":
+			status.ExcludedVariantURLs++
 		default:
 			status.UnresolvedVariantURLs++
 		}
@@ -258,7 +261,7 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 	status.PricedOffers = len(offers)
 	if status.PendingPages == 0 && status.PendingVariantURLs == 0 {
 		status.State = "complete"
-		if status.States["error"] > 0 || status.States["unclassified"] > 0 || status.UnresolvedVariantURLs > 0 {
+		if status.States["error"] > 0 || status.States["unclassified"] > 0 || status.States["robots_excluded"] > 0 || status.States["access_denied"] > 0 || status.ExcludedVariantURLs > 0 || status.UnresolvedVariantURLs > 0 {
 			status.State = "needs_review"
 		}
 	}
@@ -315,7 +318,10 @@ func readPage(ctx context.Context, s catalog.Source, u string, fetch catalog.Fet
 		case http.StatusNotFound, http.StatusGone:
 			p.State = "unavailable"
 		case http.StatusTooManyRequests, http.StatusForbidden, http.StatusServiceUnavailable:
-			return p, fmt.Errorf("%s: paused after %s on %s (Retry-After %s)", s.ID, he.Error(), u, he.RetryAfter)
+			if he.Code == http.StatusForbidden && he.URL == u {
+				p.State = "access_denied"
+			}
+			return p, fmt.Errorf("%s: paused after %w on %s (Retry-After %s)", s.ID, he, u, he.RetryAfter)
 		}
 	}
 	if strings.Contains(err.Error(), "robots.txt disallows") {
@@ -359,6 +365,11 @@ func process(ctx context.Context, s catalog.Source, pending []string, fetch cata
 	go func() { wg.Wait(); close(results) }()
 	for result := range results {
 		if result.fatal != nil {
+			if result.p.State == "access_denied" {
+				if err := consume(result.p); err != nil {
+					return err
+				}
+			}
 			return result.fatal
 		}
 		if err := consume(result.p); err != nil {
@@ -367,7 +378,7 @@ func process(ctx context.Context, s catalog.Source, pending []string, fetch cata
 	}
 	return ctx.Err()
 }
-func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fetch, refresh time.Duration) error {
+func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fetch, refresh time.Duration) (workerErr error) {
 	dir := filepath.Join(root, s.ID)
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		return e
@@ -380,6 +391,26 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
 		return fmt.Errorf("%s: active writer: %w", s.ID, e)
 	}
+	pauseFile := filepath.Join(dir, "retry-after.json")
+	if raw, err := os.ReadFile(pauseFile); err == nil {
+		var until time.Time
+		if err = json.Unmarshal(raw, &until); err != nil {
+			return err
+		}
+		if until.After(time.Now()) {
+			return fmt.Errorf("%s: scheduled pause until %s", s.ID, until)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	defer func() {
+		var status *catalog.HTTPStatus
+		if errors.As(workerErr, &status) && status.RetryAfter.After(time.Now()) {
+			if err := saveJSON(pauseFile, status.RetryAfter); err != nil {
+				workerErr = errors.Join(workerErr, err)
+			}
+		}
+	}()
 	inv, e := readInventory(ctx, dir, s, fetch, refresh)
 	if e != nil {
 		return e

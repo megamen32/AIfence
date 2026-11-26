@@ -78,3 +78,13 @@ func TestOnlyRefreshClosedInventory(t *testing.T) {
 		t.Fatal(called)
 	}
 }
+
+func TestCoverageDistinguishesDeniedAndRemovedVariants(t *testing.T) {
+	p := catalog.PageResult{State: "priced"}
+	inv := inventory{URLs: []string{"family"}, VariantURLs: []string{"denied", "gone"}}
+	pages := map[string]catalog.PageResult{"family": p, "denied": {State: "access_denied"}, "gone": {State: "unavailable"}}
+	st, err := snapshot(t.TempDir(), inv, pages)
+	if err != nil || st.State != "needs_review" || st.ExcludedVariantURLs != 1 || st.UnavailableVariantURLs != 1 || st.PendingVariantURLs != 0 {
+		t.Fatal(st, err)
+	}
+}

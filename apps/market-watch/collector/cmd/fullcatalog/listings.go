@@ -99,6 +99,12 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv inve
 			if e != nil {
 				var he *catalog.HTTPStatus
 				if errors.As(e, &he) && (he.Code == 403 || he.Code == 429 || he.Code == 503) {
+					if he.Code == 403 && he.URL == current {
+						visits[current] = listingVisit{At: at.Format(time.RFC3339)}
+						if err := saveJSON(path, visits); err != nil {
+							return err
+						}
+					}
 					return e
 				}
 				// Listing is optional. Canonical product URLs remain in the main queue.

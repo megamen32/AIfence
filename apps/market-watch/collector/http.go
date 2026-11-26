@@ -20,6 +20,7 @@ const maxBody = 32 * 1024 * 1024
 type HTTPStatus struct {
 	Code       int
 	RetryAfter time.Time
+	URL        string
 }
 
 func (e *HTTPStatus) Error() string { return fmt.Sprintf("HTTP %d", e.Code) }
@@ -110,7 +111,7 @@ func (s *hostState) get(ctx context.Context, raw string, delay time.Duration) (r
 		if n, e := strconv.Atoi(hint); e == nil && n >= 0 && n <= 7*86400 {
 			when = time.Now().Add(time.Duration(n) * time.Second)
 		}
-		status := &HTTPStatus{Code: res.StatusCode, RetryAfter: when}
+		status := &HTTPStatus{Code: res.StatusCode, RetryAfter: when, URL: raw}
 		if status.Code == 403 || status.Code == 429 || status.Code == 503 {
 			s.paceMu.Lock()
 			s.pauseErr = status
