@@ -356,8 +356,8 @@ h3{font-size:1.03rem;font-weight:650;letter-spacing:-.015em;margin-bottom:.6rem}
  .dashboard-alert-link > span:first-child {grid-column:1 / -1}
  .dashboard-alert-period {display:block}
  .catalog-treemap .catalog-name {display:none}
- .catalog-treemap .catalog-label-other,.catalog-treemap .catalog-label-kaspersky {display:block;font-size:12px}
- .catalog-treemap .catalog-label-other .catalog-value,.catalog-treemap .catalog-label-kaspersky .catalog-value {font-size:10px}
+ .catalog-treemap .catalog-label-other,.catalog-treemap .catalog-label-alert {display:block;font-size:12px}
+ .catalog-treemap .catalog-label-other .catalog-value,.catalog-treemap .catalog-label-alert .catalog-value {font-size:10px}
  .catalog-other-groups ul {grid-template-columns:1fr}
  .catalog-legend ul {grid-template-columns:1fr}
  .catalog-legend-item {font-size:.76rem;grid-template-columns:auto minmax(0,1fr) auto}

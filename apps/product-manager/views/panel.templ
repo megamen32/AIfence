@@ -46,8 +46,8 @@ func catalogTileLabelClass(tile CatalogTile) string {
 	if tile.Name == "Другие" {
 		return "catalog-label-other"
 	}
-	if strings.Contains(strings.ToLower(tile.Name), "kaspersky") {
-		return "catalog-label-kaspersky"
+	if strings.Contains(tile.Tone, "signal") {
+		return "catalog-label-alert"
 	}
 	return "catalog-label-secondary"
 }
