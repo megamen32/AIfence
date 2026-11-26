@@ -13,11 +13,13 @@ type WatchCaseInput struct {
 }
 
 type WatchCaseResult struct {
-	Status         string             `json:"status"`
-	FirstAlertWeek *Period            `json:"first_alert_week"`
-	Document       *WatchCaseDocument `json:"document"`
-	Timeline       []WatchCaseWeek    `json:"timeline"`
-	Warnings       []string           `json:"warnings"`
+	Status              string                `json:"status"`
+	FirstAlertWeek      *Period               `json:"first_alert_week"`
+	FirstAlertSignalID  string                `json:"first_alert_signal_id,omitempty"`
+	FirstAlertMagnitude *WatchSignalMagnitude `json:"first_alert_magnitude,omitempty"`
+	Document            *WatchCaseDocument    `json:"document"`
+	Timeline            []WatchCaseWeek       `json:"timeline"`
+	Warnings            []string              `json:"warnings"`
 }
 
 type WatchCaseWeek struct {
@@ -183,5 +185,6 @@ func (w Watch) CollectCase(ctx context.Context, in WatchCaseInput) (WatchCaseRes
 		return result, fmt.Errorf("watchdog case exceeds 768 KiB; shorten the replay range")
 	}
 	result.Status, result.FirstAlertWeek, result.Document = "alert", &alarm.Period, &doc
+	result.FirstAlertSignalID, result.FirstAlertMagnitude = alarm.ID, signalMagnitude(*alarm)
 	return result, nil
 }

@@ -51,16 +51,18 @@ type BlindDiscovery struct {
 
 type BlindCandidate struct {
 	BlindDimensions
-	ID             string   `json:"candidate_id"`
-	Kind           string   `json:"kind"`
-	Period         Period   `json:"period"`
-	Reason         string   `json:"reason"`
-	Control        string   `json:"control_product_key,omitempty"`
-	ChangePct      *float64 `json:"relative_change_pct,omitempty"`
-	ControlPct     *float64 `json:"control_change_pct,omitempty"`
-	Adjusted       *float64 `json:"control_adjusted_change_pct,omitempty"`
-	SourceRefs     []Ref    `json:"source_refs"`
-	SourceRefCount int      `json:"source_ref_count"`
+	ID             string                `json:"candidate_id"`
+	SignalID       string                `json:"signal_id,omitempty"`
+	Magnitude      *WatchSignalMagnitude `json:"magnitude,omitempty"`
+	Kind           string                `json:"kind"`
+	Period         Period                `json:"period"`
+	Reason         string                `json:"reason"`
+	Control        string                `json:"control_product_key,omitempty"`
+	ChangePct      *float64              `json:"relative_change_pct,omitempty"`
+	ControlPct     *float64              `json:"control_change_pct,omitempty"`
+	Adjusted       *float64              `json:"control_adjusted_change_pct,omitempty"`
+	SourceRefs     []Ref                 `json:"source_refs"`
+	SourceRefCount int                   `json:"source_ref_count"`
 }
 
 type BlindScan struct {

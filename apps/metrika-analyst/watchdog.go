@@ -190,7 +190,10 @@ func evaluateWeek(in SignalInput, d time.Time, cutoff, path, origin string, rows
 	details := map[string]any{
 		"control_product_key": in.ControlProductKey, "metric_key": in.MetricKey,
 		"baseline_period": baseline, "current_period": current, "window_weeks": watchWeeks,
-		"drop_pct": in.DropPct, "control_max_pct": in.ControlMaxPct, "spike_cap_median_multiple": spikeCap,
+		"detection_thresholds": watchDetectionThresholds{
+			MinimumTargetAndControlAdjustedDropPct: in.DropPct,
+			MaxAbsoluteControlChangePct:            in.ControlMaxPct,
+		},
 		"origin": origin, "evidence_direction": "unknown",
 	}
 	if in.ScenarioID != "" {
@@ -287,17 +290,40 @@ func evaluateWeek(in SignalInput, d time.Time, cutoff, path, origin string, rows
 		return finish("zero_reference")
 	}
 	targetRatio, controlRatio := targetNow/targetBase, controlNow/controlBase
-	targetPct, controlPct := (targetRatio-1)*100, (controlRatio-1)*100
+	magnitude := &WatchSignalMagnitude{
+		Basis: watchMagnitudeBasis, Unit: "percent", RelativeChangePct: (targetRatio - 1) * 100,
+		Baseline:  WatchMagnitudeWindow{Period: baseline, CappedMean: targetBase},
+		Current:   WatchMagnitudeWindow{Period: current, CappedMean: targetNow},
+		ValueUnit: unit[0], SpikeCapMedianMultiple: spikeCap,
+	}
+	controlPct := (controlRatio - 1) * 100
 	adjusted := (targetRatio/controlRatio - 1) * 100
-	if math.IsInf(adjusted, 0) || math.IsNaN(adjusted) || math.IsInf(targetPct, 0) || math.IsInf(controlPct, 0) {
+	if math.IsInf(adjusted, 0) || math.IsNaN(adjusted) || math.IsInf(magnitude.RelativeChangePct, 0) || math.IsInf(controlPct, 0) {
 		return finish("unusable_scale")
 	}
-	details["relative_change_pct"], details["control_change_pct"], details["control_adjusted_change_pct"] = targetPct, controlPct, adjusted
+	details["magnitude"] = magnitude
+	// These flat keys remain for saved evidence and older PM consumers.
+	details["relative_change_pct"], details["control_change_pct"], details["control_adjusted_change_pct"] =
+		magnitude.RelativeChangePct, controlPct, adjusted
+
+	previous, latest := target[len(target)-2], target[len(target)-1]
+	raw := watchRawWeekComparison{
+		Basis: "adjacent_raw_weeks_diagnostic", ValueUnit: unit[0],
+		Previous: watchRawWeek{Period: week(d.AddDate(0, 0, -7)), Value: previous},
+		Latest:   watchRawWeek{Period: p, Value: latest},
+	}
+	if previous > 0 {
+		delta := (latest/previous - 1) * 100
+		if !math.IsInf(delta, 0) {
+			raw.RelativeChangePct = num(delta)
+		}
+	}
+	details["raw_week_comparison"] = raw
 	if math.Abs(controlPct) > in.ControlMaxPct {
 		out.Status = "incomparable"
 		return finish("unstable_control")
 	}
-	alert := targetPct <= -in.DropPct && adjusted <= -in.DropPct
+	alert := magnitude.RelativeChangePct <= -in.DropPct && adjusted <= -in.DropPct
 	out.Value, out.Status = &alert, "observed"
 	if alert {
 		return finish("target_drop_with_stable_control")

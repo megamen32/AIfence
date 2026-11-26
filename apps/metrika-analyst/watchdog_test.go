@@ -307,3 +307,98 @@ func TestWatchAuthorizedCase(t *testing.T) {
 		t.Fatalf("private reported comparison differs from oracle: %v", err)
 	}
 }
+
+func TestWatchdogMagnitudeSameAcrossDetectReplayAndCollect(t *testing.T) {
+	w := Watch{Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
+		func(context.Context) string { return "" }}
+	in := SignalInput{
+		ProductKey: "demo_target", ControlProductKey: "demo_control", MetricKey: "orders_index",
+		From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03",
+		SourcePath: "fixtures/synthetic-watch.json", ContextPath: "fixtures/synthetic-watch-context.json",
+	}
+	ctx := t.Context()
+	replay, err := w.Replay(ctx, in)
+	if err != nil || len(replay.Observations) != 3 {
+		t.Fatalf("replay: %v", err)
+	}
+	prior, alert, incomplete := replay.Observations[0], replay.Observations[1], replay.Observations[2]
+	if prior.Value == nil || *prior.Value || alert.Value == nil || !*alert.Value || incomplete.Value != nil ||
+		alert.Period != (Period{"2023-02-20", "2023-02-26"}) {
+		t.Fatal("expected quiet, first alert, and incomplete week in chronological order")
+	}
+	if m := signalMagnitude(prior); m == nil || math.Abs(m.RelativeChangePct-(-9.375)) > 1e-12 {
+		t.Fatal("prior week must not already cross the threshold")
+	}
+	if signalMagnitude(incomplete) != nil {
+		t.Fatal("incomplete window produced a scale")
+	}
+
+	// Each window caps high weeks at 1.4 times its own median, then averages four weeks.
+	want := WatchSignalMagnitude{
+		Basis: "capped_four_week_relative_change", Unit: "percent", ValueUnit: "index", SpikeCapMedianMultiple: 1.4,
+		Baseline: WatchMagnitudeWindow{Period: Period{"2023-01-02", "2023-01-29"}, CappedMean: (100.0 + 100 + 100 + 140) / 4},
+		Current:  WatchMagnitudeWindow{Period: Period{"2023-01-30", "2023-02-26"}, CappedMean: (98.0 + 75 + 65 + 60) / 4},
+	}
+	want.RelativeChangePct = (want.Current.CappedMean/want.Baseline.CappedMean - 1) * 100
+
+	detectInput := in
+	detectInput.To = alert.Period.To
+	detect, err := w.Detect(ctx, detectInput)
+	if err != nil || len(detect.Observations) != 1 {
+		t.Fatalf("detect: %v", err)
+	}
+	collected, err := w.CollectCase(ctx, WatchCaseInput{Series: in})
+	if err != nil || collected.Document == nil || collected.FirstAlertWeek == nil || *collected.FirstAlertWeek != alert.Period {
+		t.Fatalf("collect: %v", err)
+	}
+	caseSignal := collected.Document.Batches[0].Observations[1].(Signal)
+	for surface, signal := range map[string]Signal{"Replay": alert, "Detect": detect.Observations[0], "Collect": caseSignal} {
+		t.Run(surface, func(t *testing.T) {
+			if signal.ID != alert.ID {
+				t.Fatal("signal identity differs across entry points")
+			}
+			m := signalMagnitude(signal)
+			if m == nil || *m != want || signal.Details["relative_change_pct"] != want.RelativeChangePct {
+				t.Fatalf("magnitude = %+v, want %+v", m, want)
+			}
+			if signal.Details["control_baseline_mean"] != 90.0 || signal.Details["control_current_mean"] != 90.0 ||
+				signal.Details["control_change_pct"] != 0.0 || signal.Details["control_adjusted_change_pct"] != want.RelativeChangePct {
+				t.Fatal("expected unchanged control and equal target/adjusted window contrasts")
+			}
+			raw, ok := signal.Details["raw_week_comparison"].(watchRawWeekComparison)
+			if !ok || raw.Basis != "adjacent_raw_weeks_diagnostic" || raw.Previous != (watchRawWeek{Period{"2023-02-13", "2023-02-19"}, 65}) ||
+				raw.Latest != (watchRawWeek{Period{"2023-02-20", "2023-02-26"}, 60}) ||
+				raw.RelativeChangePct == nil || math.Abs(*raw.RelativeChangePct-(60.0/65-1)*100) > 1e-12 {
+				t.Fatal("adjacent raw weeks must be a separate, labelled diagnostic")
+			}
+			thresholds, ok := signal.Details["detection_thresholds"].(watchDetectionThresholds)
+			if !ok || thresholds.MinimumTargetAndControlAdjustedDropPct != 20 || thresholds.MaxAbsoluteControlChangePct != 20 {
+				t.Fatal("thresholds must be labelled separately from scale")
+			}
+			if _, exists := signal.Details["drop_pct"]; exists {
+				t.Fatal("ambiguous flat drop_pct leaked into signal")
+			}
+		})
+	}
+	if collected.FirstAlertSignalID != alert.ID || collected.FirstAlertMagnitude == nil || *collected.FirstAlertMagnitude != want {
+		t.Fatal("collect summary lost the first alert's canonical value")
+	}
+	wire, err := json.Marshal(collected)
+	var decoded struct {
+		FirstAlertSignalID  string               `json:"first_alert_signal_id"`
+		FirstAlertMagnitude WatchSignalMagnitude `json:"first_alert_magnitude"`
+	}
+	if err != nil || json.Unmarshal(wire, &decoded) != nil || decoded.FirstAlertSignalID != alert.ID || decoded.FirstAlertMagnitude != want {
+		t.Fatal("canonical signal ID and scale must survive serialization")
+	}
+
+	detectInput.DropPct = 40
+	stricter, err := w.Detect(ctx, detectInput)
+	if err != nil || len(stricter.Observations) != 1 {
+		t.Fatalf("higher threshold detect: %v", err)
+	}
+	signal := stricter.Observations[0]
+	if signal.ID != alert.ID || signal.Value == nil || *signal.Value || signalMagnitude(signal) == nil || *signalMagnitude(signal) != want {
+		t.Fatal("changing the decision threshold changed the measured window contrast")
+	}
+}

@@ -140,10 +140,12 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 			}
 			out.ComparedWindows++
 			if *sig.Value && !active {
+				magnitude := signalMagnitude(sig)
 				add(target, BlindCandidate{
 					Kind: "controlled_decline", Period: p, Control: control.meta.ProductKey,
+					SignalID: sig.ID, Magnitude: magnitude,
 					Reason:    "decline_with_stable_control_ranked_on_baseline",
-					ChangePct: blindPct(sig, "relative_change_pct"), ControlPct: blindPct(sig, "control_change_pct"),
+					ChangePct: &magnitude.RelativeChangePct, ControlPct: blindPct(sig, "control_change_pct"),
 					Adjusted: blindPct(sig, "control_adjusted_change_pct"), SourceRefs: blindSignalRefs(sig),
 				})
 			}
