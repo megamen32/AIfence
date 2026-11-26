@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""Import the selected owner's real watchdog cases into the PM pulse."""
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import urllib.parse
+
+ROOT = Path(__file__).resolve().parents[1]
+STATE = ROOT / ".runtime/sync-pulse"
+METRIKA = ROOT / "apps/metrika-analyst"
+PM = ROOT / "apps/product-manager"
+
+
+def cli(app, args):
+    command = [
+        "go",
+        "tool",
+        "air",
+        *args,
+        "--dir",
+        str(STATE / "cli"),
+        "--url",
+        ORIGIN,
+        "--agent",
+        app,
+        "--timeout",
+        "120s",
+        "--json",
+    ]
+    env = os.environ.copy()
+    env["GOMAXPROCS"] = "2"
+    env["GOFLAGS"] = "-p=1"
+    result = subprocess.run(
+        command,
+        cwd=METRIKA if app == "metrika-analyst" else PM,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=130,
+    )
+    try:
+        envelope = json.loads(result.stdout)
+    except ValueError:
+        raise RuntimeError(
+            f"{app}: invalid SDK response (exit {result.returncode})"
+        ) from None
+    if result.returncode or envelope.get("status") != "completed":
+        msg = (envelope.get("error") or {}).get("message", "unknown SDK error")
+        raise RuntimeError(f"{app}: {msg}")
+    return envelope.get("data", {})
+
+
+def tool(app, name, body):
+    data = cli(
+        app,
+        [
+            "tools",
+            "invoke",
+            name,
+            "--input",
+            json.dumps(body, ensure_ascii=False, separators=(",", ":")),
+        ],
+    )
+    result = data.get("result", {})
+    if result.get("isError") or result.get("is_error") or "output" not in result:
+        raise RuntimeError(f"{name}: no successful tool output")
+    value = result["output"]
+    return json.loads(value) if isinstance(value, str) else value
+
+
+def http(app, method, path, body=None, content_type=None, origin=None):
+    args = ["request", method, path]
+    if content_type:
+        args += ["--header", "Content-Type: " + content_type]
+    if origin:
+        args += ["--header", "Origin: " + origin]
+    if body is not None:
+        if len(body.encode()) > 120000:
+            raise RuntimeError(
+                "HTTP payload exceeds safe CLI argument budget; split the source case"
+            )
+        args += ["--data", body]
+    result = cli(app, args)
+    if result.get("statusCode") != 200:
+        raise RuntimeError(f"{app} {path}: HTTP {result.get('statusCode')}")
+    return result.get("body", "")
+
+
+def scan_all():
+    candidates = []
+    offset = 0
+    dataset = None
+    as_of = None
+    total = None
+    while True:
+        page = tool(
+            "metrika-analyst", "scan_watchdog_series", {"offset": offset, "limit": 64}
+        )
+        if page.get("origin") != "imported_historical" or not page.get("dataset_id"):
+            raise RuntimeError(
+                "No selected imported-historical owner dataset; refusing synthetic or unknown input"
+            )
+        if dataset is None:
+            dataset, as_of, total = (
+                page["dataset_id"],
+                page.get("as_of"),
+                page.get("candidate_count"),
+            )
+        if (page.get("dataset_id"), page.get("as_of"), page.get("candidate_count")) != (
+            dataset,
+            as_of,
+            total,
+        ):
+            raise RuntimeError("Selected source changed during pagination")
+        if page.get("status") in ("unavailable", "needs_selection", "error"):
+            raise RuntimeError("Selected source unavailable")
+        candidates.extend(page.get("candidates", []))
+        nxt = page.get("next_offset")
+        if nxt is None:
+            break
+        if not isinstance(nxt, int) or nxt <= offset:
+            raise RuntimeError("Invalid scan pagination")
+        offset = nxt
+    if total is None or len(candidates) != total:
+        raise RuntimeError("Incomplete candidate scan")
+    return dataset, as_of, candidates
+
+
+def false_from_replay(candidate, decision, dataset):
+    """Project a producer's explicit observed false into the PM evidence contract."""
+    start = dt.date.fromisoformat(decision["week_from"])
+    end = start + dt.timedelta(days=6)
+    product = candidate["product_key"]
+    control = candidate["control_product_key"]
+    metric = candidate["metric_key"]
+    segment = candidate.get("segment") or (
+        "self_service" if metric == "orders_index" else "all"
+    )
+    identity = [
+        product,
+        control,
+        metric,
+        segment,
+        start.isoformat(),
+        "imported_historical",
+        "",
+    ]
+    # Same source identity as the producer's Go json.Marshal/sha256 implementation.
+    raw = json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()
+    return {
+        "id": "watchdog/" + hashlib.sha256(raw).hexdigest(),
+        "kind": "metric",
+        "product_key": product,
+        "metric_key": "watchdog.alert",
+        "value": False,
+        "unit": "boolean",
+        "status": "observed",
+        "period": {"from": start.isoformat(), "to": end.isoformat()},
+        "segment": segment,
+        "source_ref": {
+            "source_id": "aifence-watchdog",
+            "locator": "watch-series.json#" + start.isoformat(),
+        },
+        "details": {
+            "origin": "imported_historical",
+            "synthetic": False,
+            "metric_key": metric,
+            "control_product_key": control,
+            "reason": decision.get("reason", ""),
+            "evidence_direction": "unknown",
+            "producer": "owner-watchdog-replay",
+            "selected_dataset_id": dataset,
+        },
+    }
+
+
+def latest_false(candidate, as_of, dataset):
+    start = candidate["period"]["from"]
+    end = as_of[:10]
+    if dt.date.fromisoformat(end) - dt.date.fromisoformat(start) > dt.timedelta(
+        days=731
+    ):
+        raise RuntimeError("Candidate replay exceeds producer two-year limit")
+    payload = urllib.parse.urlencode(
+        {
+            "action": "replay",
+            "product_key": candidate["product_key"],
+            "control_product_key": candidate["control_product_key"],
+            "metric_key": candidate["metric_key"],
+            "segment": candidate.get("segment", ""),
+            "from": start,
+            "to": end,
+            "as_of": end,
+        }
+    )
+    body = http(
+        "metrika-analyst",
+        "POST",
+        "/watchdog",
+        payload,
+        "application/x-www-form-urlencoded",
+        METRIKA_ORIGIN,
+    )
+    result = json.loads(body)
+    decisions = result.get("decisions")
+    if not isinstance(decisions, list):
+        raise RuntimeError("Producer replay returned no decisions")
+    known = [x for x in decisions if x.get("alert") is True or x.get("alert") is False]
+    if not known:
+        return None
+    last = max(known, key=lambda x: x.get("week_from", ""))
+    confirmed = (candidate.get("last_confirmed_week") or candidate["period"])["from"]
+    if last.get("alert") is False and last.get("week_from", "") > confirmed:
+        return false_from_replay(candidate, last, dataset)
+    return None
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--origin", default="http://localhost:42081")
+    p.add_argument(
+        "--metrika-origin",
+        help="Origin of the Metrika web form on this Airlock instance",
+    )
+    p.add_argument("--dry-run", action="store_true")
+    args = p.parse_args()
+    global ORIGIN, METRIKA_ORIGIN
+    ORIGIN = args.origin.rstrip("/")
+    if ORIGIN not in ("http://localhost:42081", "http://localhost:42080"):
+        raise SystemExit("Use an explicitly configured local Airlock origin")
+    expected = f"http://metrika-analyst.localhost:{urllib.parse.urlsplit(ORIGIN).port}"
+    METRIKA_ORIGIN = (args.metrika_origin or expected).rstrip("/")
+    if METRIKA_ORIGIN != expected:
+        raise SystemExit("Metrika origin must match the selected local instance")
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (STATE / "cli").mkdir(mode=0o700, exist_ok=True)
+    dataset, as_of, candidates = scan_all()
+    controlled = [c for c in candidates if c.get("kind") == "controlled_decline"]
+    documents = []
+    false_count = 0
+    for c in controlled:
+        case = tool(
+            "metrika-analyst",
+            "collect_selected_watchdog_case",
+            {"dataset_id": dataset, "candidate_id": c["candidate_id"]},
+        )
+        doc = case.get("document")
+        if case.get("status") != "alert" or not isinstance(doc, dict):
+            raise RuntimeError("Producer did not return an alert document")
+        if doc.get("source_policy") != "local_project_only":
+            raise RuntimeError("Unexpected source visibility policy")
+        false = latest_false(c, as_of, dataset)
+        if false:
+            batch = next((b for b in doc["batches"] if b["source"] == "sales"), None)
+            if batch is None:
+                raise RuntimeError("Producer alert has no sales batch")
+            if all(x.get("id") != false["id"] for x in batch["observations"]):
+                batch["observations"].append(false)
+                false_count += 1
+        documents.append((c, doc))
+    dataset2, as_of2, _ = scan_all()
+    if (dataset2, as_of2) != (dataset, as_of):
+        raise RuntimeError("Selected dataset changed before import")
+    results = []
+    for candidate, doc in documents:
+        if args.dry_run:
+            results.append({"product": candidate["product_key"], "status": "prepared"})
+            continue
+        raw = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+        received = json.loads(
+            http("product-manager", "POST", "/import", raw, "application/json")
+        )
+        sid = received.get("snapshot_id")
+        if (
+            not isinstance(sid, str)
+            or not sid.startswith("ev-")
+            or not received.get("count")
+        ):
+            raise RuntimeError("Invalid PM import receipt")
+        results.append(
+            {
+                "product": candidate["product_key"],
+                "metric": candidate["metric_key"],
+                "segment": candidate.get("segment"),
+                "from": candidate["period"]["from"],
+                "snapshot_id": sid,
+                "observations": received["count"],
+            }
+        )
+    print(
+        json.dumps(
+            {
+                "origin": "imported_historical",
+                "as_of": as_of,
+                "candidates": len(candidates),
+                "controlled_cases": len(controlled),
+                "producer_false": false_count,
+                "imports": results,
+                "dry_run": args.dry_run,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (RuntimeError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
+        print("sync-pulse:", str(exc), file=sys.stderr)
+        sys.exit(1)
