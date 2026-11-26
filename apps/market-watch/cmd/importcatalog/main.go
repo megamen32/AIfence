@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/gofrs/flock"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,6 +52,16 @@ func run() error {
 	if len(files) == 0 {
 		return errors.New("no per-store offers.jsonl exports available")
 	}
+	// Both the initial installation and the normal price update can invoke this command.
+	lock := flock.New(*statePath + ".lock")
+	owned, err := lock.TryLock()
+	if err != nil {
+		return err
+	}
+	if !owned {
+		return errors.New("another Market Watch import is active for this checkpoint")
+	}
+	defer lock.Unlock()
 	file, err := os.OpenFile(*statePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return err
@@ -104,9 +115,11 @@ func (u *uploader) importFile(path string) (int, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, u.air, "request", "POST", "/import", "--dir", u.dir, "--remote", "default", "--target", "production", "--url", u.origin, "--agent", u.agent, "--header", "Content-Type: application/json", "--data", string(b))
-		out, err := cmd.CombinedOutput()
+		var diagnostics bytes.Buffer
+		cmd.Stderr = &diagnostics
+		out, err := cmd.Output()
 		if err != nil {
-			return fmt.Errorf("Airlock request: %w: %.1000s", err, out)
+			return fmt.Errorf("Airlock request: %w: %.1000s", err, diagnostics.Bytes())
 		}
 		var result struct {
 			Accepted int `json:"accepted"`
