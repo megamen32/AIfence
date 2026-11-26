@@ -1,0 +1,17 @@
+services:
+  metrika-mcp:
+    build:
+      context: .
+      dockerfile: metrika.Dockerfile
+    environment:
+      YANDEX_METRIKA_TOKEN: ${YANDEX_METRIKA_TOKEN:?Supply authorized read-only token in environment}
+      MCP_TRANSPORT: http
+      HOST: 0.0.0.0
+      PORT: "8000"
+    networks:
+      - private
+    restart: unless-stopped
+networks:
+  private:
+    external: true
+    name: ${AIFENCE_MCP_NETWORK:?Select existing private Airlock proxy network}
