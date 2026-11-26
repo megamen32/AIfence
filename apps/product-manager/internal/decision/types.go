@@ -1,6 +1,8 @@
 // Package decision implements the user-scoped product decision lifecycle.
 package decision
 
+import "agent/internal/evidence"
+
 type Criterion struct {
 	MetricKey         string `json:"metric_key"`
 	BaselineFrom      string `json:"baseline_from"`
@@ -105,14 +107,16 @@ type Assessment struct {
 	Measurement        *Measurement `json:"measurement,omitempty"`
 }
 type Record struct {
-	Planning           *PlanningEstimate `json:"planning,omitempty"`
-	CardURL            string            `json:"card_url,omitempty"`
-	ContextIDs         []string          `json:"context_ids,omitempty"`
-	Hypothesis         Hypothesis        `json:"hypothesis"`
-	Version            int64             `json:"version"`
-	EvidenceSnapshotID string            `json:"evidence_snapshot_id"`
-	Task               *Task             `json:"task,omitempty"`
-	Assessment         *Assessment       `json:"assessment,omitempty"`
+	SignalContrast           *evidence.WindowContrast `json:"signal_contrast,omitempty"`
+	SignalContrastUnverified bool                     `json:"signal_contrast_unverified,omitempty"`
+	Planning                 *PlanningEstimate        `json:"planning,omitempty"`
+	CardURL                  string                   `json:"card_url,omitempty"`
+	ContextIDs               []string                 `json:"context_ids,omitempty"`
+	Hypothesis               Hypothesis               `json:"hypothesis"`
+	Version                  int64                    `json:"version"`
+	EvidenceSnapshotID       string                   `json:"evidence_snapshot_id"`
+	Task                     *Task                    `json:"task,omitempty"`
+	Assessment               *Assessment              `json:"assessment,omitempty"`
 }
 type ListResult struct {
 	Records []Record `json:"records"`

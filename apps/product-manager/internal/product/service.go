@@ -45,11 +45,14 @@ func (s Service) Save(ctx context.Context, in decision.SaveInput) (decision.Reco
 	if err := checkEvidenceLevel(h, rows); err != nil {
 		return decision.Record{}, err
 	}
+	if signalReadback(decision.Record{Hypothesis: h}, rows).SignalContrastUnverified {
+		return decision.Record{}, errors.New("сигнал карточки требует проверенного контраста окон")
+	}
 	record, err := s.Decisions.Save(ctx, in)
 	if err == nil && in.ExpectedVersion == 0 {
 		s.Notifications.publish(ctx, record, rows)
 	}
-	return withCardURL(ctx, record), err
+	return withCardURL(ctx, signalReadback(record, rows)), err
 }
 
 func checkEvidenceLevel(h decision.Hypothesis, rows []evidence.Row) error {
@@ -209,6 +212,14 @@ func (s Service) Get(ctx context.Context, in decision.GetInput) (decision.Record
 	if err := s.Evidence.Access(ctx, r.EvidenceSnapshotID); err != nil {
 		return decision.Record{}, err
 	}
+	if len(r.Hypothesis.SignalIDs) > 0 {
+		data, err := s.Evidence.Read(ctx, evidence.Query{SnapshotID: r.EvidenceSnapshotID, IDs: r.Hypothesis.SignalIDs, Limit: 100})
+		if err != nil {
+			return decision.Record{}, err
+		}
+		r = signalReadback(r, data.Rows)
+	}
+
 	return withCardURL(ctx, r), nil
 }
 func withCardURL(ctx context.Context, r decision.Record) decision.Record {

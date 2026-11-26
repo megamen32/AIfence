@@ -90,22 +90,23 @@ type Document struct {
 	Warnings     []string `json:"warnings,omitempty"`
 }
 type Row struct {
-	BatchStatus string    `json:"-"`
-	BatchAsOf   string    `json:"-"`
-	Kind        string    `json:"kind"`
-	Segment     string    `json:"segment,omitempty"`
-	Source      string    `json:"source"`
-	ID          string    `json:"id"`
-	Product     string    `json:"product"`
-	Metric      string    `json:"metric"`
-	Value       string    `json:"value"`
-	Unit        string    `json:"unit"`
-	Period      Period    `json:"period"`
-	Ref         SourceRef `json:"source_ref"`
-	Status      string    `json:"status"`
-	Details     string    `json:"details_json,omitempty"`
-	Caveats     []string  `json:"caveats,omitempty"`
-	SampleSize  *int      `json:"sample_size,omitempty"`
+	WindowContrast *WindowContrast `json:"window_contrast,omitempty"`
+	BatchStatus    string          `json:"-"`
+	BatchAsOf      string          `json:"-"`
+	Kind           string          `json:"kind"`
+	Segment        string          `json:"segment,omitempty"`
+	Source         string          `json:"source"`
+	ID             string          `json:"id"`
+	Product        string          `json:"product"`
+	Metric         string          `json:"metric"`
+	Value          string          `json:"value"`
+	Unit           string          `json:"unit"`
+	Period         Period          `json:"period"`
+	Ref            SourceRef       `json:"source_ref"`
+	Status         string          `json:"status"`
+	Details        string          `json:"details_json,omitempty"`
+	Caveats        []string        `json:"caveats,omitempty"`
+	SampleSize     *int            `json:"sample_size,omitempty"`
 }
 type Result struct {
 	Summary
@@ -325,7 +326,14 @@ func selectRows(d Document, q Query) (Result, error) {
 			if strings.HasPrefix(value, "\"") {
 				_ = json.Unmarshal(o.Value, &value)
 			}
-			out.Rows = append(out.Rows, Row{b.Status, b.AsOf, o.Kind, o.Segment, b.Source, o.ID, o.ProductKey, o.MetricKey, value, o.Unit, o.Period, o.Ref, o.Status, string(o.Details), o.Caveats, o.SampleSize})
+			row := Row{
+				BatchStatus: b.Status, BatchAsOf: b.AsOf, Kind: o.Kind, Segment: o.Segment, Source: b.Source,
+				ID: o.ID, Product: o.ProductKey, Metric: o.MetricKey, Value: value, Unit: o.Unit,
+				Period: o.Period, Ref: o.Ref, Status: o.Status, Details: string(o.Details), Caveats: o.Caveats,
+				SampleSize: o.SampleSize,
+			}
+			row = projectWatchdogWindow(row)
+			out.Rows = append(out.Rows, row)
 		}
 	}
 	return out, nil

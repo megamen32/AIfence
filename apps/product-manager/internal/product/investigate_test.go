@@ -1,6 +1,7 @@
 package product
 
 import (
+	"agent/internal/decision"
 	"agent/internal/evidence"
 	"strings"
 	"testing"
@@ -75,5 +76,23 @@ func TestInvestigateWatchdog(t *testing.T) {
 		if _, err := investigationDraft([]evidence.Row{quiet, legacy}, InvestigateInput{SnapshotID: "fixture"}); err == nil {
 			t.Fatalf("watchdog result %q triggered a legacy hypothesis", value)
 		}
+	}
+}
+
+func TestSignalReadbackUsesExactSavedSignal(t *testing.T) {
+	details := `{"baseline_period":{"from":"2025-01-06","to":"2025-02-02"},"current_period":{"from":"2025-02-03","to":"2025-03-02"},
+			"baseline_mean":10,"current_mean":5,"control_baseline_mean":10,"control_current_mean":10,"relative_change_pct":-50}`
+	h := decision.Hypothesis{ID: "watch-saved", ProductKey: "test-target", SignalIDs: []string{"watchdog/saved"}}
+	row := evidence.Row{ID: "watchdog/other", Product: h.ProductKey, Source: "sales", Metric: WatchdogMetric, Status: "observed", Value: "true",
+		Period: evidence.Period{From: "2025-02-24", To: "2025-03-02"}, Details: details}
+	record := decision.Record{Hypothesis: h}
+	missing := signalReadback(record, []evidence.Row{row})
+	if !missing.SignalContrastUnverified || missing.SignalContrast != nil {
+		t.Fatal("a different alert filled an old card")
+	}
+	row.ID = h.SignalIDs[0]
+	got := signalReadback(record, []evidence.Row{row})
+	if got.SignalContrastUnverified || got.SignalContrast == nil || got.SignalContrast.RelativeChangePct != -50 {
+		t.Fatalf("exact signal failed readback: %+v", got)
 	}
 }

@@ -21,11 +21,6 @@ type watchdogDetails struct {
 	ControlProductKey string          `json:"control_product_key"`
 	Baseline          evidence.Period `json:"baseline_period"`
 	Current           evidence.Period `json:"current_period"`
-	BaselineMean      *float64        `json:"baseline_mean"`
-	CurrentMean       *float64        `json:"current_mean"`
-	ControlBaseline   *float64        `json:"control_baseline_mean"`
-	ControlCurrent    *float64        `json:"control_current_mean"`
-	Change            *float64        `json:"relative_change_pct"`
 	Adjusted          *float64        `json:"control_adjusted_change_pct"`
 	EvidenceIDs       []string        `json:"evidence_ids"`
 	SourceRefs        []struct {
@@ -46,7 +41,7 @@ func investigationDraft(rows []evidence.Row, in InvestigateInput) (decision.Save
 	for _, r := range rows {
 		if r.Source == "sales" && r.Metric == WatchdogMetric {
 			hasWatchdog = true
-			if (in.ProductKey != "" && r.Product != in.ProductKey) ||
+			if (in.SignalID != "" && r.ID != in.SignalID) || (in.ProductKey != "" && r.Product != in.ProductKey) ||
 				(in.WeekFrom != "" && r.Period.From != in.WeekFrom) ||
 				r.Status != "observed" || r.Value != "true" {
 				continue
@@ -57,7 +52,7 @@ func investigationDraft(rows []evidence.Row, in InvestigateInput) (decision.Save
 			}
 		}
 	}
-	if !hasWatchdog && in.WeekFrom == "" {
+	if !hasWatchdog && in.WeekFrom == "" && in.SignalID == "" {
 		return proposeLegacy(rows, in.SnapshotID, in.ProductKey)
 	}
 	if selected.ID == "" {
@@ -68,9 +63,11 @@ func investigationDraft(rows []evidence.Row, in InvestigateInput) (decision.Save
 
 func proposeWatchdog(rows []evidence.Row, r evidence.Row, snapshot string) (decision.SaveInput, error) {
 	var d watchdogDetails
-	if json.Unmarshal([]byte(r.Details), &d) != nil || !d.usable(r) {
+	window := evidence.WatchdogWindow(r)
+	if json.Unmarshal([]byte(r.Details), &d) != nil || !d.usable(r, window) {
 		return decision.SaveInput{}, errors.New("тревога должна иметь полные недели, положительную базу, сравнение с контролем и ссылки на исходные ряды")
 	}
+	d.Baseline, d.Current = window.Baseline, window.Current
 	key := sha256.Sum256([]byte(r.ID))
 	h := decision.Hypothesis{
 		SchemaVersion: "aifence.v1", ID: fmt.Sprintf("watch-%x", key[:16]),
@@ -95,19 +92,10 @@ func proposeWatchdog(rows []evidence.Row, r evidence.Row, snapshot string) (deci
 	return decision.SaveInput{Hypothesis: h, EvidenceSnapshotID: snapshot, ContextIDs: contextIDs}, nil
 }
 
-func (d watchdogDetails) usable(r evidence.Row) bool {
-	start, e1 := time.Parse(time.DateOnly, d.Current.From)
-	end, e2 := time.Parse(time.DateOnly, d.Current.To)
-	baselineFrom, e3 := time.Parse(time.DateOnly, d.Baseline.From)
-	baselineTo, e4 := time.Parse(time.DateOnly, d.Baseline.To)
-	return d.MetricKey != "" && d.ControlProductKey != "" && d.ControlProductKey != r.Product &&
-		e1 == nil && e2 == nil && e3 == nil && e4 == nil &&
-		start.Weekday() == time.Monday && end.Equal(start.AddDate(0, 0, 27)) &&
-		baselineFrom.Equal(start.AddDate(0, 0, -28)) && baselineTo.Equal(start.AddDate(0, 0, -1)) &&
-		d.Current.To == r.Period.To && r.Period.From == end.AddDate(0, 0, -6).Format(time.DateOnly) &&
-		d.BaselineMean != nil && *d.BaselineMean > 0 && d.CurrentMean != nil && *d.CurrentMean >= 0 &&
-		d.ControlBaseline != nil && *d.ControlBaseline > 0 && d.ControlCurrent != nil && *d.ControlCurrent > 0 &&
-		d.Change != nil && *d.Change < 0 && d.Adjusted != nil && *d.Adjusted < 0 && d.hasSourceRefs()
+func (d watchdogDetails) usable(r evidence.Row, window *evidence.WindowContrast) bool {
+	return window != nil && window.RelativeChangePct < 0 &&
+		d.MetricKey != "" && d.ControlProductKey != "" && d.ControlProductKey != r.Product &&
+		d.Adjusted != nil && *d.Adjusted < 0 && d.hasSourceRefs()
 }
 
 func (d watchdogDetails) hasSourceRefs() bool {
@@ -212,6 +200,83 @@ func (s Service) refreshBrowser(ctx context.Context, prior decision.Record, next
 		}
 	}
 	next.Hypothesis, next.ExpectedVersion, next.ContextIDs = h, prior.Version, prior.ContextIDs
+	r, err := s.Save(ctx, next)
+	if errors.Is(err, decision.ErrVersion) {
+		return s.Get(ctx, decision.GetInput{HypothesisID: h.ID})
+	}
+	return r, err
+}
+
+func signalReadback(record decision.Record, rows []evidence.Row) decision.Record {
+	record.SignalContrast, record.SignalContrastUnverified = nil, false
+	for _, row := range rows {
+		if row.Metric != WatchdogMetric || row.Source != "sales" || !slices.Contains(record.Hypothesis.SignalIDs, row.ID) {
+			continue
+		}
+		window := evidence.WatchdogWindow(row)
+		if record.SignalContrast != nil || row.Product != record.Hypothesis.ProductKey || row.Value != "true" || window == nil {
+			record.SignalContrast, record.SignalContrastUnverified = nil, true
+			return record
+		}
+		record.SignalContrast = window
+	}
+	if record.SignalContrast == nil && strings.HasPrefix(record.Hypothesis.ID, "watch-") {
+		record.SignalContrastUnverified = true
+	}
+	return record
+}
+
+func (s Service) refreshInvestigation(ctx context.Context, prior decision.Record, next decision.SaveInput, rows []evidence.Row) (decision.Record, error) {
+	current := signalReadback(decision.Record{Hypothesis: next.Hypothesis}, rows).SignalContrast
+	if current == nil || prior.EvidenceSnapshotID == next.EvidenceSnapshotID {
+		return s.refreshBrowser(ctx, prior, next)
+	}
+	if !slices.Equal(prior.Hypothesis.SignalIDs, next.Hypothesis.SignalIDs) || prior.Hypothesis.ProductKey != next.Hypothesis.ProductKey {
+		return decision.Record{}, errors.New("сохранённая карточка относится к другому сигналу")
+	}
+	if old := prior.SignalContrast; old != nil {
+		comparable := *old
+		comparable.ProducerMagnitude = current.ProducerMagnitude
+		if comparable == *current {
+			return s.refreshBrowser(ctx, prior, next)
+		}
+	}
+	if prior.Task != nil {
+		prior.SignalContrast, prior.SignalContrastUnverified = nil, true
+		return prior, nil
+	}
+	if old := prior.SignalContrast; old != nil && (old.ProducerMagnitude || !current.ProducerMagnitude) {
+		return decision.Record{}, errors.New("снимки содержат разные контрасты для одного сигнала")
+	}
+	h := prior.Hypothesis
+	// Preserve the owner's draft and keep only observations present in the
+	// replacement snapshot. Its original revision remains available for audit.
+	present := map[string]bool{}
+	for _, row := range rows {
+		present[row.ID] = true
+	}
+	available := func(ids []string) []string {
+		result := []string{}
+		for _, id := range ids {
+			if present[id] {
+				result = append(result, id)
+			}
+		}
+		return result
+	}
+	h.SupportIDs, h.CounterIDs = available(h.SupportIDs), available(h.CounterIDs)
+	h.BrowserEvidenceIDs = available(h.BrowserEvidenceIDs)
+	if len(h.BrowserEvidenceIDs) == 0 && h.EvidenceLevel == "path_verified" {
+		h.EvidenceLevel = next.Hypothesis.EvidenceLevel
+		h.BrowserEvidenceIDs = next.Hypothesis.BrowserEvidenceIDs
+	}
+	criterion := next.Hypothesis.SuccessCriterion
+	if h.SuccessCriterion.MetricKey != criterion.MetricKey || h.SuccessCriterion.ControlProductKey != criterion.ControlProductKey {
+		h.SuccessCriterion = criterion
+	} else {
+		h.SuccessCriterion.BaselineFrom, h.SuccessCriterion.BaselineTo = current.Current.From, current.Current.To
+	}
+	next.Hypothesis, next.ExpectedVersion, next.ContextIDs = h, prior.Version, available(prior.ContextIDs)
 	r, err := s.Save(ctx, next)
 	if errors.Is(err, decision.ErrVersion) {
 		return s.Get(ctx, decision.GetInput{HypothesisID: h.ID})

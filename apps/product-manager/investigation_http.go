@@ -14,7 +14,10 @@ func investigatePage(p product.Service) func(http.ResponseWriter, *http.Request)
 			http.Error(w, "Некорректная форма", 400)
 			return nil
 		}
-		rec, err := p.Investigate(r.Context(), product.InvestigateInput{SnapshotID: r.PostForm.Get("snapshot_id")})
+		rec, err := p.Investigate(r.Context(), product.InvestigateInput{
+			SnapshotID: r.PostForm.Get("snapshot_id"), SignalID: r.PostForm.Get("signal_id"),
+			ProductKey: r.PostForm.Get("product_key"), WeekFrom: r.PostForm.Get("week_from"),
+		})
 		if err != nil {
 			http.Error(w, err.Error(), 422)
 			return nil

@@ -17,6 +17,7 @@ import (
 
 type InvestigateInput struct {
 	SnapshotID string `json:"snapshot_id"`
+	SignalID   string `json:"signal_id,omitempty"`
 	ProductKey string `json:"product_key,omitempty"`
 	WeekFrom   string `json:"week_from,omitempty"`
 }
@@ -69,7 +70,7 @@ func (s Service) Investigate(ctx context.Context, in InvestigateInput) (decision
 	rec, err := s.Get(ctx, decision.GetInput{HypothesisID: draft.Hypothesis.ID})
 	switch {
 	case err == nil:
-		rec, err = s.refreshBrowser(ctx, rec, draft)
+		rec, err = s.refreshInvestigation(ctx, rec, draft, rows)
 	case errors.Is(err, decision.ErrMissing):
 		rec, err = s.Save(ctx, draft)
 		if errors.Is(err, decision.ErrVersion) {
