@@ -28,11 +28,11 @@ func TestDeltas(t *testing.T) {
 }
 func TestReport(t *testing.T) {
 	q := Query{ProductKey: "store", From: "2026-01-01", To: "2026-01-07", Segment: "all"}
-	o := report(json.RawMessage(`{"result":{"totals":[4],"sampled":false}}`), q, "purchase_conversion", metrics["purchase_conversion"], Ref{"x", "q", "", ""})
+	o := report(json.RawMessage(`{"result":{"totals":{"ym:s:usersPurchasePercentage":4},"meta":{"sampled":false}}}`), q, "purchase_conversion", metrics["purchase_conversion"], Ref{"x", "q", "", ""})
 	if o.Value == nil || *o.Value != .04 || o.Status != "observed" {
 		t.Fatalf("%+v", o)
 	}
-	o = report(json.RawMessage(`{"totals":[0],"sampled":true}`), q, "orders", metrics["orders"], Ref{})
+	o = report(json.RawMessage(`{"totals":{"ym:s:ecommercePurchases":0},"meta":{"sampled":true}}`), q, "orders", metrics["orders"], Ref{})
 	if o.Value == nil || *o.Value != 0 || o.Status != "estimated" {
 		t.Fatalf("%+v", o)
 	}
@@ -50,10 +50,10 @@ func TestHistorical(t *testing.T) {
 }
 func TestCheck(t *testing.T) {
 	s := Service{config: func(context.Context) Settings { return Settings{Counter: 42} }, call: func(_ context.Context, n string, _ any) (json.RawMessage, error) {
-		if n != "list_counters" {
+		if n != "get_metadata" {
 			t.Fatal(n)
 		}
-		return json.RawMessage(`{"result":[{"id":42}]}`), nil
+		return json.RawMessage(`{"result":{"counters":[{"id":42}]}}`), nil
 	}}
 	r, e := s.Check(context.Background(), CheckInput{})
 	if e != nil || r.Status != "ok" {
@@ -71,17 +71,36 @@ func TestLiveQuery(t *testing.T) {
 	calls := 0
 	s := Service{config: func(context.Context) Settings { return Settings{Counter: 42} }, call: func(_ context.Context, n string, args any) (json.RawMessage, error) {
 		calls++
-		if n != "query" {
+		if n != "run_report" {
 			t.Fatal(n)
 		}
 		a := args.(map[string]any)
-		if a["counter_id"] != int64(42) || a["metrics"] != "ym:s:visits" || a["date1"] != "2026-01-01" || a["date2"] != "2026-01-07" {
+		if a["counterId"] != int64(42) || a["metrics"].([]string)[0] != "ym:s:visits" || a["date1"] != "2026-01-01" || a["date2"] != "2026-01-07" {
 			t.Fatalf("wrong request: %+v", a)
 		}
-		return json.RawMessage(`{"totals":[123],"sampled":false}`), nil
+		return json.RawMessage(`{"totals":{"ym:s:visits":123},"meta":{"sampled":false}}`), nil
 	}}
 	b, e := s.Query(context.Background(), Query{ProductKey: "store", MetricKeys: []string{"visits", "orders"}, From: "2026-01-01", To: "2026-01-07"})
 	if e != nil || calls != 1 || b.Status != "partial" || b.Observations[0].Value == nil || *b.Observations[0].Value != 123 || b.Observations[1].Value != nil {
+		t.Fatalf("%+v %v", b, e)
+	}
+}
+
+func TestBoxLabComparison(t *testing.T) {
+	calls := 0
+	s := Service{config: func(context.Context) Settings { return Settings{Counter: 42, Ecommerce: true} }, call: func(_ context.Context, n string, args any) (json.RawMessage, error) {
+		calls++
+		if n != "run_comparison" {
+			t.Fatalf("expected native comparison, got %s", n)
+		}
+		a := args.(map[string]any)
+		if a["date1A"] != "2026-01-01" || a["date1B"] != "2026-01-08" || a["accuracy"] != "full" {
+			t.Fatalf("unexpected args %+v", a)
+		}
+		return json.RawMessage(`{"totals":{"ym:s:usersPurchasePercentage":{"a":4,"b":3,"delta":-1,"delta_pct":-25}},"meta":{"sampled":false}}`), nil
+	}}
+	b, e := s.Compare(context.Background(), Compare{ProductKey: "store", MetricKeys: []string{"purchase_conversion"}, BaselineFrom: "2026-01-01", BaselineTo: "2026-01-07", CurrentFrom: "2026-01-08", CurrentTo: "2026-01-14"})
+	if e != nil || calls != 1 || b.Status != "ok" || len(b.Observations) != 4 || *b.Observations[0].Value != .04 || *b.Observations[1].Value != .03 || b.Observations[2].Unit != "pp" || *b.Observations[2].Value != -1 || *b.Observations[3].Value != -25 {
 		t.Fatalf("%+v %v", b, e)
 	}
 }

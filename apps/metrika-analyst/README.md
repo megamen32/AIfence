@@ -1,31 +1,38 @@
 # Metrika Analyst
 
-Airlock SDK v0.11.0. Готовый read-only MCP → штатная интеграция Airlock → аналитические инструменты + SKILL.md. Нет собственного API-клиента, базы метрик или синхронизации. Выгрузки — файлы Airlock в формате evidence-v1, не второй сервис.
+Airlock SDK v0.11.0. Готовый MCP → Supergateway → штатный MCP-ресурс Airlock → аналитические инструменты + инструкции. Нет собственного клиента API Метрики, базы метрик или второго сервиса импорта.
 
 ## Выбор MCP
 
-DevCrabs: 9bd1c25caf130b79ee5af60284c95674bd7bb18b, MIT, stdio и локальный OAuth/OS keychain. Для переносимого хакатонного стенда выбран expremiental: 4e708b38327ff4056e1e634cd3ea862b214edd1a, MIT, нативный HTTP, произвольные метрики, сырые totals и metadata, accuracy=full. Не нужен персональный GPTAdmin или дополнительный шлюз. Исходники MCP не копируются в этот репозиторий.
+BoxLab `yandex-metrica-mcp@1.0.1` (исследованный исходник 67ea99ef) + `supergateway@4.3.0`. Точный npm lock включён. Выбор по функциональности: цели, e-commerce, сравнения периодов, временные ряды и детализация. DevCrabs имеет закрытый каталог метрик без e-commerce; expremiental не реализует специализированные сравнения. Транспорт stdio не является причиной отказываться от более функционального MCP.
+
+Живое сравнение вызывает `run_comparison` BoxLab и нормализует результат в контракт evidence-v1. При работе с историческими агрегатами из файлов Airlock выполняются детерминированные расчёты. Нет подмены live синтетическими данными.
 
 ## Подключение
 
-1. Запустить готовый MCP в закрытой сети Airlock. У каждого заказчика отдельный экземпляр/ресурс с отдельным разрешённым токеном metrika:read. Не публиковать HTTP порт и не делить общий токен между клиентами. Токен передавать через защищённое окружение, никогда через чат.
-2. SDK объявляет ресурс yandex_metrika, http://metrika-mcp:8000/mcp. Использовать этот DNS alias в частной сети MCP-прокси или совместимый привязанный ресурс. Подключение ещё должно быть проверено на живом Airlock.
-3. В Env приложения указать counter_id. ecommerce_confirmed=true только после проверки инструментации и непрерывности сбора за оба периода. При необходимости указать evidence_path или source_path в инструменте: это явно выбранный исторический evidence-v1 JSON, без автоматической подмены live.
-4. check_metrika → compare_periods. Live: product_key=store, сегменты all/mobile/desktop, денежные метрики в RUB. Идентификация SKU требует явного маппинга.
+1. В отдельной закрытой сети каждого заказчика запустить готовые пакеты командой ниже. Задать `YANDEX_METRIKA_TOKEN` (только metrika:read) и отдельный `SUPERGATEWAY_API_KEY` из защищённого окружения. Не публиковать порт наружу и не передавать секреты в чат. `YANDEX_METRIKA_ENABLE_WRITE=false`.
+2. SDK объявляет штатный MCP-ресурс `yandex_metrika`, `http://metrika-mcp:8000/mcp`, с token-auth. В credentials Airlock указать ключ шлюза, не токен Яндекса. MCP-прокси должен видеть DNS-имя metrika-mcp в закрытой сети.
+3. Указать `counter_id`, `ecommerce_confirmed=true` только после проверки полноты инструментации. Для файлов явно выбрать `evidence_path` или `source_path` (evidence-v1 JSON).
+4. `check_metrika` → `compare_periods`. Live-метрики магазина: `product_key=store`, сегмент `all` или `filter:<проверенный фильтр API>` (предварительно уточнить значения через отчёты MCP). Денежные показатели RUB для MVP; SKU и цели требуют явной конфигурации или отдельного прямого запроса MCP.
 
 ```sh
 # AIFENCE_MCP_NETWORK — существующая закрытая сеть прокси Airlock.
-# YANDEX_METRIKA_TOKEN — из защищённого окружения.
+# YANDEX_METRIKA_TOKEN и SUPERGATEWAY_API_KEY — из защищённого окружения.
 docker compose -f metrika.compose.yml up -d --build
 go test ./...
 AIRLOCK_AGENT_MODE=manifest go run .
 go tool air build
 ```
 
-Инструменты: query_metrics, compare_periods, check_metrika. Равные непересекающиеся окна; абсолютные, относительные и п.п. изменения; null при отсутствии данных/нулевой базе; неполные данные помечаются. UI / выводит таблицу со ссылками на факты; чат интерпретирует. Реальные выгрузки должен сопоставить с evidence-v1 владелец трека данных; синтетические тесты не подтверждают реальное подключение.
+Шлюз публикует только get_metadata, describe_counter, run_report, run_comparison, run_timeseries, run_drilldown. Выгрузка сырых событий, административные операции и записи не входят в MVP. Внутри приложения: query_metrics, compare_periods, check_metrika; возврат evidence-v1. Равные непересекающиеся окна; абсолютные, относительные и п.п. изменения; null при отсутствии данных/нулевой базе; семплирование помечается. UI / выводит таблицу со ссылками на факты. Интерпретация — чат.
+
+## Инструкции агента
+
+INSTRUCTIONS.md встроен в Go-бинарник и зарегистрирован штатным `agent.AddInstruction`. Это не отдельный runtime-механизм SKILL.md: приложение получает методологию в системном промпте. Поддержка developer skills относится к среде разработки.
 
 ## Verification on Mac M1 (2026-11-26)
 
-- go test -v ./...: six tests passed (deltas including zero/missing, report parser and sampling, historical exact windows, counter check, agent definition, typed live query with a synthetic MCP response).
-- go vet ./...: passed. Go binary built and offline Airlock manifest generated.
-- Official air build initiated; result pending due to toolchain download / inaccessible job receipt. Local Airlock http://localhost:42080 unavailable. No deployment marker, no live Yandex token or counter, no claim of end-to-end acceptance.
+- go test -v ./...: seven tests passed; go vet passed; Go offline manifest generated.
+- Actual npm packages installed; Supergateway streamable HTTP initialized, requests without gateway key rejected, six-tool allowlist verified. Real BoxLab metadata, report and comparison calls against a local synthetic API passed (-20% comparison).
+- Reproduce: `npm ci --omit=dev && python3 smoke_boxlab.py`. This test uses only a localhost synthetic API and never accesses a customer's account.
+- Live Yandex token/counter not configured. Local Airlock HTTP at :42080 was unavailable. No end-to-end deployment or real customer data acceptance claimed.

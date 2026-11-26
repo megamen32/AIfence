@@ -5,11 +5,11 @@ services:
       dockerfile: metrika.Dockerfile
     environment:
       YANDEX_METRIKA_TOKEN: ${YANDEX_METRIKA_TOKEN:?Supply authorized read-only token in environment}
-      MCP_TRANSPORT: http
-      HOST: 0.0.0.0
-      PORT: "8000"
+      SUPERGATEWAY_API_KEY: ${SUPERGATEWAY_API_KEY:?Supply a separate gateway key; configure it in Airlock MCP credentials}
+      YANDEX_METRIKA_ENABLE_WRITE: "false"
     networks:
       - private
+    stdin_open: true
     restart: unless-stopped
 networks:
   private:

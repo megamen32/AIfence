@@ -1,6 +1,8 @@
-FROM python:3.12-slim
-RUN apt-get update && apt-get install --no-install-recommends -y git && rm -rf /var/lib/apt/lists/* \
- && pip install --no-cache-dir "git+https://github.com/expremiental/yandex-metrika-mcp.git@4e708b38327ff4056e1e634cd3ea862b214edd1a"
-RUN useradd --create-home --uid 10001 mcp
-USER mcp
-ENTRYPOINT ["yandex-metrika-mcp"]
+FROM node:22-bookworm-slim
+WORKDIR /opt/metrika
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+ENV PATH="/opt/metrika/node_modules/.bin:$PATH"
+USER node
+ENV YANDEX_METRIKA_ENABLE_WRITE=false
+ENTRYPOINT ["supergateway","--stdio","yandex-metrica-mcp","--outputTransport","streamableHttp","--stateful","--host","0.0.0.0","--port","8000","--tools","get_metadata","--tools","describe_counter","--tools","run_report","--tools","run_comparison","--tools","run_timeseries","--tools","run_drilldown"]

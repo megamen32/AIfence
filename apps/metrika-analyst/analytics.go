@@ -227,10 +227,9 @@ func (s Service) query(ctx context.Context, q Query, c Settings) (Batch, error) 
 	if q.ProductKey != "store" {
 		return Batch{}, fmt.Errorf("live MVP supports store-level metrics; SKU needs explicit mapping")
 	}
-	filters := map[string]string{"all": "", "mobile": "ym:s:deviceCategory=='mobile'", "desktop": "ym:s:deviceCategory=='desktop'"}
-	filter, ok := filters[q.Segment]
-	if !ok {
-		return Batch{}, fmt.Errorf("live segment must be all/mobile/desktop")
+	filter, err := segmentFilter(q.Segment)
+	if err != nil {
+		return Batch{}, err
 	}
 	if q.To >= time.Now().UTC().Format(time.DateOnly) {
 		return Batch{}, fmt.Errorf("choose completed days; verify counter timezone")
@@ -247,13 +246,13 @@ func (s Service) query(ctx context.Context, q Query, c Settings) (Batch, error) 
 			out.Status = "partial"
 			continue
 		}
-		args := map[string]any{"counter_id": c.Counter, "metrics": d.api, "date1": q.From, "date2": q.To, "limit": 1}
+		args := map[string]any{"counterId": c.Counter, "metrics": []string{d.api}, "date1": q.From, "date2": q.To, "limit": 1, "accuracy": "full"}
 		if filter != "" {
 			args["filters"] = filter
 		}
 		ab, _ := json.Marshal(args)
-		ref.Locator = "query " + string(ab)
-		raw, e := s.call(ctx, "query", args)
+		ref.Locator = "run_report " + string(ab)
+		raw, e := s.call(ctx, "run_report", args)
 		if e != nil {
 			out.Observations = append(out.Observations, missing(q, k, ref, "MCP query failed; verify authorization/metric."))
 			out.Status = "partial"
@@ -277,7 +276,7 @@ type metricDef struct {
 var metrics = map[string]metricDef{
 	"visits": {"ym:s:visits", "count", "", 1, false}, "users": {"ym:s:users", "count", "", 1, false}, "pageviews": {"ym:s:pageviews", "count", "", 1, false},
 	"orders": {"ym:s:ecommercePurchases", "count", "", 1, true}, "revenue": {"ym:s:ecommerceRUBConvertedRevenue", "RUB", "RUB", 1, true},
-	"product_views": {"ym:s:productImpressionsUniq", "count", "", 1, true}, "add_to_cart": {"ym:s:productBasketsUniq", "count", "", 1, true}, "checkout_users": {"ym:s:productBeginCheckoutUniq", "count", "", 1, true}, "purchase_users": {"ym:s:productPurchasedUniq", "count", "", 1, true}, "purchase_conversion": {"ym:s:usersPurchasePercentage", "ratio", "", .01, true}, "average_order_value": {"ym:s:ecommerceRUBConvertedRevenuePerPurchase", "RUB", "RUB", 1, true},
+	"product_views": {"ym:s:productImpressions", "count", "", 1, true}, "add_to_cart": {"ym:s:productBasketsQuantity", "count", "", 1, true}, "purchase_conversion": {"ym:s:usersPurchasePercentage", "ratio", "", .01, true}, "average_order_value": {"ym:s:ecommerceRUBConvertedRevenuePerPurchase", "RUB", "RUB", 1, true},
 }
 
 func unwrap(raw json.RawMessage) json.RawMessage {
@@ -294,23 +293,34 @@ func report(raw json.RawMessage, q Query, k string, d metricDef, ref Ref) Observ
 	o.Unit = d.unit
 	o.Currency = d.currency
 	var r struct {
-		Totals      []*float64 `json:"totals"`
-		Sampled     *bool      `json:"sampled"`
-		SampleShare *float64   `json:"sample_share"`
-		DataLag     *int       `json:"data_lag"`
+		Totals map[string]*float64 `json:"totals"`
+		Meta   reportMeta          `json:"meta"`
 	}
-	if json.Unmarshal(unwrap(raw), &r) != nil || len(r.Totals) != 1 || r.Totals[0] == nil {
+	if json.Unmarshal(unwrap(raw), &r) != nil {
 		return o
 	}
-	v := *r.Totals[0] * d.scale
+	return observed(o, r.Totals[d.api], d.scale, r.Meta)
+}
+
+type reportMeta struct {
+	Sampled     *bool    `json:"sampled"`
+	SampleShare *float64 `json:"sample_share"`
+	DataLag     *int     `json:"data_lag_seconds"`
+}
+
+func observed(o Observation, value *float64, scale float64, meta reportMeta) Observation {
+	if value == nil {
+		return o
+	}
+	v := *value * scale
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return o
 	}
 	o.Value = num(v)
 	o.Status = "observed"
 	o.Caveats = []string{"Recorded events, not accounting or proof of causality. Verify collection and timezone."}
-	o.Details = map[string]any{"origin": "live_mcp", "sampled": r.Sampled, "sample_share": r.SampleShare, "data_lag": r.DataLag}
-	if r.Sampled == nil || *r.Sampled {
+	o.Details = map[string]any{"origin": "live_mcp", "sampled": meta.Sampled, "sample_share": meta.SampleShare, "data_lag": meta.DataLag}
+	if meta.Sampled == nil || *meta.Sampled {
 		o.Status = "estimated"
 		o.Caveats = append(o.Caveats, "Sampled or unknown sampling status.")
 	}
@@ -331,6 +341,9 @@ func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
 		return Batch{}, fmt.Errorf("require equal non-overlapping chronological periods")
 	}
 	cfg := s.config(ctx)
+	if cfg.Counter > 0 && chosen(a.SourcePath, cfg.EvidencePath) == "" {
+		return s.compareLive(ctx, a, b, cfg)
+	}
 	x, e := s.query(ctx, a, cfg)
 	if e != nil {
 		return Batch{}, e
@@ -408,19 +421,21 @@ func (s Service) Check(ctx context.Context, in CheckInput) (CheckResult, error) 
 		r.Message = "Configure counter_id"
 		return r, nil
 	}
-	raw, e := s.call(ctx, "list_counters", nil)
+	raw, e := s.call(ctx, "get_metadata", nil)
 	if e != nil {
 		r.Message = "MCP unavailable or unauthorized"
 		return r, nil
 	}
-	var rows []struct {
-		ID int64 `json:"id"`
+	var metadata struct {
+		Counters []struct {
+			ID int64 `json:"id"`
+		} `json:"counters"`
 	}
-	if json.Unmarshal(unwrap(raw), &rows) != nil {
+	if json.Unmarshal(unwrap(raw), &metadata) != nil {
 		r.Message = "Unexpected counter list response"
 		return r, nil
 	}
-	for _, v := range rows {
+	for _, v := range metadata.Counters {
 		if v.ID == c.Counter {
 			r.Status = "ok"
 			r.Message = "Configured counter listed; ecommerce instrumentation not proven."

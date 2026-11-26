@@ -1,0 +1,9 @@
+{
+  "name": "aifence-metrika-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "yandex-metrica-mcp": "1.0.1",
+    "supergateway": "4.3.0"
+  }
+}

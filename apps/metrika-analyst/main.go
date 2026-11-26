@@ -13,13 +13,13 @@ import (
 	"strings"
 )
 
-//go:embed SKILL.md index.html
+//go:embed INSTRUCTIONS.md index.html
 var assets embed.FS
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
 	a := agentsdk.New(agentsdk.Config{Description: "Аналитика интернет-магазина: динамика, воронка и измерение релизов.", Icon: "📊"})
-	m := a.RegisterMCP(&agentsdk.MCP{Slug: "yandex_metrika", Name: "Yandex Metrika (read-only MCP)", URL: "http://metrika-mcp:8000/mcp", AuthMode: agentsdk.MCPAuthNone})
+	m := a.RegisterMCP(&agentsdk.MCP{Slug: "yandex_metrika", Name: "Yandex Metrika (BoxLab, read-only MCP)", URL: "http://metrika-mcp:8000/mcp", AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared})
 	counter := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "counter_id", Description: "ID счётчика магазина", Pattern: "^[0-9]+$"})
 	ec := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "ecommerce_confirmed", Description: "Подтверждена непрерывная инструментация e-commerce за анализируемые периоды", Default: "false", Pattern: "^(true|false)$"})
 	file := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "evidence_path", Description: "Необязательный путь к явно выбранному evidence-v1 JSON в файлах Airlock; пусто — live MCP"})
@@ -44,8 +44,8 @@ func newAgent() *agentsdk.Agent {
 		p, _ := file.Get(ctx)
 		return Settings{n, e == "true", p}
 	}, read: a.ReadFile}
-	skill, _ := assets.ReadFile("SKILL.md")
-	a.AddInstruction(&agentsdk.Instruction{Text: string(skill)})
+	instructions, _ := assets.ReadFile("INSTRUCTIONS.md")
+	a.AddInstruction(&agentsdk.Instruction{Text: string(instructions)})
 	a.RegisterTool(tool.Typed[Query, Batch]("query_metrics").Description("Read exact period metrics from configured MCP or explicitly selected historical evidence file.").Execute(s.Query).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[Compare, Batch]("compare_periods").Description("Compare equal non-overlapping periods; output evidence-v1 including changes.").Execute(s.Compare).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[CheckInput, CheckResult]("check_metrika").Description("Check authorized counter or historical file. Never returns token.").Execute(s.Check).Build(), agentsdk.AccessUser)
