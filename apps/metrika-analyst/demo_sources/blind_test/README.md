@@ -59,6 +59,7 @@ S0 is scored as correct when no card is supplied.
 
 ```sh
 python3 -m py_compile blind_test_generator.py test_blind_test_generator.py
+python3 -m unittest -v test_blind_test_generator_unittest.py
 python3 - <<'PY'
 from pathlib import Path
 import blind_test_generator as g
