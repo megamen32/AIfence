@@ -1,0 +1,22 @@
+# Separate, local-only Baserow instance. Airlock source is untouched.
+services:
+  baserow:
+    image: baserow/baserow:2.4.3
+    platform: linux/arm64
+    environment:
+      BASEROW_PUBLIC_URL: http://localhost:42081
+      BASEROW_FRONTEND_COOKIE_PREFIX: aifence_baserow
+      BASEROW_MCP_OAUTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:42081:80"
+    volumes:
+      - data:/baserow/data
+    networks:
+      - airlock_private
+    restart: unless-stopped
+volumes:
+  data:
+networks:
+  airlock_private:
+    external: true
+    name: aifence
