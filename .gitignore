@@ -26,3 +26,6 @@
 
 # Generated local demo evidence may contain restricted partner data.
 /apps/metrika-analyst/demo_sources/data/
+
+# Local organizer's plan contains customer reference-case figures.
+/AIfence — план до сдачи 28.11.md

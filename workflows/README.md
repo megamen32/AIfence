@@ -35,3 +35,25 @@ A hosted `run_js_file` runs under the current user's file and app grants. An SDK
 ## Test
 
 `node --test workflows/collect-evidence.test.mjs` from the repository root. Tests use mocked native capability contracts and synthetic inputs; they are not a live Airlock integration test. For live acceptance verify actual deployed tool schemas and one hosted `run_js_file` invocation, read the returned file via the user's catalog, and repeat the identical request to confirm idempotency.
+
+## Сторож канала
+
+Установите `investigate-signal.js` как `/home/Documents/AIfence-investigate-signal.js` в каталоге пользователя Airlock. В чате Product Manager передайте его в `run_js_file`. Минимальные параметры для встроенной учебной истории:
+
+```json
+{
+  "series": {
+    "product_key": "demo_target",
+    "control_product_key": "demo_control",
+    "metric_key": "orders_index",
+    "from": "2023-02-13",
+    "to": "2023-03-05",
+    "as_of": "2023-03-03",
+    "source_path": "fixtures/synthetic-watch.json",
+    "context_path": "fixtures/synthetic-watch-context.json"
+  },
+  "keywords": ["checkout"]
+}
+```
+
+Первая полная неделя в этом окне остаётся спокойной, на второй появляется сигнал, третья ещё не закончилась. Скрипт сохраняет недельные решения и источники первой тревоги в снимок Product Manager. При отсутствии тревоги он возвращает состояние недель. Необязательный `sku` запускает проверку предложений для точного артикула. Для настроенного пути KES параметр `check_browser` запускает сегодняшнюю проверку в браузере. Для создания задачи по явному поручению пользователя передайте `confirm_backlog: true`.

@@ -58,7 +58,7 @@ function result(file,doc,reused) {
 }
 const old=await existing();
 if(old) return result(old.file,old.doc,true);
-const allowed=new Set(["market","metrika","sales","research","backlog","release","economics"]);
+const allowed=new Set(["market","metrika","sales","research","backlog","release","economics","browser"]);
 function batch(b,expected) {
   if(typeof b==="string") b=JSON.parse(b);
   if(!isObject(b)||b.schema_version!=="aifence.v1"||!allowed.has(b.source)||

@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Read aggregate Airlock model usage for one AIfence conversation from the stand."""
+import argparse
+import subprocess
+from uuid import UUID
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("conversation", type=UUID)
+parser.add_argument("--context", help="Docker context for the isolated stand")
+parser.add_argument("--postgres", default="aifence-postgres-1")
+args = parser.parse_args()
+docker = ["docker"]
+if args.context:
+    docker += ["--context", args.context]
+query = """
+BEGIN READ ONLY;
+SELECT json_build_object(
+  'run_id', r.id, 'status', r.status, 'model_calls', r.llm_calls,
+  'input_tokens', r.llm_tokens_in, 'output_tokens', r.llm_tokens_out,
+  'run_seconds', ROUND(EXTRACT(EPOCH FROM (r.finished_at - r.started_at))::numeric, 2),
+  'meter', 'Airlock runs'
+)
+FROM runs r
+WHERE r.trigger_ref = :'chat' AND r.trigger_type = 'prompt'
+ORDER BY r.started_at;
+COMMIT;
+"""
+command = docker + ["exec", "-i", args.postgres, "sh", "-c",
+    'exec psql -XqtA -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"',
+    "psql", "-v", f"chat={args.conversation}"]
+subprocess.run(command, input=query, text=True, check=True, timeout=20)

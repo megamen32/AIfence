@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Install investigate-signal.js in the local Airlock user's file catalog.
+
+Run after the normal SDK login to http://localhost:42080. Use path and
+sha256 from the JSON receipt as path and expected_sha256 for run_js_file
+in the same user's chat. The caller supplies description and args there.
+"""
+import argparse
+import base64
+import hashlib
+import http.client
+import json
+import os
+import sys
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlencode
+
+ORIGIN = "http://localhost:42080"
+CATALOG = "/api/v1/files/catalog"
+SOURCE = Path(__file__).resolve().parents[1] / "workflows/investigate-signal.js"
+DESTINATION = PurePosixPath("/home/Documents/AIfence-investigate-signal.js")
+MIME = "text/javascript"
+MAX_SCRIPT_BYTES = 256 * 1024
+
+
+def sdk_token():
+    if sys.platform == "darwin":
+        config = Path.home() / "Library/Application Support"
+    else:
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    try:
+        sessions = json.loads((config / "airlock/credentials.json").read_text())["sessions"]
+        token = sessions[ORIGIN]["accessToken"]
+    except (OSError, ValueError, KeyError, TypeError):
+        token = None
+    if not token:
+        raise RuntimeError(f"SDK session unavailable; log in with go tool air login {ORIGIN}")
+    return token
+
+
+def install(connection, token, source):
+    def request(method, route, payload=None, missing_ok=False):
+        headers = {"Authorization": "Bearer " + token}
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
+        connection.request(method, CATALOG + route, None if payload is None else json.dumps(payload), headers)
+        response = connection.getresponse()
+        body = response.read()
+        if response.status == 404 and missing_ok:
+            return None, None
+        if response.status in (401, 403):
+            raise RuntimeError(f"catalog access denied (HTTP {response.status}); check the local SDK login and file access")
+        if response.status in (409, 412):
+            raise RuntimeError("catalog changed concurrently; rerun to resolve the current version")
+        if not 200 <= response.status < 300:
+            raise RuntimeError(f"catalog {method} failed (HTTP {response.status})")
+        return body, response.getheader("X-Airlock-File-Ref")
+
+    def stat(path, missing_ok=False):
+        body, _ = request("GET", "/stat?" + urlencode({"path": str(path)}), missing_ok=missing_ok)
+        return json.loads(body)["entry"] if body is not None else None
+
+    def read(file):
+        body, header = request("GET", f"/entries/{file['id']}/content")
+        ref = json.loads(header or "{}")
+        # The read header uses encoding/json field names, unlike the catalog body.
+        if (ref.get("id"), ref.get("content_id"), ref.get("path")) != (
+            file["id"], file["contentId"], file["path"]
+        ):
+            raise RuntimeError("catalog version or path changed during readback")
+        return body
+
+    entry = stat(DESTINATION, missing_ok=True)
+    payload = {"contentType": MIME, "content": base64.b64encode(source).decode("ascii")}
+    if entry is None:
+        directory = stat(DESTINATION.parent)
+        if not directory["isDirectory"] or directory["path"] != str(DESTINATION.parent):
+            raise RuntimeError("catalog destination is not the user's Documents directory")
+        payload.update(destinationId=directory["id"], name=DESTINATION.name)
+        body, _ = request("POST", "/entries", payload)
+        file, action = json.loads(body), "created"
+    elif entry["isDirectory"]:
+        raise RuntimeError("catalog target is a directory")
+    else:
+        file = entry["file"]
+        if read(file) == source:
+            action = "unchanged"
+        else:
+            payload["file"] = file
+            body, _ = request("PUT", f"/entries/{file['id']}/content", payload)
+            replacement = json.loads(body)
+            if replacement["id"] != file["id"] or replacement["contentId"] == file["contentId"]:
+                raise RuntimeError("catalog returned an inconsistent replacement version")
+            file, action = replacement, "updated"
+
+    current = stat(DESTINATION)["file"]
+    if current["id"] != file["id"] or current["contentId"] != file["contentId"] or current["path"] != str(DESTINATION):
+        raise RuntimeError("catalog version or path changed after install")
+    if read(current) != source:
+        raise RuntimeError("catalog readback differs from the local source")
+    return {
+        "action": action, "path": str(DESTINATION), "file_id": current["id"],
+        "content_id": current["contentId"], "sha256": hashlib.sha256(source).hexdigest(),
+    }
+
+
+def main():
+    argparse.ArgumentParser(description=__doc__).parse_args()
+    connection = http.client.HTTPConnection("localhost", 42080, timeout=10)
+    try:
+        with SOURCE.open("rb") as script:
+            source = script.read(MAX_SCRIPT_BYTES + 1)
+        if len(source) > MAX_SCRIPT_BYTES or not source.decode("utf-8").strip():
+            raise RuntimeError("workflow must be nonempty UTF-8, at most 256 KiB")
+        receipt = install(connection, sdk_token(), source)
+    except UnicodeError:
+        print("install-workflow: workflow is not UTF-8", file=sys.stderr)
+        return 1
+    except (OSError, http.client.HTTPException, ValueError, KeyError, TypeError):
+        print("install-workflow: unable to read source or verify the catalog response", file=sys.stderr)
+        return 1
+    except RuntimeError as error:
+        print(f"install-workflow: {error}", file=sys.stderr)
+        return 1
+    finally:
+        connection.close()
+    print(json.dumps(receipt))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
