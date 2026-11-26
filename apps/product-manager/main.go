@@ -14,7 +14,7 @@ import (
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: `Product Manager отвечает на вопросы директора о магазине. Открой PM через platform.inspectApp внутри run_js и сразу выполни разрешённые чтения. Для вопроса о цене сразу вызови apps.market_watch.tools.list_offers внутри run_js. Дай решение в текущем чате.`, Icon: "🧭"})
+	a := agentsdk.New(agentsdk.Config{Description: `Product Manager помогает решать, что менять в магазине. В run_js явно возвращай данные через return: один await оставляет ответ пустым. Для проверки продаж можно выполнить return (await apps.metrika_analyst.tools.discover_watchdog_series({})).findings. В Market Watch list_offers принимает product_key (название товара или артикул) и limit. Если вопрос о цене и падении продаж, исследуй обе части. Дай директору решение по полученным данным.`, Icon: "🧭"})
 	topic := a.RegisterUIChangeTopic("product-decisions")
 	policy := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "private_model_route", Description: "Доступ закрытых снимков из чата с разрешенным локальным маршрутом модели. Значение задает владелец стенда после проверки конфигурации.", Default: "off", Pattern: "^(off|approved)$"})
 	e := evidence.New(a.DB(), topic, policy)
@@ -57,7 +57,7 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterStaticAsset(&agentsdk.StaticAsset{Name: views.AppCSSName, ContentType: "text/css; charset=utf-8", Data: views.AppCSS})
 	a.AddInstruction(&agentsdk.Instruction{Text: `Начинай разрешённые чтения сразу: вопрос пользователя уже поручает анализ. После inspectApp вызывай инструменты источника в этом же ходе. Если данные недоступны, дай результат доступной части и причину ограничения. План и вопрос о разрешении начать анализ не заменяют чтений.
 
-В hosted-чате вызывай run_js с полями code и description. Объявленные методы platform и apps вызывай внутри code. Для вопроса о цене начни таким кодом, подставив каталоговое написание названного товара или бренда без падежного окончания:
+В hosted-чате вызывай run_js с полями code и description. Возвращай результат явно через return. Пустой вывод run_js после await без return ничего не говорит о наличии данных. Проверь аргументы инструмента через platform.inspectApp и верни результат чтения. Для вопроса о цене начни таким кодом, подставив каталоговое написание названного товара или бренда без падежного окончания:
 const name = "<название из вопроса>";
 await platform.inspectApp({app:"market-watch",section:"tools",operation:"list_offers"});
 const page = await apps.market_watch.tools.list_offers({product_key:name,limit:12});
