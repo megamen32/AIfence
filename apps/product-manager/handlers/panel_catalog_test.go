@@ -35,7 +35,8 @@ func TestCatalogTailPreservesFullCountAndSignalVendors(t *testing.T) {
 		if (tile.Tone == "signal-associated" || tile.Tone == "control-context") || tile.Name == "Другие" {
 			found[tile.Name] = true
 		}
-		n, err := strconv.ParseInt(strings.ReplaceAll(strings.TrimSuffix(tile.Value, " товаров"), " ", ""), 10, 64)
+		value := strings.SplitN(tile.Value, " · ", 2)[0]
+		n, err := strconv.ParseInt(strings.ReplaceAll(strings.TrimSuffix(value, " товаров"), " ", ""), 10, 64)
 		if err != nil {
 			t.Fatal(err)
 		}
