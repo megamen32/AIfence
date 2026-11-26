@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -34,7 +35,24 @@ type PriceComparison struct {
 	Finding          string   `json:"price_evidence"`
 }
 
+type SeriesChange struct {
+	Name    string  `json:"name"`
+	Percent float64 `json:"change_pct"`
+}
+
+type SalesComparison struct {
+	Control        SeriesChange    `json:"control_product"`
+	Target         SeriesChange    `json:"measured_product"`
+	Baseline       evidence.Period `json:"baseline"`
+	Current        evidence.Period `json:"current"`
+	WeeksPerWindow int             `json:"weeks_in_each_window"`
+}
+
 type ProductReading struct {
+	Comparison          SalesComparison `json:"paired_sales_comparison"`
+	CheckedSKUs         int             `json:"checked_sku_count"`
+	ComparableSKUs      int             `json:"comparable_sku_count"`
+	EstimatedWeeklyRUB  *float64        `json:"estimated_weekly_potential_rub"`
 	windowEnd           string
 	Product             string      `json:"product"`
 	PriceEvidenceStatus string      `json:"price_evidence_status"`
@@ -83,7 +101,8 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 			continue
 		}
 		m := signalMagnitude(w)
-		control := signalPercent((w.ControlCurrentMean/w.ControlBaselineMean - 1) * 100)
+		controlPct := (w.ControlCurrentMean/w.ControlBaselineMean - 1) * 100
+		control := signalPercent(controlPct)
 		metric := label(metricTitles, r.details.Metric)
 		if r.details.Metric == "orders_index" {
 			metric = "Индекс заказов"
@@ -96,7 +115,13 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 		reading.Sales = fmt.Sprintf("%s, %s–%s к %s–%s (по %d недели): %s %s, %s %s.",
 			metric, date(w.Current.From), date(w.Current.To), date(w.Baseline.From), date(w.Baseline.To),
 			w.WindowWeeks, reading.Product, m.Change, productName(r.details.Control), control)
-		weekly, basis, _ := signalPlanning(records, r)
+		reading.Comparison = SalesComparison{
+			Control:  SeriesChange{productName(r.details.Control), math.RoundToEven(controlPct*10) / 10},
+			Target:   SeriesChange{reading.Product, math.RoundToEven(w.RelativeChangePct*10) / 10},
+			Baseline: w.Baseline, Current: w.Current, WeeksPerWindow: w.WindowWeeks,
+		}
+		weekly, basis, amount := signalPlanning(records, r)
+		reading.EstimatedWeeklyRUB = amount
 		if weekly != "" {
 			reading.Weekly = weekly + " (" + basis + ")."
 		} else {
@@ -227,6 +252,7 @@ func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, 
 		}
 	}
 	r.Price = fmt.Sprintf("В снимках проверено артикулов: %d. Одинаковые условия лицензии у двух или более магазинов подтверждены для %d из %d.", len(skus), n, len(skus))
+	r.CheckedSKUs, r.ComparableSKUs = len(skus), n
 	r.PriceEvidenceStatus = "comparable_quotes_available"
 	if n == 0 {
 		r.PriceEvidenceStatus = "insufficient_comparable_quotes"

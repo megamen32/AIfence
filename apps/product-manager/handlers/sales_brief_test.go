@@ -35,6 +35,10 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 	if len(summary.Readings) != 1 || summary.Readings[0].PriceEvidenceStatus != "insufficient_comparable_quotes" || !strings.Contains(summary.Readings[0].Price, "0 из 1") || len(summary.Readings[0].OfferExample) != 2 || !strings.Contains(summary.Readings[0].PriceTiming, "10.02.2026") || !strings.Contains(summary.Readings[0].Weekly, "₽") {
 		t.Fatal(summary)
 	}
+	got := summary.Readings[0]
+	if got.CheckedSKUs != 1 || got.ComparableSKUs != 0 || got.EstimatedWeeklyRUB != nil || got.Comparison.Control.Percent != 1.4 || got.Comparison.Target.Percent != -37.5 || got.Comparison.Current.To != "2026-01-18" {
+		t.Fatal(got)
+	}
 	during := quote
 	during.Period.To = "2026-01-14"
 	overlap := salesBrief([]monitorObservation{during, alert}, nil, BriefQuery{Summary: true})
