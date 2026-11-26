@@ -13,7 +13,7 @@ import (
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: "Продуктовые решения с проверяемыми источниками, задачами и оценкой после релиза.", Icon: "🧭"})
+	a := agentsdk.New(agentsdk.Config{Description: `Product Manager отвечает на вопросы директора о магазине. Вызови platform.inspectApp({app:"product-manager"}) внутри run_js, проверь данные доступных приложений и предложи решение прямо в этом чате.`, Icon: "🧭"})
 	topic := a.RegisterUIChangeTopic("product-decisions")
 	policy := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "private_model_route", Description: "Доступ закрытых снимков из чата с разрешенным локальным маршрутом модели. Значение задает владелец стенда после проверки конфигурации.", Default: "off", Pattern: "^(off|approved)$"})
 	e := evidence.New(a.DB(), topic, policy)
