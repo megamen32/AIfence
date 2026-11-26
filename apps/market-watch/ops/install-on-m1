@@ -79,7 +79,7 @@ required={"softline","softmap","softmagazin"}
 prices=result("prices.json")["observations"]
 actual={r["details"]["seller"] for r in prices if r.get("product_key")=="KL4141RCEFS" and r.get("value",0)>0 and r["source_ref"]["url"].startswith("https://") and r["details"]["captured_at"]}
 counts={r["source"] for r in result("counts.json")["sources"] if r["observed_offers"]>0}
-if not required.issubset(actual & counts): raise SystemExit("MCP must return observed prices and nonempty indexes for all three stores")
+if len(prices)!=len(required) or not required.issubset(actual & counts): raise SystemExit("MCP must return observed prices and nonempty indexes for all three stores")
 PY
 touch "$state/verified"
 phase verified

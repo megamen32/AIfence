@@ -83,7 +83,8 @@
       "price": {
         "selector": ".js-price-with-discount"
       },
-      "price_basis": "displayed_offer_price"
-    }
+      "price_basis": "displayed_total"
+    },
+    "adapter": "softline_product"
   }
 ]

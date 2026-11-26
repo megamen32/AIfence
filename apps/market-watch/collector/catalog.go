@@ -35,6 +35,7 @@ type Rule struct {
 	PriceBasis string `json:"price_basis"`
 }
 type Source struct {
+	Adapter        string   `json:"adapter,omitempty"`
 	ID             string   `json:"id"`
 	Host           string   `json:"host"`
 	Sitemap        string   `json:"sitemap"`
@@ -147,6 +148,13 @@ func Extract(s Source, page string, html io.Reader, at time.Time) ([]Offer, erro
 }
 
 func extractDoc(s Source, page string, doc *goquery.Document, at time.Time) ([]Offer, error) {
+	if s.Adapter == "softline_product" {
+		offer, err := SoftlineDetail(doc, page, at)
+		if err != nil || offer == nil {
+			return nil, err
+		}
+		return []Offer{*offer}, nil
+	}
 	base, _ := url.Parse(page)
 	var out []Offer
 	var invalid int

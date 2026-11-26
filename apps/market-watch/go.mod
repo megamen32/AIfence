@@ -6,6 +6,8 @@ require (
 	github.com/PuerkitoBio/goquery v1.14.0
 	github.com/airlockrun/agentsdk v0.11.0
 	github.com/airlockrun/goai v0.3.4
+	github.com/gofrs/flock v0.13.1
+	github.com/lib/pq v1.12.3
 	github.com/temoto/robotstxt v1.1.2
 )
 
@@ -20,10 +22,8 @@ require (
 	github.com/cli/browser v1.3.0 // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/gofrs/flock v0.13.1 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect

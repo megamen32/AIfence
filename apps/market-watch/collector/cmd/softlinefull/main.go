@@ -143,14 +143,14 @@ func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, erro
 	}
 	sku, _ := doc.Find(".js-sku-btn").First().Attr("data-code")
 	name := strings.Join(strings.Fields(doc.Find("h1").First().Text()), " ")
-	val := strings.TrimSpace(doc.Find(".js-price-with-discount").First().Text())
 	p := softlinefamily.Product{URL: page, SKU: strings.ToUpper(strings.TrimSpace(sku)), Name: name, State: "unrecognized_product"}
-	if name != "" && val != "" {
-		price, e := catalog.Money(val)
-		if e == nil {
-			p.State = "priced"
-			p.Offer = &catalog.Offer{Source: source.ID, SKU: p.SKU, Name: name, URL: page, PriceMinor: price, Currency: "RUB", PriceBasis: "displayed_offer_price", CapturedAt: at.UTC().Format(time.RFC3339)}
-		}
+	offer, err := catalog.SoftlineDetail(doc, page, at)
+	if err != nil {
+		return nil, err
+	}
+	if offer != nil {
+		p.State = "priced"
+		p.Offer = offer
 	}
 	if p.Offer == nil && name != "" {
 		main := strings.ToLower(strings.Join(strings.Fields(doc.Find("main,.b-product-card,.b-product-detail").Text()), " "))
@@ -289,16 +289,23 @@ func (s *survey) scan(ctx context.Context, urls []string, family bool, get fetch
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				msg := err.Error()
+				var status *catalog.HTTPStatus
 				c.State = "error"
-				c.Error = msg
-				if !family && (strings.HasPrefix(msg, "HTTP 404 ") || strings.HasPrefix(msg, "HTTP 410 ")) {
-					c.State = "unavailable"
-					c.Error = ""
-					c.Products = []softlinefamily.Product{{URL: page, State: "unavailable"}}
-				}
-				if strings.Contains(msg, "HTTP 429") || strings.Contains(msg, "HTTP 403") || strings.Contains(msg, "HTTP 503") {
-					return fmt.Errorf("source paused: %w", err)
+				c.Error = err.Error()
+				if errors.As(err, &status) {
+					switch status.Code {
+					case 404, 410:
+						c.State = "unavailable"
+						c.Error = ""
+						if !family {
+							c.Products = []softlinefamily.Product{{URL: page, State: "unavailable"}}
+						}
+					case 403, 429, 503:
+						if e := s.recordPause(status); e != nil {
+							return e
+						}
+						return fmt.Errorf("source paused: %w", err)
+					}
 				}
 			}
 			if e = save(path, c); e != nil {
@@ -339,6 +346,9 @@ func run() error {
 		return fmt.Errorf("another survey is active")
 	}
 	defer lock.Unlock()
+	if err := resumeAllowed(*out, time.Now()); err != nil {
+		return err
+	}
 	cycle := *runID
 	if cycle == "" {
 		active := filepath.Join(*out, "active-generation.json")
