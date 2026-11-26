@@ -5,7 +5,7 @@ One native Airlock saved async JavaScript body, not a new app or service. For a 
 ## Install
 
 1. In the target Airlock, use the normal Files interface to create/upload `/home/Documents/AIfence-collect-evidence.js` from `collect-evidence.js`. The directory must exist and the current user must have write permission. If updating an existing file, use its current contentId; never silently replace another script.
-2. In a hosted Product Manager conversation, inspect the actual app tool schemas. Invoke the single `run_js` tool in its saved-file form (path, description and args, without code). The query objects are passed directly to the native tool calls; the example illustrates the intended AIfence contract, not the separate personal Metrika Analyst API. Adjust them to the inspected schemas of the deployed apps.
+2. Inspect the deployed source tool schemas in the user's workspace. The arguments below describe the workflow input. On the pinned stand, `run_js_file` requires an `args` object and its installed executor rejects structured script arguments, including `{}`. For an ordinary `run_js`, bind the inspected inputs to `args` in the code body and use the workflow source in the same invocation. Check the returned file ID and content version before importing. An authorized operator can also import an existing snapshot through the Product Manager web form.
 
 ```json
 {
@@ -34,7 +34,7 @@ A hosted saved-file `run_js` runs under the current user's file and app grants. 
 
 ## Test
 
-`node --test workflows/collect-evidence.test.mjs` from the repository root. Tests use mocked native capability contracts and synthetic inputs; they are not a live Airlock integration test. For live acceptance verify actual deployed tool schemas and one hosted saved-file `run_js` invocation, read the returned file via the user's catalog, and repeat the identical request to confirm idempotency.
+`node --test workflows/collect-evidence.test.mjs` from the repository root. Tests use mocked native capability contracts and synthetic inputs; they are not a live Airlock integration test. For live acceptance verify the deployed tool schemas and one hosted workflow invocation, read the returned file via the user's catalog, and repeat the identical request to confirm idempotency.
 
 
 Для сторожа используются типизированные инструменты Metrika Analyst и Product Manager. Сохранённый файл выше относится к отдельной операции сбора свидетельств. Проверенное поведение установленного исполнителя описано в [журнале интеграции](../docs/qa/watchdog-chat.md).
