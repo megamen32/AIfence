@@ -41,9 +41,9 @@ func TestCardsAndSnapshotsRenderActionsAndEvidence(t *testing.T) {
 
 func TestMonitorOverviewAndProductPanel(t *testing.T) {
 	v := HomeView{BoardURL: "./board?", Monitor: &Monitor{
-		Products: []MonitorProduct{{Name: "Учебный продукт", URL: "./?monitor=demo", Origin: "Учебные данные",
+		Products: []MonitorProduct{{Name: "Kaspersky Small Office Security", URL: "./?monitor=demo", Origin: "Синтетические данные",
 			Cells: [4]MonitorCell{{Label: "Тревога", Tone: "alarm"}}}},
-		Pulse: []PulseItem{{Product: "Учебный продукт", Detected: "Время обнаружения неизвестно", URL: "./?monitor=demo"}},
+		Pulse: []PulseItem{{Product: "Kaspersky Small Office Security", Detected: "Время обнаружения неизвестно", URL: "./?monitor=demo"}},
 	}}
 	render := func(v HomeView) string {
 		t.Helper()
@@ -59,10 +59,10 @@ func TestMonitorOverviewAndProductPanel(t *testing.T) {
 			t.Fatal(want)
 		}
 	}
-	v.Monitor.Selected = &Investigation{Product: "Учебный продукт", Origin: "Учебные данные", Scale: "Не доказано",
+	v.Monitor.Selected = &Investigation{Product: "Kaspersky Small Office Security", Origin: "Синтетические данные", Scale: "Не доказано",
 		Chart: Chart{Target: "30,30 570,170", Control: "30,30 570,35", Fill: "30,30 570,170 570,35 30,30", ReleaseX: "300"}}
 	product := render(v)
-	for _, want := range []string{"trend-fill", "trend-release", "Учебные данные", "Задать допущения", "До и после релиза"} {
+	for _, want := range []string{"trend-fill", "trend-release", "Синтетические данные", "Задать допущения", "До и после релиза"} {
 		if !strings.Contains(product, want) {
 			t.Fatal(want)
 		}
@@ -74,7 +74,7 @@ func TestMonitorOverviewAndProductPanel(t *testing.T) {
 
 func TestSavedCardPutsVisualDetailsBeforeNormalActions(t *testing.T) {
 	v := HomeView{
-		Card: &Investigation{CardID: "saved", Product: "Учебный продукт",
+		Card: &Investigation{CardID: "saved", Product: "Kaspersky Small Office Security",
 			Chart: Chart{Caption: "Средние индексы", Target: "30,30 570,170"}},
 		Detail: &Decision{ID: "saved", Title: "Сохранённая гипотеза", Version: "1"},
 	}

@@ -74,8 +74,8 @@ type Chart struct {
 type ChartDot struct{ X, TargetY, ControlY, Label string }
 
 type MarketPrices struct {
-	SKU, TaskStatus, TaskURL, SnapshotURL string
-	Comparable, Separate                  []PriceGroup
+	SKU, Name, TaskStatus, TaskURL, SnapshotURL string
+	Comparable, Separate                        []PriceGroup
 }
 
 type PriceGroup struct {

@@ -3,7 +3,13 @@ package views
 templ pricePanel(p *MarketPrices) {
 	<section class="market-prices" aria-label="Текущие цены SKU">
 		<header class="market-prices-head">
-			<div><h2>Текущие цены</h2><p>SKU { p.SKU }</p></div>
+			<div>
+				<h2>Текущие цены</h2>
+				if p.Name != "" {
+					<strong>{ p.Name }</strong>
+				}
+				<p>SKU { p.SKU }</p>
+			</div>
 			<div class="market-task">
 				<small>Статус задачи</small>
 				if p.TaskURL != "" {

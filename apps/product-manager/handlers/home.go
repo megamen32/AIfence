@@ -14,6 +14,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -103,7 +104,7 @@ type saleDetail struct {
 }
 
 func rowView(id string, r evidence.Row) views.EvidenceRow {
-	v := views.EvidenceRow{ID: r.ID, Metric: label(metricTitles, r.Metric), Product: r.Product, Source: label(sourceTitles, r.Source), Value: r.Value, Date: span(r.Period.From, r.Period.To), SourceName: r.Ref.SourceID, Locator: r.Ref.Locator, OpenURL: href("snapshot", id, "obs", r.ID), Note: strings.Join(r.Caveats, " ")}
+	v := views.EvidenceRow{ID: r.ID, Metric: label(metricTitles, r.Metric), Product: evidenceProductName(r.Product, r), Source: label(sourceTitles, r.Source), Value: r.Value, Date: span(r.Period.From, r.Period.To), SourceName: r.Ref.SourceID, Locator: r.Ref.Locator, OpenURL: href("snapshot", id, "obs", r.ID), Note: strings.Join(r.Caveats, " ")}
 	if u, err := url.Parse(r.Ref.URL); err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
 		v.SourceURL = u.String()
 	}
@@ -203,7 +204,7 @@ func watchdogRow(v *views.EvidenceRow, r evidence.Row) {
 		v.Summary += fmt.Sprintf(" · %s (%s) · база %s, текущее окно %s",
 			magnitude.Change, magnitude.Caption, magnitude.Baseline, magnitude.Current)
 		if d.Compared != nil {
-			v.Summary += fmt.Sprintf(" · изменение контроля %s: %s", d.Control, signalPercent(*d.Compared))
+			v.Summary += fmt.Sprintf(" · изменение контроля %s: %s", evidenceProductName(d.Control, r), signalPercent(*d.Compared))
 		}
 		if d.Adjusted != nil {
 			v.Summary += " · с поправкой на контроль " + signalPercent(*d.Adjusted)
@@ -227,7 +228,7 @@ func signalCards(data evidence.Result) []views.Signal {
 			continue
 		}
 		row := rowView(data.SnapshotID, r)
-		out = append(out, views.Signal{Product: r.Product, Change: row.Value, Before: num(d.BaselineMean), After: num(d.CurrentMean), Period: fmt.Sprintf("%d и %d полных нед.", d.BaselineWeeks, d.CurrentWeeks), URL: row.OpenURL})
+		out = append(out, views.Signal{Product: row.Product, Change: row.Value, Before: num(d.BaselineMean), After: num(d.CurrentMean), Period: fmt.Sprintf("%d и %d полных нед.", d.BaselineWeeks, d.CurrentWeeks), URL: row.OpenURL})
 	}
 	return out
 }
@@ -237,7 +238,7 @@ func rule(c decision.Criterion) string {
 }
 func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decision, error) {
 	p, c := r.Hypothesis, r.Hypothesis.SuccessCriterion
-	v := &views.Decision{ID: p.ID, Title: p.Title, Product: p.ProductKey, Status: label(statusTitles, p.Status), Action: p.ProposedAction, Unknowns: p.Unknowns, Metric: label(metricTitles, c.MetricKey), Baseline: span(c.BaselineFrom, c.BaselineTo), Rule: rule(c), Window: fmt.Sprintf("%d дн.", c.ObservationDays), Control: c.ControlProductKey, Version: strconv.FormatInt(r.Version, 10), SnapshotURL: href("snapshot", r.EvidenceSnapshotID)}
+	v := &views.Decision{ID: p.ID, Title: p.Title, Product: productName(p.ProductKey), Status: label(statusTitles, p.Status), Action: p.ProposedAction, Unknowns: p.Unknowns, Metric: label(metricTitles, c.MetricKey), Baseline: span(c.BaselineFrom, c.BaselineTo), Rule: rule(c), Window: fmt.Sprintf("%d дн.", c.ObservationDays), Control: productName(c.ControlProductKey), Version: strconv.FormatInt(r.Version, 10), SnapshotURL: href("snapshot", r.EvidenceSnapshotID)}
 	v.EvidenceLevel = label(evidenceLevels, p.EvidenceLevel)
 	v.Forecast = p.Forecast
 	v.CompetingExplanations = p.CompetingExplanations
@@ -275,6 +276,16 @@ func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decisio
 	lookup := map[string]views.EvidenceRow{}
 	for _, o := range data.Rows {
 		lookup[o.ID] = rowView(r.EvidenceSnapshotID, o)
+		if o.Product == p.ProductKey && slices.Contains(p.SignalIDs, o.ID) {
+			v.Product = evidenceProductName(p.ProductKey, o)
+			v.Control = evidenceProductName(c.ControlProductKey, o)
+		}
+	}
+	name := strings.NewReplacer(p.ProductKey, v.Product)
+	v.Title, v.Action = name.Replace(v.Title), name.Replace(v.Action)
+	if c.ControlProductKey != "" {
+		name := strings.NewReplacer(c.ControlProductKey, v.Control)
+		v.Title, v.Action = name.Replace(v.Title), name.Replace(v.Action)
 	}
 	for _, g := range []struct {
 		name string
@@ -312,7 +323,13 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	id, snap, selected := cardIDForView(q, focus), q.Get("snapshot"), q.Get("monitor")
 	for _, rec := range records.Records {
 		p := rec.Hypothesis
-		v.Records = append(v.Records, views.Link{Label: p.Title, URL: href("id", p.ID), Detail: label(statusTitles, p.Status), Active: p.ID == id})
+		title := p.Title
+		if legacyFixtureFamily(p.ProductKey) != "" {
+			title = "Открыть сохранённую гипотезу"
+		} else if display := catalogFamilyNames[p.ProductKey]; display != "" {
+			title = strings.ReplaceAll(title, p.ProductKey, display)
+		}
+		v.Records = append(v.Records, views.Link{Label: title, URL: href("id", p.ID), Detail: label(statusTitles, p.Status), Active: p.ID == id})
 	}
 	if id == "" && (selected != "" || snap == "") {
 		if selected == "" && q.Get("overview") == "" {

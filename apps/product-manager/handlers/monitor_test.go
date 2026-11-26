@@ -26,7 +26,7 @@ func TestMonitorUsesObservedValuesAndActualDetection(t *testing.T) {
 		t.Fatal(cell)
 	}
 	v := investigation(p.Product, []monitorObservation{p}, nil)
-	if v.Origin != "Учебные данные" || v.Detected != "Время обнаружения неизвестно" ||
+	if v.Origin != "Синтетические данные" || v.Detected != "Время обнаружения неизвестно" ||
 		len(v.Chart.Dots) != 2 || v.Chart.Target == v.Chart.Control {
 		t.Fatalf("unexpected monitor state: %+v", v)
 	}
@@ -229,13 +229,14 @@ func TestColdOverviewDoesNotExpandLegacyDemoRows(t *testing.T) {
 			Status: "observed", Value: "true", Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"},
 			Details: windowJSON(80, 55, 70, 71)},
 		snapshot: "demo",
+		details:  monitorDetails{Origin: "synthetic_fixture", Control: "demo_control"},
 	}
 	auto := monitorView([]monitorObservation{alert}, nil, "", "", "", true)
-	if auto.Selected != nil || len(auto.Products) == 0 || auto.Products[0].Origin != "Учебные данные" {
+	if auto.Selected != nil || len(auto.Products) == 0 || auto.Products[0].Origin != "Синтетические данные" || auto.Products[0].Name != "Kaspersky Small Office Security" {
 		t.Fatalf("legacy demo became the default view: %+v", auto)
 	}
 	explicit := monitorView([]monitorObservation{alert}, nil, alert.Product, alert.snapshot, alert.ID, true)
-	if explicit.Selected == nil || explicit.Selected.Chart.Target == "" {
+	if explicit.Selected == nil || explicit.Selected.Chart.Target == "" || explicit.Selected.Control != "Dr.Web Desktop Security Suite" {
 		t.Fatal("selecting the educational alert should still open its graph")
 	}
 }

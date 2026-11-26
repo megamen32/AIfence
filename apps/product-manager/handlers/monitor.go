@@ -39,31 +39,9 @@ type monitorDetails struct {
 	Screenshot string `json:"screenshot_path"`
 }
 
-func productName(key string) string {
-	switch key {
-	case "kaspersky_endpoint_security":
-		return "Kaspersky Endpoint Security"
-	case "demo_target":
-		return "Учебный продукт"
-	case "demo_control":
-		return "Учебный контроль"
-	default:
-		return strings.ReplaceAll(key, "_", " ")
-	}
-}
-
-func educationalProduct(key string) bool {
-	return key == "demo_target" || key == "demo_control"
-}
-
-func educationalObservation(row evidence.Row, d monitorDetails) bool {
-	return d.Synthetic || d.Origin == "synthetic_fixture" || educationalProduct(row.Product) ||
-		row.Ref.SourceID == "synthetic" || strings.HasPrefix(row.Ref.SourceID, "synthetic/")
-}
-
 func originText(d monitorDetails) string {
 	if d.Synthetic || d.Origin == "synthetic_fixture" {
-		return "Учебные данные"
+		return "Синтетические данные"
 	}
 	if d.Origin == "imported_historical" {
 		return "Исторические данные"
@@ -73,7 +51,7 @@ func originText(d monitorDetails) string {
 
 func observationOrigin(row monitorObservation) string {
 	if educationalObservation(row.Row, row.details) {
-		return "Учебные данные"
+		return "Синтетические данные"
 	}
 	return originText(row.details)
 }
@@ -165,7 +143,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 	fresh, active := watchdogState(rows)
 	if autoOpen && selected == "" {
 		for _, row := range active {
-			if !educationalObservation(row.Row, row.details) {
+			if legacyFixtureFamily(row.Product) == "" && !educationalObservation(row.Row, row.details) {
 				selected, pinned, alert = row.Product, row.snapshot, row.ID
 				break
 			}
@@ -187,11 +165,11 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		if !ok {
 			i = len(m.Products)
 			products[row.Product] = i
-			m.Products = append(m.Products, views.MonitorProduct{Name: productName(row.Product), URL: link, Origin: observationOrigin(row)})
+			m.Products = append(m.Products, views.MonitorProduct{Name: observedProductName(row.Product, row), URL: link, Origin: observationOrigin(row)})
 		}
 		p := &m.Products[i]
-		if p.Origin == "" && observationOrigin(row) == "Учебные данные" {
-			p.Origin = "Учебные данные"
+		if p.Origin == "" && educationalObservation(row.Row, row.details) {
+			p.Name, p.Origin = observedProductName(row.Product, row), observationOrigin(row)
 		}
 		if old := p.Cells[col].Label; old == "" || col == 0 && row.Metric == watchdogMetric &&
 			(old == "Есть замер" || old == "Нет замера") {
@@ -226,7 +204,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 				continue
 			}
 			products[key] = len(m.Products)
-			p := views.MonitorProduct{Name: productName(key), URL: href("monitor", row.Product, "snapshot", row.snapshot), Origin: observationOrigin(row)}
+			p := views.MonitorProduct{Name: observedProductName(key, row), URL: href("monitor", row.Product, "snapshot", row.snapshot), Origin: observationOrigin(row)}
 			p.Cells[0] = views.MonitorCell{Label: "Контроль", Tone: "quiet"}
 			m.Products = append(m.Products, p)
 		}
@@ -325,9 +303,10 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 		}
 	}
 	if signal != nil {
+		v.Product = observedProductName(key, *signal)
 		v.Origin, v.Detected, v.Week = observationOrigin(*signal), signalTime(signal.details.Detected, signal.received), span(signal.Period.From, signal.Period.To)
 		if signal.details.Control != "" {
-			v.Control = productName(signal.details.Control)
+			v.Control = observedProductName(signal.details.Control, *signal)
 		}
 		v.SnapshotURL = href("snapshot", signal.snapshot, "obs", signal.ID)
 		v.Magnitude = signalMagnitude(evidence.WatchdogWindow(signal.Row))
@@ -391,6 +370,7 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 		var source *monitorObservation
 		v.Chart, v.Control, source = legacyTrend(*record, rows, v.ReleaseDate)
 		if source != nil {
+			v.Product = observedProductName(key, *source)
 			v.Origin = observationOrigin(*source)
 			v.Detected = signalTime(source.details.Detected, source.received)
 		}
@@ -502,7 +482,7 @@ func legacyTrend(record decision.Record, rows []monitorObservation, release stri
 			other, ok := legacyReading(candidate)
 			if ok && other.BaselineFrom == d.BaselineFrom && other.BaselineTo == d.BaselineTo && other.CurrentFrom == d.CurrentFrom {
 				points[0].control, points[1].control = other.Baseline, other.Current
-				control = productName(candidate.Product)
+				control = observedProductName(candidate.Product, candidate)
 				break
 			}
 		}

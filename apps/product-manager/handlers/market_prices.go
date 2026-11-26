@@ -34,7 +34,7 @@ type quoteKey struct {
 }
 
 func currentPrices(key, snapshot string, rows []monitorObservation, records []decision.Record) *views.MarketPrices {
-	p := &views.MarketPrices{SKU: key, TaskStatus: "Задача для SKU не привязана"}
+	p := &views.MarketPrices{SKU: key, Name: catalogFamilyNames[catalogSKUFamily[strings.ToUpper(key)]], TaskStatus: "Задача для SKU не привязана"}
 	positions := map[quoteKey]int{}
 	var groups []views.PriceGroup
 	var sellers []map[string]bool
