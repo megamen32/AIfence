@@ -32,7 +32,7 @@ PRODUCTS = {
 }
 DEVICES = {"desktop": .76, "mobile": .24}
 METRICS = ("visits", "card_views", "cart_additions", "checkouts", "orders", "revenue")
-SCENARIOS = ("S0", "S1", "S2", "S3", "S4")
+SCENARIOS = ("S0", "S1", "S2", "S3", "S4", "S6", "S7", "S12", "S13", "S14")
 START = dt.date(2026, 1, 5)
 MP_ENDPOINT = "https://mc.yandex.ru/collect"
 DEFAULT_COUNTER = "114698578"
@@ -66,9 +66,22 @@ def pick_scenario(seed: int, scenario: str) -> dict:
     family = rng.choice(list(PRODUCTS))
     week = rng.randint(8, 20)
     severity = round(rng.uniform(.18, .38), 3)
-    return {"scenario": scenario, "family": family, "week": week, "severity": severity,
-            "cause_type": {"S0": "none", "S1": "tracking_gap", "S2": "mobile_regression",
-                           "S3": "price_competition", "S4": "release_regression"}[scenario]}
+    cause_types = {
+        "S0": "none", "S1": "tracking_gap", "S2": "mobile_regression",
+        "S3": "price_competition", "S4": "release_regression",
+        "S6": "traffic_quality", "S7": "taxonomy_migration",
+        "S12": "honest_refusal", "S13": "late_event_delivery",
+        "S14": "masked_multi_cause_regression"}
+    if scenario not in cause_types:
+        raise ValueError(f"unknown scenario: {scenario}")
+    choice = {"scenario": scenario, "family": family, "week": week,
+              "severity": severity, "cause_type": cause_types[scenario]}
+    if scenario == "S12":
+        choice.update({"expected_decisions": ["no_alert", "insufficient_data"],
+                       "decision_reason": "insufficient_comparable_evidence"})
+    if scenario == "S14":
+        choice["secondary_causes"] = ["traffic_mix_shift", "checkout_regression", "tracking_loss"]
+    return choice
 
 
 def truth_rows(seed: int, scenario: str, weeks: int = 28) -> tuple[list[dict], dict]:
@@ -87,9 +100,6 @@ def truth_rows(seed: int, scenario: str, weeks: int = 28) -> tuple[list[dict], d
                 effect = 1.0
                 if scenario == "S2" and family == choice["family"] and w >= choice["week"] and device == "mobile":
                     effect = 1 - choice["severity"]
-                elif scenario == "S3" and family == choice["family"] and w >= choice["week"]:
-                    # The price signal changes conversion, not traffic.
-                    effect = 1.0
                 elif scenario == "S4" and family == choice["family"] and w >= choice["week"]:
                     effect = 1 - choice["severity"]
                 visits *= effect
@@ -102,15 +112,37 @@ def truth_rows(seed: int, scenario: str, weeks: int = 28) -> tuple[list[dict], d
                 checkouts = cart * base["checkout_rate"] * max(.88, min(1.12, rng.gauss(1, .045)))
                 if scenario == "S3" and family == choice["family"] and w >= choice["week"]:
                     checkouts *= 1 - choice["severity"] * .9
+                metadata = {}
+                if scenario == "S14" and family == choice["family"] and w >= choice["week"]:
+                    visits *= 1.50; views *= 1.50; cart *= 1.50; checkouts *= .67
+                    metadata.update({"traffic_campaign": "Q2-enterprise", "traffic_lift_pct": 50,
+                                     "checkout_regression_pct": -33})
                 orders = checkouts * base["order_rate"] * max(.88, min(1.12, rng.gauss(1, .04)))
                 revenue = orders * unit_price * max(.93, min(1.07, rng.gauss(1, .025)))
-                rows.append({"week": w, "week_start": week_start(w).isoformat(), "family": family, "device": device,
-                             "visits": round_value("visits", visits), "card_views": round_value("card_views", views),
-                             "cart_additions": round_value("cart_additions", cart), "checkouts": round_value("checkouts", checkouts),
-                             "orders": round_value("orders", orders), "revenue": round_value("revenue", revenue),
-                             "unit_price": round_value("revenue", unit_price), "competitor_price": round_value("revenue", competitor_price)})
+                if scenario == "S6" and family == choice["family"] and w >= choice["week"] and device == "desktop":
+                    bot_share = .62
+                    human_visits = visits
+                    visits = human_visits / (1 - bot_share)
+                    views += (visits - human_visits) * .68
+                    metadata.update({"bot_share_estimate": bot_share, "traffic_quality": "low",
+                                     "traffic_source": "crawler_or_unknown"})
+                if scenario == "S7" and family == choice["family"] and w >= choice["week"]:
+                    metadata.update({"canonical_product_id": f"product-{family.lower()}-001",
+                                     "observed_product_key": f"{family.lower()}_plus",
+                                     "catalog_migration_week": choice["week"]})
+                if scenario == "S12" and family == choice["family"] and w == choice["week"]:
+                    metadata.update({"experiment_id": "checkout-v3", "allocation_status": "unknown",
+                                     "comparable_evidence": False})
+                if scenario == "S13" and family == choice["family"] and w in (choice["week"], choice["week"] + 1):
+                    metadata.update({"payment_confirmation_lag_hours": 52,
+                                     "event_available_on": week_start(w + 2).isoformat()})
+                row = {"week": w, "week_start": week_start(w).isoformat(), "family": family, "device": device,
+                       "visits": round_value("visits", visits), "card_views": round_value("card_views", views),
+                       "cart_additions": round_value("cart_additions", cart), "checkouts": round_value("checkouts", checkouts),
+                       "orders": round_value("orders", orders), "revenue": round_value("revenue", revenue),
+                       "unit_price": round_value("revenue", unit_price), "competitor_price": round_value("revenue", competitor_price)}
+                row.update(metadata); rows.append(row)
     return rows, choice
-
 
 def loss_factor(rng: random.Random, metric: str) -> float:
     # Behaviour events intentionally lose 10–25% in the Metrika view.
@@ -130,28 +162,48 @@ def evidence_rows(truth: list[dict], seed: int, scenario: str, choice: dict) -> 
             period_from = row["week_start"]
             period_to = (dt.date.fromisoformat(period_from) + dt.timedelta(days=6)).isoformat()
             source = {"source_id": "blind-metrika", "locator": f"week={row['week']};family={row['family']};device={row['device']}", "revision": f"seed:{seed}"}
-            status = "observed"
-            caveats: list[str] = ["Synthetic measurement with event undercount; aggregate only."]
+            status = "observed"; caveats = ["Synthetic measurement with event undercount; aggregate only."]
             value: float | None = float(row[metric]) * loss_factor(rng, metric)
+            details = {"device": row["device"], "synthetic": True}
+            for key in ("bot_share_estimate", "traffic_quality", "traffic_source", "canonical_product_id",
+                        "observed_product_key", "catalog_migration_week", "experiment_id",
+                        "allocation_status", "comparable_evidence", "payment_confirmation_lag_hours",
+                        "event_available_on", "traffic_campaign", "traffic_lift_pct", "checkout_regression_pct"):
+                if key in row: details[key] = row[key]
+            product_observed = row["family"]
+            if scenario == "S7" and row["family"] == choice["family"] and row["week"] >= choice["week"]:
+                product_observed = f"{row['family']}_plus"
+                details["canonical_product_key"] = product_key(row["family"])
             if scenario == "S1" and row["family"] == choice["family"] and row["week"] >= choice["week"] and metric == "cart_additions":
-                value = None
-                status = "missing"
-                caveats = ["Event collection is incomplete for this period; absence is not zero."]
+                value = None; status = "missing"; caveats = ["Event collection is incomplete for this period; absence is not zero."]
+            if scenario == "S12" and row["family"] == choice["family"] and row["week"] == choice["week"] and metric in ("orders", "revenue"):
+                value = None; status = "missing"; caveats = ["Experiment allocation is unavailable; comparable evidence is insufficient for a causal claim."]
+            if scenario == "S13" and row["family"] == choice["family"] and row["week"] in (choice["week"], choice["week"] + 1) and metric in ("orders", "revenue"):
+                value = None; status = "late"; caveats = ["Purchase event is delayed in the collection queue; absence is not zero."]
+                details["replay_available_on"] = week_start(row["week"] + 2).isoformat()
+            if scenario == "S14" and row["family"] == choice["family"] and row["week"] >= choice["week"] and metric == "cart_additions":
+                # Keep total observed loss in the required 10–25% QA band while
+                # retaining a separate masked tracking component in details.
+                value = float(row[metric]) * rng.uniform(.915, .988) * .82
+                caveats.append("Additional cart-event undercount overlaps a real checkout regression.")
+                details["additional_tracking_loss_pct"] = 18
             if value is not None:
                 factor = value / max(float(row[metric]), 1.0)
-                if metric in ("visits", "card_views", "cart_additions", "checkouts"):
-                    losses.append(1 - factor)
+                if metric in ("visits", "card_views", "cart_additions", "checkouts"): losses.append(1 - factor)
                 value = round_value(metric, value)
-            item = {"id": "obs-" + stable_id(seed, scenario, row["week"], row["family"], row["device"], metric),
-                    "kind": "metric", "product_key": product_key(row["family"]), "metric_key": metric,
+            observations.append({"id": "obs-" + stable_id(seed, scenario, row["week"], row["family"], row["device"], metric),
+                    "kind": "metric", "product_key": product_key(product_observed), "metric_key": metric,
                     "value": value, "unit": "RUB" if metric == "revenue" else "count",
                     "period": {"from": period_from, "to": period_to}, "segment": row["device"],
-                    "source_ref": source, "status": status, "caveats": caveats,
-                    "details": {"device": row["device"], "synthetic": True}}
-            observations.append(item)
-    return {"schema_version": "aifence.v1", "source": "metrika", "as_of": (week_start(len(set(r['week'] for r in truth)) - 1) + dt.timedelta(days=6)).isoformat() + "T23:59:59Z", "status": "partial" if scenario == "S1" else "ok", "observations": observations,
-            "warnings": ["Blind synthetic dataset; aggregate week × family × device only.", "Metrika behaviour events include 10–25% measurement loss."]}, losses
-
+                    "source_ref": source, "status": status, "caveats": caveats, "details": details})
+    partial = scenario in ("S1", "S12", "S13")
+    warnings = ["Blind synthetic dataset; aggregate week × family × device.", "Metrika behaviour events include 10–25% measurement loss."]
+    if scenario == "S12": warnings.append("Insufficient comparable evidence around the experiment; accepted decision is no_alert or insufficient_data.")
+    if scenario == "S13": warnings.append("Purchase events may arrive after the business week; inspect event_available_on before alerting.")
+    if scenario == "S14": warnings.append("Traffic mix and cart undercount mask a checkout regression; inspect funnel ratios.")
+    return {"schema_version": "aifence.v1", "source": "metrika",
+            "as_of": (week_start(len(set(r['week'] for r in truth)) - 1) + dt.timedelta(days=6)).isoformat() + "T23:59:59Z",
+            "status": "partial" if partial else "ok", "observations": observations, "warnings": warnings}, losses
 
 def releases_and_backlog(seed: int, scenario: str, choice: dict, weeks: int) -> tuple[list[dict], list[dict]]:
     rng = random.Random(f"{seed}:{scenario}:context")
@@ -170,6 +222,22 @@ def releases_and_backlog(seed: int, scenario: str, choice: dict, weeks: int) -> 
     if scenario == "S3":
         target["our_price_rub"] = round(PRODUCTS[choice["family"]]["aov"] * (1 + choice["severity"]))
         target["competitor_price_rub"] = round(PRODUCTS[choice["family"]]["aov"] * .94)
+    if scenario == "S6":
+        target["description"] = "Обновление каталога и правила обхода роботов"
+        target["context_flag"] = "traffic_quality_changed"
+    elif scenario == "S7":
+        target["description"] = "Миграция названий и ключей каталога"
+        target["context_flag"] = "taxonomy_migration"
+        target["alias_from"] = choice["family"]; target["alias_to"] = f"{choice['family']} Plus"
+    elif scenario == "S12":
+        target["description"] = "Запуск checkout-эксперимента"
+        target["context_flag"] = "experiment_allocation_unknown"; target["experiment_id"] = "checkout-v3"
+    elif scenario == "S13":
+        target["description"] = "Техническое обновление очереди подтверждений платежа"
+        target["context_flag"] = "event_delivery_lag"; target["payment_confirmation_lag_hours"] = 52
+    elif scenario == "S14":
+        target["description"] = "Обновление checkout на фоне enterprise-кампании"
+        target["context_flag"] = "masked_multi_cause"; target["traffic_campaign"] = "Q2-enterprise"
     tasks = []
     for i in range(max(weeks - 5, 22)):
         family = rng.choice(list(PRODUCTS))
@@ -248,7 +316,21 @@ def write_dataset(output: Path, seed: int, scenario: str, weeks: int) -> dict:
     # Truth stays outside the input tree. It is needed for scoring and loss QA.
     truth_payload = {"seed": seed, "scenario": scenario, "choice": choice, "truth": truth, "losses": losses}
     (root / "truth.json").write_text(json.dumps(truth_payload, ensure_ascii=False, indent=2) + "\n")
-    (answer_dir / f"{scenario}.json").write_text(json.dumps({"scenario": scenario, "family": choice["family"] if scenario != "S0" else None, "week": choice["week"] if scenario != "S0" else None, "cause_type": choice["cause_type"], "severity": choice["severity"] if scenario != "S0" else 0}, ensure_ascii=False, indent=2) + "\n")
+    answer_payload = {"scenario": scenario,
+                      "family": choice["family"] if scenario not in ("S0", "S12") else None,
+                      "week": choice["week"] if scenario not in ("S0", "S12") else None,
+                      "cause_type": choice["cause_type"],
+                      "severity": choice["severity"] if scenario != "S0" else 0}
+    if scenario == "S12":
+        # Keep the organizer answer explicit: either an honest no-alert or
+        # an insufficient-data refusal is correct for this deliberately
+        # incomparable experiment slice.
+        answer_payload.update({"accepted_outcomes": choice["expected_decisions"],
+                               "expected_decisions": choice["expected_decisions"],
+                               "decision_reason": choice["decision_reason"]})
+    if scenario == "S14":
+        answer_payload["secondary_causes"] = choice["secondary_causes"]
+    (answer_dir / f"{scenario}.json").write_text(json.dumps(answer_payload, ensure_ascii=False, indent=2) + "\n")
     (input_dir / "metrika.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n")
     (input_dir / "releases.json").write_text(json.dumps(releases, ensure_ascii=False, indent=2) + "\n")
     (input_dir / "backlog.json").write_text(json.dumps(backlog, ensure_ascii=False, indent=2) + "\n")
@@ -269,6 +351,20 @@ def score_card(answer: dict, card: dict | None) -> dict:
     if not card:
         silent = answer["cause_type"] == "none"
         return {"scenario": answer["scenario"], "found": False, "missed": not silent, "false_alarm": False, "correct_cause": silent, "status": "silent (no card)" if silent else "missing card"}
+    accepted = set(answer.get("accepted_outcomes") or answer.get("expected_decisions") or [])
+    if answer.get("cause_type") == "honest_refusal" or accepted:
+        value = ""
+        for key in ("outcome", "decision", "response", "status"):
+            if card.get(key) not in (None, ""):
+                value = str(card[key]).strip().casefold().replace(" ", "_")
+                break
+        if card.get("alert") is False:
+            value = "no_alert"
+        if value in accepted:
+            return {"scenario": answer["scenario"], "found": False, "missed": False, "false_alarm": False, "correct_cause": True, "status": "correct_" + value}
+        if value in ("alert", "found", "true") or card.get("found") is True:
+            return {"scenario": answer["scenario"], "found": False, "missed": False, "false_alarm": True, "correct_cause": False, "status": "false_alarm"}
+        return {"scenario": answer["scenario"], "found": False, "missed": True, "false_alarm": False, "correct_cause": False, "status": "missing decision"}
     family_ok = answer["family"] is None or card.get("family") == answer["family"]
     week_ok = answer["week"] is None or card.get("week") == answer["week"]
     found = bool(card.get("found", True)) and family_ok and week_ok

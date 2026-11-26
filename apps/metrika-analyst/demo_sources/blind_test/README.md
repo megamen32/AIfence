@@ -46,9 +46,12 @@ python3 blind_test_generator.py mp-send \
   --counter 114698578 --token-env YANDEX_METRIKA_TOKEN
 ```
 
-Scenarios are selected by the seed and contain S0 clean data, S1 missing cart
-events, S2 mobile-only regression, S3 price-versus-competitor regression, and
-S4 a family regression aligned with a release and a stable control group.
+Scenarios are selected by the seed and contain the original S0–S4 set plus
+S6 bot/low-quality traffic, S7 product-taxonomy migration, S12 an honest
+refusal where the evidence is intentionally incomparable, S13 delayed purchase
+events, and S14 a multi-cause regression masked by traffic growth and cart
+under-counting. S12 accepts either `no_alert` or `insufficient_data`; an
+alarm with a guessed family is a false alarm.
 Observed behaviour metrics intentionally lose 10–25% independently to model
 blockers and undercounting. The source truth still contains full orders and
 revenue for the sales workbook.
@@ -71,7 +74,19 @@ python3 blind_test_generator.py score \
 ```
 
 The result marks found, missed, false alarm, and correct cause type. Silence on
-S0 is scored as correct when no card is supplied.
+S0 is scored as correct when no card is supplied. For S12, these equivalent
+refusal cards are correct:
+
+```json
+{"outcome": "no_alert"}
+{"status": "insufficient_data"}
+{"decision": "no_alert"}
+{"alert": false}
+```
+
+The standalone scorer also accepts the new cause classes
+`traffic_quality`, `taxonomy_migration`, `late_event_delivery`,
+`masked_multi_cause_regression`, and `experiment_allocation_shift`.
 
 ## QA
 

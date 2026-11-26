@@ -40,6 +40,28 @@ class BlindGeneratorTests(unittest.TestCase):
         answer = {"scenario": "S0", "family": None, "week": None, "cause_type": "none"}
         self.assertTrue(g.score_card(answer, None)["correct_cause"])
 
+    def test_selected_scenarios_have_distinct_signatures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for scenario in ("S6", "S7", "S12", "S13", "S14"):
+                result = g.write_dataset(root / scenario, 20261127, scenario, 28)
+                truth = json.loads(Path(result["truth"]).read_text())
+                evidence = json.loads((Path(result["input"]) / "metrika.json").read_text())
+                self.assertEqual(truth["choice"]["scenario"], scenario)
+                if scenario == "S6":
+                    self.assertTrue(any(o["details"].get("traffic_quality") == "low" for o in evidence["observations"]))
+                elif scenario == "S7":
+                    self.assertTrue(any(o["product_key"].endswith("_plus") for o in evidence["observations"]))
+                elif scenario == "S12":
+                    answer = json.loads((Path(result["answers"]) / "S12.json").read_text())
+                    self.assertEqual(answer["accepted_outcomes"], ["no_alert", "insufficient_data"])
+                    self.assertEqual(g.score_card(answer, {"outcome": "no_alert"})["status"], "correct_no_alert")
+                    self.assertEqual(g.score_card(answer, {"status": "insufficient_data"})["status"], "correct_insufficient_data")
+                elif scenario == "S13":
+                    self.assertTrue(any(o["status"] == "late" for o in evidence["observations"]))
+                else:
+                    self.assertTrue(any(o["details"].get("additional_tracking_loss_pct") == 18 for o in evidence["observations"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -274,10 +274,12 @@ def main() -> int:
             rows.append(row)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     payload = {"schema_version": "aifence.blind-score.v1", "rows": rows,
-               "summary": {"scenarios": len(rows), "correct": sum(r["status"] in ("correct", "correct_silence") for r in rows),
+               "summary": {"scenarios": len(rows),
+                           "correct": sum(r["status"] in ("correct", "correct_silence", "correct_no_alert", "correct_insufficient_data") for r in rows),
                            "missed": sum(r["status"] == "missed" for r in rows),
                            "false_alarm": sum(r["false_alarm"] for r in rows),
-                           "cause_type_correct": sum(r["cause_type_correct"] for r in rows)}}
+                           "cause_type_correct": sum(r["cause_type_correct"] for r in rows),
+                           "outcome_correct": sum(r.get("outcome_correct", False) for r in rows)}}
     args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     csv_path = args.out.with_suffix(".csv")
     fields = ["scenario", "status", "found", "missed", "false_alarm", "cause_type_correct", "outcome_correct", "outcome", "expected_outcomes", "expected_family", "expected_week", "expected_cause_type"]
