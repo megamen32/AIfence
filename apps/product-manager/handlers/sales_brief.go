@@ -87,7 +87,10 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 			}
 		}
 		fact := fmt.Sprintf("%s, два окна по %d недели. С %s по сравнению с %s изменение составило %s. Изменение контроля (%s) за те же окна %s.", metric, w.WindowWeeks, m.Current, m.Baseline, m.Change, productName(r.details.Control), control)
-		reading := ProductReading{Product: observedProductName(r.Product, r), Sales: fact}
+		reading := ProductReading{Product: observedProductName(r.Product, r)}
+		reading.Sales = fmt.Sprintf("%s, %s–%s к %s–%s (по %d недели): %s %s, %s %s.",
+			metric, date(w.Current.From), date(w.Current.To), date(w.Baseline.From), date(w.Baseline.To),
+			w.WindowWeeks, reading.Product, m.Change, productName(r.details.Control), control)
 		weekly, basis, _ := signalPlanning(records, r)
 		if weekly != "" {
 			reading.Weekly = weekly + " (" + basis + ")."

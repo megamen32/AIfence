@@ -14,6 +14,7 @@ const (
 
 var catalogFamilyNames = map[string]string{
 	"kaspersky_endpoint_security": "Kaspersky Endpoint Security",
+	"astra_linux_special_edition": "Astra Linux Special Edition",
 	ksosFamily:                    "Kaspersky Small Office Security",
 	drWebFamily:                   "Dr.Web Desktop Security Suite",
 }
