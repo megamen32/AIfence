@@ -29,3 +29,7 @@ For another authorized machine, set AIRLOCK_UPSTREAM_URL before the first run. T
 Private inputs: `материалы/`, `materials/`, `data/`, `private/`; all ignored by Git. Keep them local and read-only. Import only within authorized closed workspace and configured non-training model provider. Never send raw customer data or credentials to third parties or publish them. Keep repository public-safe from the first commit.
 
 Start with [architecture](docs/architecture.md), [contracts](contracts/README.md), and [track assignments](docs/tracks/README.md). Source review of actual meeting transcript and any new customer materials is the data/research owner's task; code only may be published. Respect the upstream private/enterprise and SDK licenses. Never publish private platform source.
+
+### Optional authorized image cache
+
+Set `AIFENCE_CACHE_HOST` to an SSH host that already holds the exact five images from the release lock. The local ignored `.runtime/cache-host` can remember that host. `./scripts/up` imports missing images using private resumable archives, verifies SHA-256, architecture, OCI revision and exact image ID, then starts the upstream Compose stack. On an interrupted transfer, rerun the same command. No private registry credentials or source are copied into Git. Without a cache configured, it builds from the pinned private source.

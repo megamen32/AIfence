@@ -68,6 +68,10 @@ build_if_missing() {
     docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$REV" -f "$file" -t "$img" "$@" .
   fi
 }
+# Optionally import the exact signed-release image contents from an authorized cache.
+if [[ -n "${AIFENCE_CACHE_HOST:-}" || -s "$RUNTIME/cache-host" ]]; then
+  "$ROOT/scripts/import-release-images"
+fi
 # Start the exact upstream dependency images, no platform code patches.
 build_if_missing "$AGENT_BASE_IMAGE" Dockerfile.agent-base
 build_if_missing "$AGENT_BUILDER_IMAGE" Dockerfile.agent-builder

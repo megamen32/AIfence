@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Fetch revision-verified release images from an authorized SSH cache.
+Archives remain private and partial downloads resume. No tokens/volumes copied.
+"""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+RUNTIME = ROOT / ".runtime"
+LOCK = json.loads((ROOT / "platform/airlock.lock.json").read_text())
+REV = LOCK["revision"]
+TAG = REV[:12]
+HOST = os.environ.get("AIFENCE_CACHE_HOST", "").strip()
+if not HOST and (RUNTIME / "cache-host").exists():
+    HOST = (RUNTIME / "cache-host").read_text().strip()
+if not HOST or not re.fullmatch(r"[A-Za-z0-9_.@-]+", HOST) or HOST.startswith("-"):
+    sys.exit("Configure an authorized SSH cache with AIFENCE_CACHE_HOST.")
+SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+       "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3", HOST]
+CACHE = RUNTIME / "image-cache" / TAG
+CACHE.mkdir(parents=True, exist_ok=True)
+os.chmod(CACHE, 0o700)
+
+def inspect(ref):
+    p = subprocess.run(["docker", "image", "inspect", ref], capture_output=True, text=True)
+    if p.returncode:
+        return None
+    return json.loads(p.stdout)[0]
+
+def verify(img, expected):
+    return (img is not None and img["Id"] == expected
+        and img["Architecture"] == "amd64"
+        and (img.get("Config", {}).get("Labels") or {}).get(
+            "org.opencontainers.image.revision") == REV)
+
+def digest(path):
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024*1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+# The cache host independently checks the release revision and image ID.
+# Stable compressed archives permit restart without repeating the download.
+PREPARE = r"""
+import os, sys, json, subprocess, pathlib, hashlib, tempfile
+os.umask(0o077)
+req = json.loads(sys.argv[1])
+rev, name, iid = req["revision"], req["name"], req["id"]
+image = json.loads(subprocess.check_output(["docker","image","inspect",iid]))[0]
+assert image["Id"] == iid and image["Architecture"] == "amd64"
+assert (image["Config"].get("Labels") or {}).get("org.opencontainers.image.revision") == rev
+d = pathlib.Path.home()/".cache"/"aifence-release"/rev
+d.mkdir(parents=True,exist_ok=True,mode=0o700)
+p=d/(name+".tar.gz"); m=d/(name+".json")
+if m.exists() and p.exists():
+    data=json.loads(m.read_text())
+    if data.get("id")==iid and data.get("revision")==rev and p.stat().st_size==data.get("size"):
+        print(json.dumps(data)); sys.exit(0)
+fd,tmp=tempfile.mkstemp(dir=d,prefix=name+".",suffix=".part")
+os.close(fd)
+try:
+    with open(tmp,"wb") as out:
+        save=subprocess.Popen(["docker","save",iid],stdout=subprocess.PIPE)
+        gz=subprocess.run(["gzip","-1"],stdin=save.stdout,stdout=out)
+        save.stdout.close()
+        if save.wait() or gz.returncode: raise RuntimeError("docker save failed")
+    h=hashlib.sha256()
+    with open(tmp,"rb") as f:
+        for b in iter(lambda:f.read(1024*1024),b""): h.update(b)
+    os.replace(tmp,p)
+    data={"id":iid,"revision":rev,"size":p.stat().st_size,"sha256":h.hexdigest(),"path":str(p)}
+    m.write_text(json.dumps(data))
+    print(json.dumps(data))
+finally:
+    if os.path.exists(tmp):os.unlink(tmp)
+"""
+
+for name, entry in LOCK["release_images"].items():
+    iid=entry["id"]
+    tag=f"aifence-{name}:{TAG}"
+    if verify(inspect(tag),iid):
+        print("Verified cached",tag,flush=True); continue
+    if verify(inspect(iid),iid):
+        subprocess.run(["docker","tag",iid,tag],check=True)
+        print("Tagged existing",tag,flush=True); continue
+    payload=json.dumps({"revision":REV,"name":name,"id":iid})
+    remote_cmd="python3 - "+shlex.quote(payload)
+    print("Preparing private image cache:",name,flush=True)
+    raw=subprocess.check_output(SSH+[remote_cmd],input=PREPARE.encode())
+    meta=json.loads(raw)
+    assert meta["id"]==iid and meta["revision"]==REV
+    assert re.fullmatch(r"[a-f0-9]{64}",meta["sha256"]) and meta["size"]>0
+    part=CACHE/(name+"-"+meta["sha256"][:16]+".tar.gz.part")
+    offset=part.stat().st_size if part.exists() else 0
+    if offset>meta["size"]:
+        sys.exit(f"Invalid partial file size; inspect {part}")
+    if offset<meta["size"]:
+        print(f"{name}: resume {offset}/{meta['size']} bytes",flush=True)
+        with part.open("ab") as out:
+            subprocess.run(SSH+["tail -c +"+str(offset+1)+" -- "+shlex.quote(meta["path"])],
+                           stdout=out,check=True)
+    if part.stat().st_size!=meta["size"] or digest(part)!=meta["sha256"]:
+        sys.exit(f"Archive verification failed: {part}")
+    subprocess.run(["docker","load","-i",str(part)],check=True)
+    if not verify(inspect(iid),iid):
+        sys.exit(f"Loaded image mismatch: {name}")
+    subprocess.run(["docker","tag",iid,tag],check=True)
+    print("Verified",tag,flush=True)
+print("All five release images verified.",flush=True)

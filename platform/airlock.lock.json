@@ -5,5 +5,27 @@
   "goai": "v0.3.4",
   "go": "1.26.11",
   "edition": "enterprise",
-  "source": "authorized private upstream; supply AIRLOCK_UPSTREAM_URL on a fresh machine"
+  "source": "authorized private upstream; supply AIRLOCK_UPSTREAM_URL on a fresh machine",
+  "release_images": {
+    "airlock": {
+      "id": "sha256:5ae7a58b455f20fbd6067edf410a82e7095d095bbf5466274ae767f6afb05d88",
+      "digest": "sha256:9c81bcd5fa4120fb9031da9a9cb8f4941015318dbe40ea4febb97fbbd5051b20"
+    },
+    "frontend": {
+      "id": "sha256:4905a8707c50d91672575051c21112f6b92a81f068f973e0a59d8c16429dbad5",
+      "digest": "sha256:4b94256c6e6af0469b162d2cad2a20a037e43c1b8dcdda594e85b6e02d80baab"
+    },
+    "agent-base": {
+      "id": "sha256:ebd7dc96d20e68e0b9e74aea6cdf4bf9088d21d416466d0789bd5e5af60fb1ca",
+      "digest": "sha256:30eb8a1bba114b89be0c1b6a7e3bee71b48ad80d306d88e5f1e5b222f9f929f4"
+    },
+    "js-executor": {
+      "id": "sha256:13e01b64247c25eb6375e3cf6afa9dd5eca8e978997d9a900ef7862e3b740e9d",
+      "digest": "sha256:4c5236db79a23ccdd2981311c3b7c2b8d70f947c8a9dc56f827db8e816f4171e"
+    },
+    "agent-builder": {
+      "id": "sha256:c27823caf48675926953d2f227e2f4dd6612156078a37ab2e3b029fdd3ef66f0",
+      "digest": "sha256:043f7026b8d3b93eef395fbded30b684ea45bf73ce9c1e94f522fe276f795aff"
+    }
+  }
 }
