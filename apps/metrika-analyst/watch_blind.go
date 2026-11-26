@@ -14,7 +14,10 @@ import (
 	"github.com/google/uuid"
 )
 
-type BlindInput struct{}
+type BlindInput struct {
+	Offset int `json:"offset,omitempty"`
+	Limit  int `json:"limit,omitempty"`
+}
 
 type BlindDimensions struct {
 	ProductKey string `json:"product_key"`
@@ -35,24 +38,29 @@ type BlindSeries struct {
 }
 
 type BlindDiscovery struct {
-	Status    string        `json:"status"`
-	DatasetID string        `json:"dataset_id,omitempty"`
-	AsOf      string        `json:"as_of,omitempty"`
-	Series    []BlindSeries `json:"series"`
-	Warnings  []string      `json:"warnings"`
+	Status      string           `json:"status"`
+	DatasetID   string           `json:"dataset_id,omitempty"`
+	AsOf        string           `json:"as_of,omitempty"`
+	Series      []BlindSeries    `json:"series"`
+	SeriesCount int              `json:"series_count"`
+	NextOffset  *int             `json:"next_offset,omitempty"`
+	ScanStatus  string           `json:"scan_status,omitempty"`
+	Findings    []BlindCandidate `json:"findings"`
+	Warnings    []string         `json:"warnings"`
 }
 
 type BlindCandidate struct {
 	BlindDimensions
-	ID         string   `json:"candidate_id"`
-	Kind       string   `json:"kind"`
-	Period     Period   `json:"period"`
-	Reason     string   `json:"reason"`
-	Control    string   `json:"control_product_key,omitempty"`
-	ChangePct  *float64 `json:"relative_change_pct,omitempty"`
-	ControlPct *float64 `json:"control_change_pct,omitempty"`
-	Adjusted   *float64 `json:"control_adjusted_change_pct,omitempty"`
-	SourceRefs []Ref    `json:"source_refs"`
+	ID             string   `json:"candidate_id"`
+	Kind           string   `json:"kind"`
+	Period         Period   `json:"period"`
+	Reason         string   `json:"reason"`
+	Control        string   `json:"control_product_key,omitempty"`
+	ChangePct      *float64 `json:"relative_change_pct,omitempty"`
+	ControlPct     *float64 `json:"control_change_pct,omitempty"`
+	Adjusted       *float64 `json:"control_adjusted_change_pct,omitempty"`
+	SourceRefs     []Ref    `json:"source_refs"`
+	SourceRefCount int      `json:"source_ref_count"`
 }
 
 type BlindScan struct {
@@ -62,6 +70,9 @@ type BlindScan struct {
 	ComparedWindows  int              `json:"compared_windows"`
 	UncertainWindows int              `json:"uncertain_windows"`
 	Candidates       []BlindCandidate `json:"candidates"`
+	SeriesCount      int              `json:"series_count"`
+	CandidateCount   int              `json:"candidate_count"`
+	NextOffset       *int             `json:"next_offset,omitempty"`
 	Warnings         []string         `json:"warnings"`
 }
 
@@ -94,9 +105,8 @@ type blindHit struct {
 	scope     blindPeerKey
 }
 
-const maxBlindSeries = 64
-const maxBlindCandidates = 20
-const maxBlindWeeks = 104
+const maxBlindPage = 64
+const maxBlindScanWork = 1_000_000
 
 var errBlindSelection = errors.New("select a snapshot for blind analysis on the closed /watchdog page")
 
@@ -110,20 +120,26 @@ func (s *privateWatch) registerBlindTools(a *agentsdk.Agent) {
 		return s.loadBlind(ctx, approved == "approved")
 	}
 	a.RegisterTool(tool.Typed[BlindInput, BlindDiscovery]("discover_watchdog_series").
-		Description("List measured products, metrics, segments and coverage in the active snapshot selected by this user. Takes {}.").
-		Execute(func(ctx context.Context, _ BlindInput) (BlindDiscovery, error) {
+		Description("Investigate the selected snapshot in the current chat. Start with {} for measured dimensions and top findings from the full scan; optional offset and limit page through dimensions.").
+		Execute(func(ctx context.Context, in BlindInput) (BlindDiscovery, error) {
+			if err := in.validate(); err != nil {
+				return BlindDiscovery{}, err
+			}
 			dataset, err := load(ctx)
 			if errors.Is(err, errBlindSelection) {
-				return BlindDiscovery{Status: "needs_selection", Series: []BlindSeries{}, Warnings: []string{err.Error()}}, nil
+				return BlindDiscovery{Status: "needs_selection", Series: []BlindSeries{}, Findings: []BlindCandidate{}, Warnings: []string{err.Error()}}, nil
 			}
 			if err != nil {
 				return BlindDiscovery{}, err
 			}
-			return dataset.discover(), nil
+			return dataset.discover(ctx, in)
 		}).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[BlindInput, BlindScan]("scan_watchdog_series").
-		Description("Find independently comparable declines, measurement breaks and possible campaign or spike effects in the user's selected snapshot. Takes {}.").
-		Execute(func(ctx context.Context, _ BlindInput) (BlindScan, error) {
+		Description("Find comparable declines, measurement breaks and campaign or spike effects over the whole selected snapshot. Start with {}; offset and limit page the findings.").
+		Execute(func(ctx context.Context, in BlindInput) (BlindScan, error) {
+			if err := in.validate(); err != nil {
+				return BlindScan{}, err
+			}
 			dataset, err := load(ctx)
 			if errors.Is(err, errBlindSelection) {
 				return BlindScan{Status: "needs_selection", Candidates: []BlindCandidate{}, Warnings: []string{err.Error()}}, nil
@@ -132,6 +148,9 @@ func (s *privateWatch) registerBlindTools(a *agentsdk.Agent) {
 				return BlindScan{}, err
 			}
 			result, _, err := dataset.scan(ctx)
+			if err == nil {
+				result.Candidates, result.NextOffset = blindPage(result.Candidates, in, 12)
+			}
 			return result, err
 		}).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[BlindCaseInput, WatchCaseResult]("collect_selected_watchdog_case").
@@ -250,17 +269,42 @@ func blindCutoff(asOf string) string {
 	return d.UTC().Format(time.DateOnly)
 }
 
-func (d blindDataset) discover() BlindDiscovery {
-	out := BlindDiscovery{Status: "ok", DatasetID: d.id.String(), AsOf: d.series.AsOf, Series: []BlindSeries{}, Warnings: []string{}}
-	m := d.measures()
-	if len(m) > maxBlindSeries {
-		out.Status = "partial"
-		out.Warnings = append(out.Warnings, "Series inventory truncated to 64 dimensions, ordered by usable weekly coverage.")
+func (in BlindInput) validate() error {
+	if in.Offset < 0 || in.Limit < 0 || in.Limit > maxBlindPage {
+		return fmt.Errorf("offset must be nonnegative and limit at most %d", maxBlindPage)
 	}
-	for _, item := range m[:min(len(m), maxBlindSeries)] {
+	return nil
+}
+
+func blindPage[T any](items []T, in BlindInput, fallback int) ([]T, *int) {
+	limit := in.Limit
+	if limit == 0 {
+		limit = fallback
+	}
+	start := min(in.Offset, len(items))
+	end := start + min(limit, len(items)-start)
+	if end < len(items) {
+		return items[start:end], &end
+	}
+	return items[start:end], nil
+}
+
+func (d blindDataset) discover(ctx context.Context, in BlindInput) (BlindDiscovery, error) {
+	measures := d.measures()
+	scan, _, err := d.scanMeasures(ctx, measures)
+	if err != nil {
+		return BlindDiscovery{}, err
+	}
+	page, next := blindPage(measures, in, 16)
+	out := BlindDiscovery{
+		Status: "ok", DatasetID: d.id.String(), AsOf: d.series.AsOf,
+		Series: make([]BlindSeries, 0, len(page)), SeriesCount: len(measures), NextOffset: next,
+		ScanStatus: scan.Status, Findings: scan.Candidates[:min(4, len(scan.Candidates))], Warnings: scan.Warnings,
+	}
+	for _, item := range page {
 		out.Series = append(out.Series, item.meta)
 	}
-	return out
+	return out, nil
 }
 
 func (d blindDataset) collect(ctx context.Context, in BlindCaseInput) (WatchCaseResult, error) {

@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -54,7 +58,10 @@ func TestBlindWatchdogScan(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			d := blindTestDataset(t, tt.target, tt.control, tt.context...)
-			discovery := d.discover()
+			discovery, err := d.discover(t.Context(), BlindInput{})
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(discovery.Series) == 0 || discovery.Series[0].MetricKey != "orders_index" ||
 				discovery.Series[0].WeeklyRows != len(tt.target) {
 				t.Fatal("dimension inventory must come from actual observations")
@@ -119,4 +126,86 @@ func TestBlindWatchdogToolsManifest(t *testing.T) {
 	if _, err := s.loadBlind(t.Context(), false); err != errBlindSelection {
 		t.Fatal("an unconfigured deployment exposed blind dataset access")
 	}
+}
+
+func TestBlindDiscoveryAndScanCoverWholeSnapshot(t *testing.T) {
+	control := []float64{100, 100, 100, 100, 100, 100, 100, 100}
+	d := blindTestDataset(t, []float64{100, 100, 100, 100, 40, 40, 40, 40}, control)
+	first, _ := time.Parse(time.DateOnly, d.series.Observations[0].Period.From)
+	late := first.AddDate(0, 0, 150*7)
+	d.series.AsOf = late.AddDate(0, 0, 14).Format(time.RFC3339)
+	for _, product := range []string{"target", "control"} {
+		row := d.series.Observations[0]
+		row.ProductKey, row.ID, row.Period = product, product+"/late", week(late)
+		d.series.Observations = append(d.series.Observations, row)
+	}
+	for i := range 68 {
+		for j := range 28 {
+			row := d.series.Observations[0]
+			row.MetricKey = fmt.Sprintf("metric_%02d", i/2)
+			row.ID, row.Period = fmt.Sprintf("%d/%d", i, j), week(late.AddDate(0, 0, (j-27)*7))
+			if i%2 == 0 {
+				row.ProductKey = "comparison_a"
+			} else {
+				row.ProductKey = "comparison_b"
+			}
+			d.series.Observations = append(d.series.Observations, row)
+		}
+	}
+	firstPage, err := d.discover(t.Context(), BlindInput{})
+	if err != nil || firstPage.Status != "ok" || firstPage.SeriesCount != 70 || firstPage.NextOffset == nil ||
+		firstPage.ScanStatus != "alert" || len(firstPage.Findings) == 0 || firstPage.Findings[0].ProductKey != "target" {
+		t.Fatalf("first page lost a finding or full inventory count (err=%v, status=%s, total=%d)", err, firstPage.Status, firstPage.SeriesCount)
+	}
+	if got := firstPage.Findings[0]; len(got.SourceRefs) > 3 || got.SourceRefCount <= len(got.SourceRefs) {
+		t.Fatal("findings must preview references and retain their full count")
+	}
+	tail, err := d.discover(t.Context(), BlindInput{Offset: 64})
+	if err != nil || tail.Status != "ok" || tail.NextOffset != nil || len(tail.Series) != 6 {
+		t.Fatalf("inventory tail missing: %v", err)
+	}
+	found := false
+	for _, m := range tail.Series {
+		found = found || m.ProductKey == "target"
+	}
+	if !found {
+		t.Fatal("test target must occur after the previous 64-series cutoff")
+	}
+	modelBrief := newAgent().Manifest().Description
+	if !strings.Contains(modelBrief, "В текущем чате") || !strings.Contains(modelBrief, "выбранный") {
+		t.Fatal("model brief must describe in-chat discovery of the selected snapshot")
+	}
+}
+
+func TestBlindDiscoveryMeasuredSmoke(t *testing.T) {
+	dir := os.Getenv("AIFENCE_BLIND_SMOKE_PAIR")
+	if dir == "" {
+		t.Skip("optional synthetic smoke pair not configured")
+	}
+	series, err := os.ReadFile(filepath.Join(dir, privateSeries))
+	if err != nil {
+		t.Fatal("cannot read prepared smoke series")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, privateContext))
+	if err != nil {
+		t.Fatal("cannot read prepared smoke context")
+	}
+	d := blindDataset{id: uuid.New(), raw: raw}
+	if json.Unmarshal(series, &d.series) != nil || json.Unmarshal(raw, &d.context) != nil {
+		t.Fatal("invalid prepared synthetic smoke pair")
+	}
+	start := time.Now()
+	discovery, err := d.discover(t.Context(), BlindInput{})
+	discoveryTime := time.Since(start)
+	start = time.Now()
+	scan, _, scanErr := d.scan(t.Context())
+	scanTime := time.Since(start)
+	if err != nil || scanErr != nil || discovery.Status != "ok" || scan.SeriesCount != discovery.SeriesCount {
+		t.Fatalf("smoke census does not match scan: discovery=%v scan=%v", err, scanErr)
+	}
+	scan.Candidates, scan.NextOffset = blindPage(scan.Candidates, BlindInput{}, 12)
+	out, _ := json.Marshal(discovery)
+	candidates, _ := json.Marshal(scan)
+	t.Logf("rows=%d dimensions=%d compared=%d, discovery=%d bytes in %s, scan=%d bytes in %s",
+		len(d.series.Observations), discovery.SeriesCount, scan.ComparedWindows, len(out), discoveryTime, len(candidates), scanTime)
 }

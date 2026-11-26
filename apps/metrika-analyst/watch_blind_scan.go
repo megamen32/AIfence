@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -9,24 +10,33 @@ import (
 )
 
 func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit, error) {
+	return d.scanMeasures(ctx, d.measures())
+}
+
+func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure) (BlindScan, map[string]blindHit, error) {
 	out := BlindScan{Status: "incomplete", DatasetID: d.id.String(), AsOf: d.series.AsOf,
-		Candidates: []BlindCandidate{}, Warnings: []string{}}
+		SeriesCount: len(measures), Candidates: []BlindCandidate{}, Warnings: []string{}}
 	cutoff := blindCutoff(d.series.AsOf)
-	measures := d.measures()
-	truncated := len(measures) > maxBlindSeries
-	if truncated {
-		measures = measures[:maxBlindSeries]
-		out.Warnings = append(out.Warnings, "Only the 64 series with most complete weekly coverage were scanned.")
-	}
 	groups := map[blindPeerKey][]*blindMeasure{}
+	rowsByGroup := map[blindPeerKey]map[seriesKey][]Observation{}
 	for _, m := range measures {
 		groups[m.peer] = append(groups[m.peer], m)
+		if rowsByGroup[m.peer] == nil {
+			rowsByGroup[m.peer] = map[seriesKey][]Observation{}
+		}
+		for day, obs := range m.weeks {
+			rowsByGroup[m.peer][seriesKey{product: m.meta.ProductKey, monday: day}] = obs
+		}
 	}
 	var hits []blindHit
 	add := func(m *blindMeasure, h BlindCandidate) {
 		h.BlindDimensions = m.meta.BlindDimensions
 		h.ID = hash([]any{out.DatasetID, m.meta.ProductKey, m.peer.metric, m.peer.segment, m.peer.unit,
 			m.peer.currency, m.peer.base, m.peer.comparison, h.Kind, h.Period, h.Control, h.SourceRefs})
+		h.SourceRefCount = len(h.SourceRefs)
+		if len(h.SourceRefs) > 3 {
+			h.SourceRefs = []Ref{h.SourceRefs[0], h.SourceRefs[1], h.SourceRefs[len(h.SourceRefs)-1]}
+		}
 		hits = append(hits, blindHit{h, m.peer})
 	}
 	registry := d.context.Batches["metrika"]
@@ -39,16 +49,18 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 	}
 	releases := d.context.Batches["release"].Observations
 	unsupported := 0
+	var work int64
 	for _, target := range measures {
 		if err := ctx.Err(); err != nil {
 			return out, nil, err
 		}
+		work += int64(len(registry.Observations)) + int64(len(target.weeks))*
+			(int64(len(groups[target.peer]))+3*int64(len(registry.Observations))+int64(len(releases))+1)
+		if work > maxBlindScanWork {
+			return out, nil, fmt.Errorf("snapshot exceeds the blind scan work budget; select a smaller snapshot")
+		}
 		breakCount := 0
 		for _, b := range registry.Observations {
-			if breakCount == 12 {
-				truncated = true
-				break
-			}
 			if b.MetricKey == "data_break" && matchesBlindFact(b, target, target.meta.Period, cutoff) {
 				p := Period{max(b.Period.From, target.meta.Period.From), min(b.Period.To, target.meta.Period.To, cutoff)}
 				if p.From <= p.To {
@@ -70,24 +82,26 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 			unsupported++
 			continue
 		}
-		rows := map[seriesKey][]Observation{}
-		for _, peer := range groups[target.peer] {
-			for day, obs := range peer.weeks {
-				rows[seriesKey{product: peer.meta.ProductKey, monday: day}] = obs
+		dates := make([]string, 0, len(target.weeks))
+		for day := range target.weeks {
+			if day <= cutoff {
+				dates = append(dates, day)
 			}
 		}
-		first, _ := time.Parse(time.DateOnly, target.meta.Period.From)
-		last, _ := time.Parse(time.DateOnly, min(target.meta.Period.To, cutoff))
-		first = monday(first)
-		last = monday(last)
-		start := first.AddDate(0, 0, watchWeeks*7)
-		if limit := last.AddDate(0, 0, -(maxBlindWeeks-1)*7); start.Before(limit) {
-			start, truncated = limit, true
+		if len(dates) == 0 {
+			out.UncertainWindows++
+			continue
 		}
+		sort.Strings(dates)
+		first, _ := time.Parse(time.DateOnly, dates[0])
+		last, _ := time.Parse(time.DateOnly, dates[len(dates)-1])
 		controlledStart := first.AddDate(0, 0, (2*watchWeeks-1)*7)
 		active := false
 		uncontrolled := false
-		for at := start; !at.After(last); at = at.AddDate(0, 0, 7) {
+		var previous time.Time
+		reportedWindows := 0
+		for _, day := range dates[min(watchWeeks, len(dates)):] {
+			at, _ := time.Parse(time.DateOnly, day)
 			if err := ctx.Err(); err != nil {
 				return out, nil, err
 			}
@@ -98,6 +112,11 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 			if at.Before(controlledStart) {
 				continue
 			}
+			reportedWindows++
+			if !previous.IsZero() && !at.Equal(previous.AddDate(0, 0, 7)) {
+				active, uncontrolled = false, false
+			}
+			previous = at
 			control := blindControl(target, groups[target.peer], at, min(p.To, cutoff))
 			if control == nil {
 				out.UncertainWindows++
@@ -114,7 +133,7 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 			}
 			sig := evaluateWeek(SignalInput{ProductKey: target.meta.ProductKey, ControlProductKey: control.meta.ProductKey,
 				MetricKey: target.meta.MetricKey, Segment: target.meta.Segment, DropPct: watchDropPct,
-				ControlMaxPct: watchControlMaxPct}, at, cutoff, privateSeries, origin, rows, registry.Observations)
+				ControlMaxPct: watchControlMaxPct}, at, cutoff, privateSeries, origin, rowsByGroup[target.peer], registry.Observations)
 			if sig.Value == nil {
 				out.UncertainWindows++
 				continue
@@ -132,14 +151,14 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 		}
 		if controlledStart.After(last) {
 			out.UncertainWindows++
+		} else {
+			expectedWindows := 1 + int((last.Unix()-controlledStart.Unix())/(7*24*60*60))
+			out.UncertainWindows += expectedWindows - reportedWindows
 		}
 	}
 	if unsupported > 0 {
 		out.UncertainWindows += unsupported
 		out.Warnings = append(out.Warnings, "Some dimensions lack Monday–Sunday totals; daily values and rates were not aggregated.")
-	}
-	if truncated {
-		out.Warnings = append(out.Warnings, "Scan coverage was bounded by series, week or break limits.")
 	}
 	if d.series.Status != "ok" {
 		out.UncertainWindows++
@@ -164,13 +183,10 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 		if _, exists := index[hit.candidate.ID]; exists {
 			continue
 		}
-		if len(index) == maxBlindCandidates {
-			out.Warnings = append(out.Warnings, "Candidate list truncated to 20 entries.")
-			break
-		}
 		index[hit.candidate.ID] = hit
 		out.Candidates = append(out.Candidates, hit.candidate)
 	}
+	out.CandidateCount = len(out.Candidates)
 	if len(out.Candidates) > 0 {
 		switch out.Candidates[0].Kind {
 		case "controlled_decline":
@@ -180,7 +196,7 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 		case "campaign_effect", "temporary_spike":
 			out.Status = out.Candidates[0].Kind
 		}
-	} else if !truncated && out.ComparedWindows > 0 && out.UncertainWindows == 0 {
+	} else if out.ComparedWindows > 0 && out.UncertainWindows == 0 {
 		out.Status = "quiet"
 	}
 	return out, index, nil
