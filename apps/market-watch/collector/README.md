@@ -36,3 +36,30 @@ scheduler here. Before a full production crawl, add coverage checks, page
 classification and incremental queues. The approved Go SDK means the host
 can reuse this code without a Rust subprocess or separate service. The CLI
 currently uses a local filesystem, not the deployed Airlock native storage.
+
+## Full public catalog on macOS
+
+Run `python3 apps/market-watch/collector/install-macos.py` from a logged-in
+macOS user session with Go on PATH. This installs the collectors for
+SoftMagazin, SoftMap and Softline as local per-user launch agents. Each runs at
+login and every 10,800 seconds. A source lock protects an unfinished generation.
+The joined Excel-compatible UTF-8 CSV is written to
+`.runtime/market-catalog/offers.csv`. Prices are RUB decimals, the delimiter
+is a semicolon, and an empty SKU means the publisher supplied no code.
+
+The two competitor workers use their public software sitemaps. The journal
+`<source>/pages.jsonl` checkpoints each visited page with its URL, capture time,
+license rows and extraction state. SoftMap's child URLs are reconciled to
+offers on family pages. Missing children are requested individually. A denied
+or removed page remains a separate observation. A template without recognized
+prices remains explicit. `progress.json` distinguishes checked families from
+pending variants. A new generation rescans the current sitemap and retains
+older observations with original capture times until refreshed. A temporary
+error retains the previous priced rows. Atomic per-source snapshots feed the
+joined CSV every minute and the URL coverage export every three hours.
+
+For an immediate manual collection from the app directory, run
+`go run ./collector/cmd/fullcatalog -source softmagazin,softmap -out ../../.runtime/market-catalog -refresh-after 3h`.
+To refresh the local files immediately after a change, run
+`../../.runtime/bin/catalogexport -dir ../../.runtime/market-catalog` and
+`../../.runtime/bin/market-coverage -catalog ../../.runtime/market-catalog`.

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -50,6 +51,7 @@ type Offer struct {
 	OldPriceMinor *int64 `json:"old_price_minor,omitempty"`
 	Currency      string `json:"currency"`
 	Quantity      *int64 `json:"quantity,omitempty"`
+	MaxQuantity   *int64 `json:"max_quantity,omitempty"`
 	PriceBasis    string `json:"price_basis"`
 	URL           string `json:"url"`
 	CapturedAt    string `json:"captured_at"`
@@ -141,6 +143,10 @@ func Extract(s Source, page string, html io.Reader, at time.Time) ([]Offer, erro
 	if e != nil {
 		return nil, e
 	}
+	return extractDoc(s, page, doc, at)
+}
+
+func extractDoc(s Source, page string, doc *goquery.Document, at time.Time) ([]Offer, error) {
 	base, _ := url.Parse(page)
 	var out []Offer
 	var invalid int
@@ -148,7 +154,7 @@ func Extract(s Source, page string, html io.Reader, at time.Time) ([]Offer, erro
 		sku := field(r, s.Rule.SKU)
 		name := field(r, s.Rule.Name)
 		p := field(r, s.Rule.Price)
-		if sku == "" || name == "" || p == "" {
+		if name == "" || p == "" {
 			return
 		}
 		price, e := Money(p)
@@ -226,6 +232,15 @@ func Dedupe(in []Offer) ([]Offer, error) {
 	seen := map[string]Offer{}
 	for _, o := range in {
 		k := o.Source + "\x00" + o.SKU
+		if o.SKU == "" {
+			k += "\x00" + o.URL + "\x00" + o.Name
+		}
+		if o.Quantity != nil {
+			k += "\x00min=" + strconv.FormatInt(*o.Quantity, 10)
+		}
+		if o.MaxQuantity != nil {
+			k += "\x00max=" + strconv.FormatInt(*o.MaxQuantity, 10)
+		}
 		if prev, ok := seen[k]; ok && prev.PriceMinor != o.PriceMinor {
 			return nil, fmt.Errorf("conflicting prices for %s/%s", o.Source, o.SKU)
 		}
@@ -239,7 +254,16 @@ func Dedupe(in []Offer) ([]Offer, error) {
 		if out[i].Source != out[j].Source {
 			return out[i].Source < out[j].Source
 		}
-		return out[i].SKU < out[j].SKU
+		if out[i].SKU != out[j].SKU {
+			return out[i].SKU < out[j].SKU
+		}
+		if out[i].URL != out[j].URL {
+			return out[i].URL < out[j].URL
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].PriceMinor < out[j].PriceMinor
 	})
 	return out, nil
 }
@@ -247,31 +271,46 @@ func decimal(n int64) string { return fmt.Sprintf("%d.%02d", n/100, n%100) }
 
 // Excel-safe: untrusted website text must not turn into formulas.
 func safe(s string) string {
-	v := strings.TrimLeft(s, " \t\r\n")
-	if v != "" && strings.ContainsRune("=+-@", rune(v[0])) {
+	v := strings.TrimLeftFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) })
+	// Leading controls are unsafe even when the remainder itself appears numeric.
+	if len(s) > 0 && (strings.IndexFunc(s[:len(s)-len(v)], unicode.IsControl) >= 0 || v != "" && strings.ContainsRune("=+-@", rune(v[0]))) {
 		return "'" + s
 	}
 	return s
 }
-func CSV(w io.Writer, offers []Offer) error {
+
+// CSVRows streams an export without buffering the entire catalog in memory.
+func CSVRows(w io.Writer, visit func(func(Offer) error) error) error {
 	c := csv.NewWriter(w)
 	c.Comma = ';'
-	if e := c.Write([]string{"source", "sku", "name", "price", "old_price", "currency", "quantity", "price_basis", "url", "captured_at"}); e != nil {
+	if e := c.Write([]string{"source", "sku", "name", "price", "old_price", "currency", "quantity", "price_basis", "url", "captured_at", "max_quantity"}); e != nil {
 		return e
 	}
-	for _, o := range offers {
+	number := func(v *int64) string {
+		if v == nil {
+			return ""
+		}
+		return strconv.FormatInt(*v, 10)
+	}
+	if e := visit(func(o Offer) error {
 		old := ""
 		if o.OldPriceMinor != nil {
 			old = decimal(*o.OldPriceMinor)
 		}
-		qty := ""
-		if o.Quantity != nil {
-			qty = strconv.FormatInt(*o.Quantity, 10)
-		}
-		if e := c.Write([]string{safe(o.Source), safe(o.SKU), safe(o.Name), decimal(o.PriceMinor), old, o.Currency, qty, o.PriceBasis, safe(o.URL), o.CapturedAt}); e != nil {
-			return e
-		}
+		return c.Write([]string{safe(o.Source), safe(o.SKU), safe(o.Name), decimal(o.PriceMinor), old, o.Currency, number(o.Quantity), safe(o.PriceBasis), safe(o.URL), safe(o.CapturedAt), number(o.MaxQuantity)})
+	}); e != nil {
+		return e
 	}
 	c.Flush()
 	return c.Error()
+}
+func CSV(w io.Writer, offers []Offer) error {
+	return CSVRows(w, func(yield func(Offer) error) error {
+		for _, o := range offers {
+			if e := yield(o); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
 }
