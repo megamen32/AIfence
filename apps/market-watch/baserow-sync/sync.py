@@ -135,9 +135,26 @@ def configure(configure_views=False):
             if not any(x["field"]==ids[key] and x["type"]==kind and x["value"]==value for x in existing):
                 api("POST",fp,{"field":ids[key],"type":kind,"value":value})
         if sort:
-            sp=f"database/views/{vid}/sortings/"
-            if not any(x["field"]==ids[sort[0]] for x in api("GET",sp)):
-                api("POST",sp,{"field":ids[sort[0]],"order":sort[1]})
+            sp = f"database/views/{vid}/sortings/"
+            sort_rules = [sort]
+            if idx == 0:
+                sort_rules.insert(0, ("status", "DESC"))
+            current_sorts = api("GET", sp)
+            ordered_ids = []
+            for key, direction in sort_rules:
+                field_id = ids[key]
+                setting = next((x for x in current_sorts if x["field"] == field_id), None)
+                if setting is None:
+                    setting = api("POST", sp, {"field": field_id, "order": direction})
+                    current_sorts.append(setting)
+                ordered_ids.append(setting["id"])
+            ordered_ids.extend(x["id"] for x in current_sorts if x["id"] not in ordered_ids)
+            if [x["id"] for x in current_sorts] != ordered_ids:
+                # Native reorder replies with HTTP 204 and no JSON entity.
+                request("baserow", "POST", "/api/" + sp + "prioritize/", {"view_sort_ids": ordered_ids})
+                actual = api("GET", sp)
+                if [x["id"] for x in actual] != ordered_ids:
+                    raise ValueError("Baserow did not apply the requested sort priority")
     return db["id"], tid, view_ids, ids
 
 
