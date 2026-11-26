@@ -1,3 +1,9 @@
 # Integration & QA (P0)
 Owner paths: tests/, docs/qa/. Root bootstrap and contracts maintained by integration owner. Test real pinned Airlock version, all three apps deployed from clean source and standard login, caller-scoped tools, one real prompt with cross-source evidence and tagged task. Validate replay/idempotency, unauthorized operations, missing data, time windows and independent app value. Test test-counter API separately; mark unavailable access rather than claim success. Two labeled test scenarios (historical signal; synthetic post-release success/failure/insufficient evidence). Inspect UI in actual browser and record proof. Capture full-run time/cost when observable. Ensure no partner inputs or credentials in repository, public URLs or logs. 
 Acceptance: README one-command platform startup verified; full deploy-apps verified after app implementations and local activation; one-take demo on authorized data, publication only of permitted material.
+
+## Blind director acceptance
+
+Use ordinary questions a channel director could ask. The user can name a product or describe a concern. Product and control selection, date windows, metrics, inputs, tools and execution order belong to the investigation. Keep developer parameters in SDK integration tests. Separate a later confirmation to create a proposed task from the initial question.
+
+Freeze the prompts and input identities before running fresh Airlock conversations. Only observations and source metadata enter the analyst's account. Keep the generator seed, scenario labels, scorer and answers outside its accessible inputs. Record the original replies, cards, actual tool calls and backlog counts before scoring. Report misses, false alarms, wrong causes and cases without enough evidence. After tuning with scored results, use fresh held-out cases for any new blind claim.
