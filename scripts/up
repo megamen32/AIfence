@@ -49,6 +49,8 @@ cat > "$RUNTIME/compose.local.yml" <<'YAML'
 services:
   airlock:
     platform: linux/amd64
+    environment:
+      DOCKER_DEFAULT_PLATFORM: linux/amd64
   frontend:
     platform: linux/amd64
   agent-builder-image:
