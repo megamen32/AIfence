@@ -58,6 +58,16 @@ services:
   js-executor-image:
     platform: linux/amd64
 YAML
+# Keep the initialized PostgreSQL data on the native Mac architecture;
+# the application images and JS executor are still amd64 under Rosetta.
+if [[ "$(uname -m)" == arm64 || "$(uname -m)" == aarch64 ]]; then
+    cat >> "$RUNTIME/compose.local.yml" <<'YAML_NATIVE'
+  postgres:
+    platform: linux/arm64
+  postgres-bootstrap:
+    platform: linux/arm64
+YAML_NATIVE
+fi
 # Personal overlays are optional local artifacts, excluded from Git.
 # Verify their exact local image IDs and provenance before selecting them.
 if [[ -s "$RUNTIME/personal-overlay/manifest.json" ]]; then
