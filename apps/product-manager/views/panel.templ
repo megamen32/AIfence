@@ -56,6 +56,7 @@ templ Panel(v HomeView) {
 	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
 		<header class="dashboard-top">
 			<strong>Product Manager</strong>
+			<a class="text-link" href="./source-watch">Мониторинг источников</a>
 			<nav class="dashboard-modes" aria-label="Режим данных">
 				<a href={ v.RealURL } aria-current={ active(v.Mode == "real") }>Рабочий</a>
 				<a href={ v.DemoURL } aria-current={ active(v.Mode == "demo") }>Деморежим</a>
