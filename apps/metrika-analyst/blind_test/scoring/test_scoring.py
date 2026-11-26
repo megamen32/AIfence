@@ -26,6 +26,13 @@ class BlindScoreTests(unittest.TestCase):
             root=Path(td); a=root/"S0.json"; c=root/"S0-card.json"
             a.write_text(json.dumps({"scenario":"S0","cause_type":"clean"})); c.write_text(json.dumps({"cause_type":"clean"}))
             self.assertEqual(scorer.score_one(a,c)["status"],"correct_silence")
+    def test_clean_false_alarm(self):
+        scorer = load("scorer", "score_agent.py")
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td); a=root/"S0.json"; c=root/"S0-card.json"
+            a.write_text(json.dumps({"scenario":"S0","cause_type":"clean"})); c.write_text(json.dumps({"family":"KES","week":"2026-10-05","cause_type":"clean"}))
+            self.assertEqual(scorer.score_one(a,c)["status"],"false_alarm")
+
     def test_sales_xlsx(self):
         exporter=load("exporter","export_sales.py")
         with tempfile.TemporaryDirectory() as td:

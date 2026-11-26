@@ -136,7 +136,7 @@ def score_one(answer_path: Path, card_path: Path) -> dict[str, Any]:
     has_false_alarm = false_alarm(card, answer)
     cause_correct = card["cause_type"] == answer["cause_type"] if answer["cause_type"] else False
     if clean_expected:
-        status = "false_alarm" if has_false_alarm or card["cause_type"] not in ("", "clean") else "correct_silence"
+        status = "false_alarm" if has_false_alarm or card["cause_type"] not in ("", "clean") or card["family"] or card["week"] else "correct_silence"
     else:
         status = "correct" if has_signal and cause_correct else ("found_wrong_cause" if has_signal else "missed")
     return {"scenario": scenario, "expected_family": answer["family"], "expected_week": answer["week"],
