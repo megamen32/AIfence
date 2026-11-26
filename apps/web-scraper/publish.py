@@ -32,11 +32,20 @@ def build():
             note='Семейства и отдельные лицензии учитываются раздельно. Артикул может отсутствовать.'
         else:
             cs=[cov('Страницы семейств',x['processed_pages'],x['candidate_pages'])]
-            if x.get('expected_variant_urls',0)>0:
+            if id=='softmagazin':
+                total=x.get('expected_variant_urls',0)
+                if total>0:
+                    pending=x.get('pending_variant_urls',total)
+                    unknown=x.get('unknown_scope_variant_urls',0)
+                    software=x.get('software_variant_urls',0)
+                    hardware=x.get('hardware_variant_urls',0)
+                    cs.extend([cov('Карточки sitemap (ПО и оборудование)',total-pending,total),cov('Тип карточки установлен',total-unknown,total),cov('Лицензии подтверждены',software,0,False),cov('Оборудование исключено',hardware,0,False)])
+                    note=f'В официальном sitemap {total:,} уникальных карточек. Тип ещё не установлен у {unknown:,}. Полный объём ПО подтверждается только после классификации; остаток очереди: {pending:,}.'.replace(',', ' ')
+                else:
+                    cs.append(cov('Обнаружено вариантов',x.get('variants',0),0,False))
+                    note='Идёт инвентаризация официальных sitemap товарных карточек. Количество ПО будет рассчитано по фактической классификации.'
+            elif x.get('expected_variant_urls',0)>0:
                 total=x['expected_variant_urls']; pending=x.get('pending_variant_urls',total); cs.append(cov('URL лицензий учтено',total-pending,total))
-            elif id=='softmagazin':
-                cs.append(cov('Обнаружено вариантов',x.get('variants',0),0,False))
-                note='Полный объём лицензий неизвестен; обход программных разделов ещё проверяется.' if not x.get('category_discovery_complete') else 'Полный объём отдельных лицензий неизвестен.'
             states=x.get('page_states',{});updated=x['updated_at'];status=x.get('state','unknown')
         if o and not r and status=='running':status='stopped'
         rules=[]

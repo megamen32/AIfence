@@ -25,31 +25,36 @@ import (
 )
 
 type inventory struct {
-	Source       string   `json:"source"`
-	DiscoveredAt string   `json:"discovered_at"`
-	URLs         []string `json:"urls"`
-	VariantURLs  []string `json:"variant_urls,omitempty"`
+	Source           string   `json:"source"`
+	DiscoveredAt     string   `json:"discovered_at"`
+	URLs             []string `json:"urls"`
+	VariantSitemapAt string   `json:"variant_sitemap_at,omitempty"`
+	VariantURLs      []string `json:"variant_urls,omitempty"`
 }
 type progress struct {
-	Source                 string         `json:"source"`
-	CategoryDiscovery      *bool          `json:"category_discovery_complete,omitempty"`
-	State                  string         `json:"state"`
-	UpdatedAt              string         `json:"updated_at"`
-	InventoryAt            string         `json:"inventory_at"`
-	CandidatePages         int            `json:"candidate_pages"`
-	ProcessedPages         int            `json:"processed_pages"`
-	PendingPages           int            `json:"pending_pages"`
-	ListedPages            int            `json:"listing_only_pages"`
-	States                 map[string]int `json:"page_states"`
-	PricedOffers           int            `json:"priced_offers"`
-	Variants               int            `json:"variants"`
-	ExpectedVariantURLs    int            `json:"expected_variant_urls"`
-	ObservedVariantURLs    int            `json:"observed_variant_urls"`
-	CheckedVariantURLs     int            `json:"checked_variant_urls"`
-	UnavailableVariantURLs int            `json:"unavailable_variant_urls"`
-	UnresolvedVariantURLs  int            `json:"unresolved_variant_urls"`
-	ExcludedVariantURLs    int            `json:"excluded_variant_urls"`
-	PendingVariantURLs     int            `json:"pending_variant_urls"`
+	Source                  string         `json:"source"`
+	CategoryDiscovery       *bool          `json:"category_discovery_complete,omitempty"`
+	State                   string         `json:"state"`
+	UpdatedAt               string         `json:"updated_at"`
+	InventoryAt             string         `json:"inventory_at"`
+	CandidatePages          int            `json:"candidate_pages"`
+	ProcessedPages          int            `json:"processed_pages"`
+	PendingPages            int            `json:"pending_pages"`
+	ListedPages             int            `json:"listing_only_pages"`
+	States                  map[string]int `json:"page_states"`
+	PricedOffers            int            `json:"priced_offers"`
+	Variants                int            `json:"variants"`
+	ExpectedVariantURLs     int            `json:"expected_variant_urls"`
+	ObservedVariantURLs     int            `json:"observed_variant_urls"`
+	CheckedVariantURLs      int            `json:"checked_variant_urls"`
+	UnavailableVariantURLs  int            `json:"unavailable_variant_urls"`
+	UnresolvedVariantURLs   int            `json:"unresolved_variant_urls"`
+	ExcludedVariantURLs     int            `json:"excluded_variant_urls"`
+	SoftwareVariantURLs     int            `json:"software_variant_urls,omitempty"`
+	HardwareVariantURLs     int            `json:"hardware_variant_urls,omitempty"`
+	UnknownScopeVariantURLs int            `json:"unknown_scope_variant_urls,omitempty"`
+	VariantSitemapAt        string         `json:"variant_sitemap_at,omitempty"`
+	PendingVariantURLs      int            `json:"pending_variant_urls"`
 }
 
 func writeAtomic(path string, fn func(io.Writer) error) error {
@@ -113,6 +118,12 @@ func readInventory(ctx context.Context, dir string, s catalog.Source, f catalog.
 		}
 		closed := last.InventoryAt == inv.DiscoveredAt && (last.State == "complete" || last.State == "needs_review")
 		if refresh == 0 || !closed || time.Since(start) < refresh {
+			if s.ID == "softmagazin" && (len(inv.VariantURLs) == 0 || inv.VariantSitemapAt == "") {
+				if e = discoverSoftMagazinVariants(ctx, s, f, &inv); e != nil {
+					return inv, e
+				}
+				return inv, saveJSON(path, inv)
+			}
 			return inv, nil
 		}
 		// A new inventory is published only after discovery succeeds.
@@ -147,6 +158,11 @@ func readInventory(ctx context.Context, dir string, s catalog.Source, f catalog.
 	}
 	if len(inv.URLs) == 0 {
 		return inv, errors.New("empty sitemap inventory")
+	}
+	if s.ID == "softmagazin" {
+		if e = discoverSoftMagazinVariants(ctx, s, f, &inv); e != nil {
+			return inv, e
+		}
 	}
 	// Keep smoke-test SKUs first to provide comparable quotes while processing.
 	inv.URLs = unique(append(append([]string{}, s.Seeds...), inv.URLs...))
@@ -242,32 +258,63 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 		}
 		appendOffers(p)
 	}
-	for _, u := range inv.VariantURLs {
-		if observed[u] {
-			status.ObservedVariantURLs++
-			continue
+	if inv.Source == "softmagazin" {
+		status.VariantSitemapAt = inv.VariantSitemapAt
+		for _, row := range reconcileSoftMagazin(inv, pages) {
+			switch row.Scope {
+			case "software":
+				status.SoftwareVariantURLs++
+			case "hardware":
+				status.HardwareVariantURLs++
+			default:
+				status.UnknownScopeVariantURLs++
+			}
+			if row.Direct {
+				status.CheckedVariantURLs++
+				appendOffers(pages[row.URL])
+			}
+			switch row.State {
+			case "priced", "no_public_price":
+				status.ObservedVariantURLs++
+			case "out_of_scope": // Hardware is accounted, not an error.
+			case "unavailable":
+				status.UnavailableVariantURLs++
+			case "access_denied", "robots_excluded":
+				status.ExcludedVariantURLs++
+			case "pending":
+				status.PendingVariantURLs++
+			default:
+				status.UnresolvedVariantURLs++
+			}
 		}
-		detail, ok := pages[u]
-		if !ok {
-			status.PendingVariantURLs++
-			continue
-		}
-		appendOffers(detail)
-		if detail.At < inv.DiscoveredAt {
-			status.PendingVariantURLs++
-			continue
-		}
-		status.CheckedVariantURLs++
-		switch detail.State {
-		case "priced", "no_public_price":
-			status.ObservedVariantURLs++
-			status.Variants += len(detail.Variants)
-		case "unavailable":
-			status.UnavailableVariantURLs++
-		case "robots_excluded", "access_denied":
-			status.ExcludedVariantURLs++
-		default:
-			status.UnresolvedVariantURLs++
+	} else {
+		for _, u := range inv.VariantURLs {
+			if observed[u] {
+				status.ObservedVariantURLs++
+				continue
+			}
+			detail, ok := pages[u]
+			if !ok {
+				status.PendingVariantURLs++
+				continue
+			}
+			appendOffers(detail)
+			if detail.At < inv.DiscoveredAt {
+				status.PendingVariantURLs++
+				continue
+			}
+			status.CheckedVariantURLs++
+			switch detail.State {
+			case "priced", "no_public_price":
+				status.ObservedVariantURLs++
+				status.Variants += len(detail.Variants)
+			case "unavailable":
+				status.UnavailableVariantURLs++
+			case "robots_excluded", "access_denied":
+				status.ExcludedVariantURLs++
+			default:
+				status.UnresolvedVariantURLs++
+			}
 		}
 	}
 	status.PendingPages = status.CandidatePages - status.ProcessedPages
@@ -287,7 +334,7 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 	}
 	if status.PendingPages == 0 && status.PendingVariantURLs == 0 {
 		status.State = "complete"
-		if status.CategoryDiscovery != nil && !*status.CategoryDiscovery || status.States["error"] > 0 || status.States["unclassified"] > 0 || status.States["robots_excluded"] > 0 || status.States["access_denied"] > 0 || status.ExcludedVariantURLs > 0 || status.UnresolvedVariantURLs > 0 {
+		if status.CategoryDiscovery != nil && !*status.CategoryDiscovery || status.UnknownScopeVariantURLs > 0 || status.States["error"] > 0 || status.States["unclassified"] > 0 || status.States["robots_excluded"] > 0 || status.States["access_denied"] > 0 || status.ExcludedVariantURLs > 0 || status.UnresolvedVariantURLs > 0 {
 			status.State = "needs_review"
 		}
 	}
@@ -576,7 +623,17 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	}
 	// A variant absent from the family DOM may still have a live standalone
 	// page. Read only those missing variants and keep HTTP 404/410 as evidence.
-	if len(inv.VariantURLs) > 0 {
+	if len(inv.VariantURLs) > 0 && s.ID == "softmagazin" {
+		var gaps []string
+		for _, row := range reconcileSoftMagazin(inv, pages) {
+			if row.State == "pending" || (row.State == "unclassified" && row.Direct) {
+				gaps = append(gaps, row.URL)
+			}
+		}
+		if e = process(ctx, s, gaps, fetch, consume); e != nil {
+			return e
+		}
+	} else if len(inv.VariantURLs) > 0 {
 		observed := map[string]bool{}
 		for _, u := range inv.URLs {
 			p := pages[u]

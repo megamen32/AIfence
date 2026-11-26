@@ -88,7 +88,7 @@ func workerSummary(root, s string) (sourceSummary, error) {
 		result.ExpectedFamilies = m.Families
 		result.PricedRows = m.Prices
 		result.CategoryEnumeration = m.Categories
-		if s == "softmap" {
+		if s == "softmap" || s == "softmagazin" && m.Variants > 0 {
 			result.ExpectedVariants = &m.Variants
 		}
 	}

@@ -32,3 +32,12 @@ authenticated snapshot upload, and overview/detail routes returned success.
 Direct browser navigation shows real data. Embedded dashboard navigation
 still needs the existing local gateway to include web-scraper.localhost;
 no platform files were changed. Existing workers remain independently managed.
+
+## Quality gate
+Do not treat unknown coverage or a missing license count as a completed
+collector. Enumerate the publisher's full product-card inventory, classify
+software versus hardware by source evidence, and reconcile distinct URLs.
+Show the exact denominator, confirmed software count and remaining work.
+Never substitute a family count, offer row count or guessed quantity for a
+license count. If evidence is unavailable, expose the specific blocker rather
+than fabricating a number or hiding incomplete collection.
