@@ -19,15 +19,15 @@ TABLE = "Цены по лицензиям"
 DATABASE = "Market Watch"
 # CSV column, Baserow field, type, native grid width. Hidden metadata stays available in row details.
 COLUMNS = (
-    ("product", "Лицензия", "text", 175),
+    ("product", "Лицензия", "text", 155),
     ("softline", "Softline", "number", 88),
     ("softmap", "SoftMap", "number", 88),
     ("softmagazin", "SoftMagazin", "number", 98),
-    ("spread", "Разница", "number", 80),
+    ("spread", "Разница", "number", 75),
+    ("compare_url", "Сравнение и история", "url", 140),
     ("sku", "Артикул", "text", 130),
     ("currency","Валюта","text",76),
     ("conditions","Условия","text",230),
-    ("compare_url","Сравнение и история","url",170),
     ("biggest_drop","Снижение за 7 дней","number",138),
     ("leader","Смена лидера за 7 дней","text",0),
     ("as_of","Последний замер","date",155),
