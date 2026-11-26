@@ -25,7 +25,7 @@ def make_data(run_id, now):
     def cid(i):
         return str(10**17 + int(hashlib.sha256(f'aifence-demo:{run_id}:{i}'.encode()).hexdigest()[:15], 16) % (9*10**17))
     def hit(i, ts, path, kind='pageview', **extra):
-        return urllib.parse.urlencode(dict(cid=cid(i), t=kind, et=ts, dl=BASE+path, **extra))
+        return urllib.parse.urlencode(dict(cid=cid(i), t=kind, et=ts, dl=BASE+path, dr='https://www.example.com/', **extra))
     def goal(i, ts, path, event):
         stats[event] += 1
         return hit(i, ts, path, 'event', ea=event)
