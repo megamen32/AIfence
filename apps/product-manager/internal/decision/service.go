@@ -227,3 +227,33 @@ func (s *Service) Evaluate(ctx context.Context, in EvaluateInput) (Assessment, e
 	}
 	return out, nil
 }
+
+// PendingMeasurements selects eligible decisions for the importing owner, independent of the UI list limit.
+func (s *Service) PendingMeasurements(ctx context.Context, snapshot string, ids, products []string) ([]Record, error) {
+	who, err := owner(ctx)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := s.q.PMPendingMeasurements(ctx, db.PMPendingMeasurementsParams{OwnerID: who, SnapshotID: snapshot, HypothesisIds: ids, ProductKeys: products})
+	if err != nil {
+		return nil, err
+	}
+	records := make([]Record, 0, len(raw))
+	for _, body := range raw {
+		r, err := decode(body, nil)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, r)
+	}
+	return records, nil
+}
+
+func (s *Service) LinkedMeasurementSnapshots(ctx context.Context, h Hypothesis, incoming, afterFrom, afterTo string, sources []string) ([]string, error) {
+	who, err := owner(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c := h.SuccessCriterion
+	return s.q.PMLinkedMeasurementSnapshots(ctx, db.PMLinkedMeasurementSnapshotsParams{OwnerID: who, HypothesisID: h.ID, IncomingSnapshotID: incoming, MetricKey: c.MetricKey, ProductKey: h.ProductKey, ControlKey: c.ControlProductKey, BeforeFrom: c.BaselineFrom, BeforeTo: c.BaselineTo, AfterFrom: afterFrom, AfterTo: afterTo, SourceIds: sources})
+}

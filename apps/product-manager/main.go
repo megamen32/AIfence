@@ -4,6 +4,7 @@ import (
 	"agent/handlers"
 	"agent/internal/decision"
 	"agent/internal/evidence"
+	privateui "agent/internal/handlers"
 	"agent/internal/product"
 	"agent/views"
 
@@ -26,10 +27,13 @@ func newAgent() *agentsdk.Agent {
 	registerPathCheck(a)
 	a.RegisterTool(tool.Typed[evidence.Empty, evidence.Index]("list_evidence").Description("List immutable evidence snapshots imported by this user, newest first.").Execute(e.List).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[evidence.Query, evidence.Result]("read_evidence").Description("Read observations with source locators. Filter by source, IDs or page with offset and limit; total_matched includes all matching rows.").Execute(e.Read).Build(), agentsdk.AccessUser)
-	a.RegisterTool(tool.Typed[evidence.ImportInput, evidence.Summary]("import_evidence").Description("Import authorized aifence.v1 observations, a case or shared evidence workflow document. Identical contents reuse the immutable ID.").Execute(e.Import).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[evidence.ImportInput, product.ImportReceipt]("import_evidence").Description("Import authorized aifence.v1 observations, a case or shared evidence workflow document. Identical contents reuse the immutable ID. Linked releases and complete comparable measurements update confirmed decisions.").Execute(p.Import).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[decision.SaveInput, decision.Record]("save_hypothesis").Description("Write a proposal. Set hypothesis.schema_version to the exact string aifence.v1, status to proposed, economic_effect to {status:unknown,assumptions:[]}. Pass signal_ids, support_ids, counter_ids, unknowns as arrays (use [] when empty). Pass the immutable evidence_snapshot_id from list_evidence and expected_version=0 on create. Optional fields: forecast, competing_explanations, evidence_level and browser_evidence_ids. path_verified requires an observed browser path_check for the same product; it checks the path, not causality. A criterion has ISO baseline_from/to, observation_days, metric_key and rule. Rules: relative_change_pct >= N, or difference_in_relative_changes_pp >= N with control_product_key.").Execute(p.Save).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[decision.GetInput, decision.Record]("get_hypothesis").Description("Read saved hypothesis, local backlog task and evaluation.").Execute(p.Get).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[evidence.Empty, decision.ListResult]("list_hypotheses").Description("List this user's records and status.").Execute(p.List).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[evidence.Empty, product.PrivateReviewURL]("private_review_link").Description("Return the fixed link to the signed-in user’s protected board. No data lookup. For requests about private project inputs, provide this link without reading the board or the data through additional tools.").Execute(product.PrivateReviewLink).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[evidence.Empty, decision.Priorities]("rank_hypotheses").Description("Rank proposed checks by scenario weekly incremental margin in RUB per person-hour to test. Equal scores favor stronger evidence, then lower effort. needs_estimate has incomplete inputs. Never present scenario values as measured profit.").Execute(p.Rank).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[decision.EstimateInput, decision.Record]("set_review_estimate").Description("Record only a user-supplied or explicitly sourced planning scenario. Supply the weekly incremental margin in RUB, validation effort in person-hours and their source or assumptions. Empty estimate clears it. Requires the current draft version.").Execute(p.SetEstimate).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[decision.GetInput, decision.Task]("send_to_backlog").Description("Read the receipt of a task already approved separately in the Product Manager panel. This tool cannot create a task.").Execute(p.BacklogReceipt).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[product.EvaluateInput, decision.Assessment]("evaluate_hypothesis").Description("Check for post-release effect. Supply only imported observation IDs when linking a corrective release or measured windows.").Execute(p.Evaluate).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[product.InvestigateInput, decision.Record]("investigate_orders").Description("Save or read back a proposal from an imported sales watchdog.alert=true. Optional product_key and week_from (YYYY-MM-DD Monday) select the alert; otherwise use the latest. Uses the same snapshot for context and browser results. For older snapshots without watchdog rows, use precomputed full-week family_orders_idx.relative_change_pct.").Execute(p.Investigate).Build(), agentsdk.AccessUser)
@@ -38,6 +42,9 @@ func newAgent() *agentsdk.Agent {
 	for _, r := range []*agentsdk.Route{
 		{Method: "POST", Path: "/investigate", Handler: investigatePage(p), Description: "Разобрать изменение самостоятельных заказов"},
 		{Method: "GET", Path: "/", Handler: h.Home, Description: "Гипотезы, источники и локальный бэклог"},
+		{Method: "GET", Path: "/private-review", Handler: privateui.PrivateReviewPage(a.DB()), Description: "Закрытые решения и снимки"},
+		{Method: "GET", Path: "/priorities", Handler: h.Priorities, Description: "Приоритеты проверок"},
+		{Method: "POST", Path: "/priorities", Handler: h.UpdateEstimate, Description: "Сохранить оценку проверки"},
 		{Method: "GET", Path: "/board", Handler: h.Board, Description: "Карточки продуктовых решений"},
 		{Method: "POST", Path: "/edit", Handler: h.Edit, Description: "Отредактировать гипотезу перед подтверждением"},
 		{Method: "POST", Path: "/approve", Handler: product.BacklogApprovalHTTP(h.Approve), Description: "Подтвердить задачу локального бэклога"},
@@ -64,6 +71,10 @@ func newAgent() *agentsdk.Agent {
 Для проверки пути в браузере и анализа скриншотов получи соответствующую просьбу пользователя. Используй check_purchase_path для поддерживаемого продукта и platform.analyzeImage для screenshot_path. По просьбе добавь browser batch в проверяемый снимок, сохрани screenshot_path и результат vision в строке, а дату проверки покажи отдельно от исторического периода. Описывай только видимый этап. Текущие цены сравнивай через compare_offers по точному SKU и выводи отдельно от истории с датой и ссылкой. Если после проверки варианты остались неоднозначны, опиши пределы сравнения.
 
 Покажи сохранённую карточку, предлагаемую задачу и способ проверки. Сразу дай ссылку card_url на карточку и укажи единственное действие «Создать эту задачу» в панели PM. Не проси ответить «да» в чате. Если пользователь сам подтвердил текстом, покажи то же действие на карточке: приложение не может удостоверить чат-согласие. После клика можно прочитать квитанцию. Не передавай confirmed от имени пользователя и не автоматизируй POST подтверждения.
+
+На просьбу открыть закрытую доску или разобрать реальные закрытые материалы в обычном чате вызови только private_review_link. Верни точный URL из ответа. Ссылку открывает пользователь в своей сессии Airlock. Не загружай страницу, карточки или снимки через другие инструменты.
+
+Когда спрашивают, что проверить первым из сохранённых гипотез, вызови rank_hypotheses. Сценарную маржу в рублях за неделю и трудоёмкость проверки бери только из явно названных источников. При проверке ранее сохранённого сигнала в первоисточнике вызови replay_signals приложения metrika-analyst с параметрами проверяемого ряда. Процент изменения бери из фактического relative_change_pct или вычисли по исходным значениям, порог срабатывания указывай отдельно.
 
 Приводи период и источники для сравнений, включая контроль. Показывай ограничения и альтернативы. Индекс заказов не выражает количество или прибыль. Разделяй исходное падение и критерий улучшения после релиза. При вопросе о достижении критерия используй evaluate_hypothesis и укажи, какого релиза или наблюдения не хватает.`})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Что требует внимания?", Prompt: "Что сейчас требует внимания в продажах?"})

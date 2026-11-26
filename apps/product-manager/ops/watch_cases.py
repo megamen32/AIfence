@@ -138,24 +138,59 @@ def launch(*args, check=True):
     return subprocess.run(["/bin/launchctl",*args], capture_output=True,text=True,check=check)
 
 
+def login_link(definition, login_dir):
+    """Publish the project definition without replacing a same-name third-party file."""
+    login_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    link = login_dir / definition.name
+    try:
+        # symlink(2) creates the directory entry atomically and never overwrites.
+        link.symlink_to(definition)
+    except FileExistsError:
+        if not link.is_symlink() or link.resolve() != definition.resolve():
+            raise RuntimeError(f"Another launch definition already exists at {link}")
+    return link
+
+
 def install():
-    state=STATE
-    state.mkdir(mode=0o700,parents=True,exist_ok=True)
-    plist=state/(LABEL+".plist")
-    wanted=plistlib.dumps(config())
-    domain=f"gui/{os.getuid()}"
-    target=f"{domain}/{LABEL}"
-    current=launch("print",target,check=False)
-    if not current.returncode:
-        if f"path = {plist}\n" not in current.stdout:
-            raise RuntimeError("Label is already registered to a different launch definition")
-        if plist.exists() and plist.read_bytes()==wanted:
-            print(f"Registered {target}")
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    plist = STATE / (LABEL + ".plist")
+    login_dir = Path.home() / "Library" / "LaunchAgents"
+    link = login_dir / plist.name
+    wanted = plistlib.dumps(config())
+    domain = f"gui/{os.getuid()}"
+    target = f"{domain}/{LABEL}"
+
+    # The file lock also serializes two simultaneous installs. Preserve busy work:
+    # a worker holds worker.lock for the whole import.
+    with (STATE / "install.lock").open("a") as install_lock:
+        fcntl.flock(install_lock, fcntl.LOCK_EX)
+        current = launch("print", target, check=False)
+        if current.returncode == 0:
+            service_paths = {line.strip() for line in current.stdout.splitlines()}
+            if not ({f"path = {plist}", f"path = {link}"} & service_paths):
+                raise RuntimeError("Label is already registered to a different launch definition")
+        if plist.is_symlink() or (plist.exists() and not plist.is_file()):
+            raise RuntimeError(f"Unexpected project launch definition at {plist}")
+        if os.path.lexists(link) and (not link.is_symlink() or link.resolve() != plist.resolve()):
+            raise RuntimeError(f"Another launch definition already exists at {link}")
+        same = plist.exists() and plist.read_bytes() == wanted
+        if current.returncode == 0 and same:
+            login_link(plist, login_dir)
+            print(f"Registered {target} for this login and future logins")
             return
-        launch("bootout",target)
-    write_atomic(plist,wanted)
-    launch("bootstrap",domain,str(plist))
-    print(f"Registered {target}")
+        with (STATE / "worker.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise RuntimeError("A sync is running; retry installation after it finishes")
+            if current.returncode == 0:
+                launch("bootout", target)
+            if not same:
+                write_atomic(plist, wanted)
+            login_link(plist, login_dir)
+        # Release worker.lock before RunAtLoad starts the first real check.
+        launch("bootstrap", domain, str(link))
+        print(f"Registered {target} for this login and future logins")
 
 
 def main():

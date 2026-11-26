@@ -90,20 +90,22 @@ type Document struct {
 	Warnings     []string `json:"warnings,omitempty"`
 }
 type Row struct {
-	Kind       string    `json:"kind"`
-	Segment    string    `json:"segment,omitempty"`
-	Source     string    `json:"source"`
-	ID         string    `json:"id"`
-	Product    string    `json:"product"`
-	Metric     string    `json:"metric"`
-	Value      string    `json:"value"`
-	Unit       string    `json:"unit"`
-	Period     Period    `json:"period"`
-	Ref        SourceRef `json:"source_ref"`
-	Status     string    `json:"status"`
-	Details    string    `json:"details_json,omitempty"`
-	Caveats    []string  `json:"caveats,omitempty"`
-	SampleSize *int      `json:"sample_size,omitempty"`
+	BatchStatus string    `json:"-"`
+	BatchAsOf   string    `json:"-"`
+	Kind        string    `json:"kind"`
+	Segment     string    `json:"segment,omitempty"`
+	Source      string    `json:"source"`
+	ID          string    `json:"id"`
+	Product     string    `json:"product"`
+	Metric      string    `json:"metric"`
+	Value       string    `json:"value"`
+	Unit        string    `json:"unit"`
+	Period      Period    `json:"period"`
+	Ref         SourceRef `json:"source_ref"`
+	Status      string    `json:"status"`
+	Details     string    `json:"details_json,omitempty"`
+	Caveats     []string  `json:"caveats,omitempty"`
+	SampleSize  *int      `json:"sample_size,omitempty"`
 }
 type Result struct {
 	Summary
@@ -323,7 +325,7 @@ func selectRows(d Document, q Query) (Result, error) {
 			if strings.HasPrefix(value, "\"") {
 				_ = json.Unmarshal(o.Value, &value)
 			}
-			out.Rows = append(out.Rows, Row{o.Kind, o.Segment, b.Source, o.ID, o.ProductKey, o.MetricKey, value, o.Unit, o.Period, o.Ref, o.Status, string(o.Details), o.Caveats, o.SampleSize})
+			out.Rows = append(out.Rows, Row{b.Status, b.AsOf, o.Kind, o.Segment, b.Source, o.ID, o.ProductKey, o.MetricKey, value, o.Unit, o.Period, o.Ref, o.Status, string(o.Details), o.Caveats, o.SampleSize})
 		}
 	}
 	return out, nil

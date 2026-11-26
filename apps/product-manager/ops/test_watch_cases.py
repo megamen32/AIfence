@@ -2,10 +2,12 @@ import contextlib
 import fcntl
 import io
 from pathlib import Path
+import subprocess
+from unittest import mock
 import tempfile
 import unittest
 
-from watch_cases import CHECKPOINT, check_once
+from watch_cases import CHECKPOINT, LABEL, check_once, install, login_link
 
 
 class WatchCasesTests(unittest.TestCase):
@@ -68,6 +70,54 @@ class WatchCasesTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,"New inputs"):
             check_once(self.data,self.state,replace)
         self.assertTrue(check_once(self.data,self.state,self.sync)["previous_case_pinned"])
+
+    def test_login_link_is_idempotent_and_preserves_foreign_entry(self):
+        self.state.mkdir()
+        definition = self.state / (LABEL + ".plist")
+        definition.write_bytes(b"fixture")
+        login_dir = self.root / "Library" / "LaunchAgents"
+        link = login_link(definition, login_dir)
+        self.assertEqual(link.resolve(), definition.resolve())
+        self.assertEqual(login_link(definition, login_dir), link)
+        link.unlink()
+        link.write_bytes(b"other-owner")
+        with self.assertRaisesRegex(RuntimeError, "Another launch definition"):
+            login_link(definition, login_dir)
+        self.assertEqual(link.read_bytes(), b"other-owner")
+        link.unlink()
+        link.symlink_to(self.root / "other-missing.plist")
+        with self.assertRaisesRegex(RuntimeError, "Another launch definition"):
+            login_link(definition, login_dir)
+        self.assertEqual(link.readlink(), self.root / "other-missing.plist")
+
+    def test_existing_manual_service_gains_login_link_without_restart(self):
+        import plistlib
+        self.state.mkdir()
+        definition = self.state / (LABEL + ".plist")
+        settings = {"Label": LABEL}
+        definition.write_bytes(plistlib.dumps(settings))
+        service = subprocess.CompletedProcess([],0,f"path = {definition}\nstate = running\n","")
+        with mock.patch("watch_cases.STATE",self.state), mock.patch("watch_cases.Path.home",return_value=self.root), \
+                mock.patch("watch_cases.config",return_value=settings), mock.patch("watch_cases.launch",return_value=service) as launch:
+            with contextlib.redirect_stdout(io.StringIO()):
+                install()
+            self.assertEqual(launch.call_count,1)
+            self.assertEqual(launch.call_args.args[0], "print")
+        self.assertEqual((self.root / "Library" / "LaunchAgents" / definition.name).resolve(),definition.resolve())
+
+    def test_active_import_cannot_be_unloaded_during_config_update(self):
+        self.state.mkdir()
+        definition=self.state / (LABEL + ".plist")
+        definition.write_bytes(b"old")
+        service=subprocess.CompletedProcess([],0,f"path = {definition}\nstate = running\n","")
+        with (self.state / "worker.lock").open("a") as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX)
+            with mock.patch("watch_cases.STATE",self.state), mock.patch("watch_cases.Path.home",return_value=self.root), \
+                    mock.patch("watch_cases.config",return_value={"Label":LABEL}), mock.patch("watch_cases.launch",return_value=service) as launch:
+                with self.assertRaisesRegex(RuntimeError,"sync is running"):
+                    install()
+                self.assertEqual(launch.call_count,1)
+        self.assertEqual(definition.read_bytes(),b"old")
 
 
 if __name__ == "__main__":

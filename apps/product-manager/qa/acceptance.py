@@ -8,8 +8,11 @@ import os
 import re
 import subprocess
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlencode
+
+from priorities import check_priorities
 
 HERE = Path(__file__).resolve().parent
 APP = HERE.parent
@@ -73,7 +76,11 @@ def register(sdk, document):
     summary = sdk.call("import_evidence", evidence)
     repeated = sdk.call("import_evidence", {"document": json.dumps(document, indent=2, ensure_ascii=False)})
     rows = [row for batch in document["batches"] for row in batch["observations"]]
-    check(summary == repeated, "same snapshot changed across imports")
+    for receipt in (summary, repeated):
+        check(not receipt.get("followup_error") and all(x["status"] != "retry" for x in receipt.get("followup", [])),
+              f"follow-up failed after durable import: {receipt}")
+    stable = lambda receipt: {k: v for k, v in receipt.items() if k not in ("followup", "followup_error")}
+    check(stable(summary) == stable(repeated), "same snapshot changed across imports")
     ref = summary["snapshot_id"]
     check(re.fullmatch(r"ev-[a-f0-9]{64}", ref) and summary["count"] == len(rows), "incorrect snapshot count or ID")
     saved = sdk.call("read_evidence", {"snapshot_id": ref, "ids": [r["id"] for r in rows], "limit": 100})
@@ -107,12 +114,29 @@ def awaiting(assessment):
           bool(assessment["reason"]), "missing measurements must not produce an effect")
 
 
+def scenario_document(document, identifier):
+    # Each run has independent products so unfinished or historical runs cannot supply measurements.
+    for batch in document["batches"]:
+        for row in batch["observations"]:
+            row["product_key"] = {SYNTHETIC: identifier, CONTROL: identifier + "/control"}[row["product_key"]]
+    return document
+
+
 def run_lifecycle(sdk, initial, identifier):
-    followup = fixture("synthetic-followup.json")
+    followup = scenario_document(fixture("synthetic-followup.json"), identifier)
     for batch in followup["batches"]:
         if batch["source"] == "release":
             batch["observations"][0]["details"]["hypothesis_id"] = identifier
+
+    def subset(*ids):
+        doc = copy.deepcopy(followup)
+        for batch in doc["batches"]:
+            batch["observations"] = [r for r in batch["observations"] if r["id"] in ids]
+        doc["batches"] = [batch for batch in doc["batches"] if batch["observations"]]
+        return doc
     h = hypothesis(identifier)
+    h["product_key"] = identifier
+    h["success_criterion"]["control_product_key"] = identifier + "/control"
     key = {"hypothesis_id": identifier}
     save = {"hypothesis": h, "expected_version": 0, "evidence_snapshot_id": initial}
     bad = copy.deepcopy(save)
@@ -122,6 +146,7 @@ def run_lifecycle(sdk, initial, identifier):
     check(first["version"] == 1 and first["hypothesis"] == h and first["evidence_snapshot_id"] == initial, "proposal mismatch")
     check(sdk.call("get_hypothesis", key) == first, "proposal was not persisted exactly")
     sdk.call("save_hypothesis", save, reject="версия")
+    first = check_priorities(sdk, first)
     sdk.call("send_to_backlog", key, reject="ещё не создана")
     sdk.approve(identifier, first["version"], confirmed=False, want=(400,))
     check(sdk.call("get_hypothesis", key) == first, "declined send changed the record")
@@ -135,36 +160,50 @@ def run_lifecycle(sdk, initial, identifier):
           task["success_criterion"] == h["success_criterion"] and bool(task["url"]) and bool(task["id"]),
           "backlog receipt mismatch or duplicate")
     in_backlog = sdk.call("get_hypothesis", key)
-    check(in_backlog["version"] == 2 and in_backlog["task"] == task and
+    check(in_backlog["version"] == first["version"] + 1 and in_backlog["task"] == task and
           in_backlog["hypothesis"]["status"] == "in_backlog" and
           in_backlog["hypothesis"]["backlog_ref"] == {k: task[k] for k in ("id", "tag", "url")}, "task readback mismatch")
-    follow = register(sdk, followup)
-    release = {**key, "snapshot_id": follow, "release_observation_id": "fixture/fix"}
-    sdk.call("evaluate_hypothesis", {**release, "release_observation_id": "fixture/missing"}, reject="наблюдение отсутствует")
-    check(sdk.call("get_hypothesis", key) == in_backlog, "unknown release reference changed saved state")
-    pending = sdk.call("evaluate_hypothesis", release)
+    queue = sdk.call("rank_hypotheses", {})
+    check(not any(x["hypothesis_id"] == identifier for group in queue.values() for x in group), "approved hypothesis still ranked")
+    release = register(sdk, subset("fixture/fix"))
+    released = sdk.call("get_hypothesis", key)
+    pending = released["assessment"]
     awaiting(pending)
-    check(pending["release_id"] == "fixture/fix" and pending["released_on"] == "2025-02-05" and
-          pending["release_evidence_ref"] == f"{follow}/fixture/fix", "release not recorded")
-    quality = sdk.call("evaluate_hypothesis", {**release, "baseline_id": "fixture/tag-before", "current_id": "fixture/tag-after"})
-    awaiting(quality)
-    measure = {**release, "baseline_id": "fixture/baseline", "current_id": "fixture/partial",
-               "control_baseline_id": "fixture/control-baseline", "control_current_id": "fixture/control-after"}
-    awaiting(sdk.call("evaluate_hypothesis", measure))
-    measure["current_id"] = "fixture/after"
-    answer = sdk.call("evaluate_hypothesis", measure)
-    refs = [f"{follow}/fixture/{v}" for v in ("baseline", "after", "control-baseline", "control-after")]
-    # Atlas recovers from 80 to 100 (+25%); Lumen from 100 to 105 (+5%).
+    check(released["version"] == in_backlog["version"] + 1 and released["task"] == task and
+          pending["release_id"] == "fixture/fix" and pending["released_on"] == "2025-02-05" and
+          pending["release_evidence_ref"] == f"{release}/fixture/fix", "release not recorded by import")
+    sdk.call("evaluate_hypothesis", {**key, "snapshot_id": release, "release_observation_id": "fixture/missing"},
+             reject="наблюдение отсутствует")
+    register(sdk, subset("fixture/tag-before", "fixture/tag-after", "fixture/partial"))
+    check(sdk.call("get_hypothesis", key) == released, "incomplete or measurement-repair data changed saved state")
+    target = register(sdk, subset("fixture/after"))
+    check(sdk.call("get_hypothesis", key) == released, "effect recorded before the separate control arrived")
+    control_document = subset("fixture/control-after")
+    payload = {"document": json.dumps(control_document, ensure_ascii=False)}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        receipts = list(pool.map(lambda _: sdk.call("import_evidence", payload), range(2)))
+    for receipt in receipts:
+        check(not receipt.get("followup_error") and all(x["status"] != "retry" for x in receipt.get("followup", [])),
+              f"concurrent import did not resolve cleanly: {receipt}")
+    control = register(sdk, control_document)
+    check(all(rec["snapshot_id"] == control for rec in receipts), "concurrent retry created a different snapshot")
+    final = sdk.call("get_hypothesis", key)
+    answer = final["assessment"]
+    refs = [f"{initial}/fixture/baseline", f"{target}/fixture/after",
+            f"{initial}/fixture/control-baseline", f"{control}/fixture/control-after"]
+    # Atlas goes from 80 to 100, its control from 100 to 105. The difference is 20 pp.
     check(answer["status"] == "supported" and math.isclose(answer["value"], 20.0) and
           answer["unit"] == "п.п." and answer["evidence_refs"] == refs, "incorrect controlled effect or source IDs")
-    final = sdk.call("get_hypothesis", key)
-    check(final["assessment"] == answer and final["task"] == task and final["hypothesis"]["release_id"] == "fixture/fix" and
+    check(final["version"] == released["version"] + 1 and final["task"] == task and
+          answer["release_evidence_ref"] == pending["release_evidence_ref"] and
           final["hypothesis"]["economic_effect"]["status"] == "unknown" and
-          final["hypothesis"]["status"] == "supported", "final persisted result or economic claim mismatch")
-    check(sdk.call("evaluate_hypothesis", measure) == answer and sdk.call("get_hypothesis", key) == final,
-          "evaluation retry changed the result or version")
+          final["hypothesis"]["status"] == "supported", "duplicate revision, changed task or unsupported economic claim")
+    register(sdk, subset("fixture/after"))
+    check(sdk.call("evaluate_hypothesis", key) == answer and sdk.call("get_hypothesis", key) == final,
+          "replaying older observations changed a finished evaluation")
     return {"scenario": "synthetic", "hypothesis_id": identifier, "baseline_snapshot": initial,
-            "followup_snapshot": follow, "task_id": task["id"], "version": final["version"], "effect_pp": answer["value"]}
+            "release_snapshot": release, "target_snapshot": target, "control_snapshot": control,
+            "task_id": task["id"], "version": final["version"], "effect_pp": answer["value"]}
 
 
 def prepare_chat(sdk, initial=None):
@@ -204,8 +243,9 @@ def main():
     elif args.check_chat or args.check_confirmed:
         result = check_chat(sdk, args.check_chat or args.check_confirmed, bool(args.check_confirmed))
     else:
-        first = register(sdk, fixture("synthetic-input.json"))
-        result = run_lifecycle(sdk, first, "qa/synthetic/atlas/" + uuid.uuid4().hex[:12])
+        identifier = SYNTHETIC + "/" + uuid.uuid4().hex[:12]
+        first = register(sdk, scenario_document(fixture("synthetic-input.json"), identifier))
+        result = run_lifecycle(sdk, first, identifier)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

@@ -1,0 +1,67 @@
+package views
+
+import "github.com/airlockrun/agentsdk/lucide"
+
+type Priority struct{ ID, Title, URL, Level, Version, Money, Hours, Basis, MoneyText, HoursText, Score string }
+
+templ PrioritiesPage(ranked, pending []Priority) {
+	@Layout("Приоритеты проверок") {
+		<nav><a class="btn btn-ghost btn-sm" href="./">@lucide.Icon("arrow-left", "size-4")
+К решениям</a></nav>
+		<section class="work my-4">
+			<h1 class="headline">Что проверить первым</h1>
+			if len(ranked)+len(pending)==0 {
+				<p>Пока нет гипотез на рассмотрении.</p>
+			}
+			if len(ranked)>0 {
+				<h2 class="mt-4 font-semibold">Очередь проверок</h2>
+				<p class="muted compact">Сначала идут проверки с большей недельной маржой на час работы по сценарию продакта. При равном отношении учитываются подтверждающие данные и длительность проверки.</p>
+				<ol class="list-decimal pl-5">
+					for _,v:=range ranked {
+						<li class="py-3 border-b border-base-300">@priorityCard(v)
+</li>
+					}
+				</ol>
+			}
+			if len(pending)>0 {
+				<h2 class="mt-4 font-semibold">Нужна оценка</h2>
+				<p class="muted compact">Для сравнения укажите недельный потенциал и сколько часов займёт проверка.</p>
+				for _,v:=range pending {
+					<div class="py-3 border-b border-base-300">@priorityCard(v)
+</div>
+				}
+			}
+		</section>
+	}
+}
+
+templ priorityCard(v Priority) {
+	<a class="link font-semibold" href={ v.URL }>{ v.Title }</a>
+	<div class="flex flex-wrap gap-x-4 gap-y-1 my-1 text-sm">
+		<span>{ v.Level }</span>
+		if v.MoneyText!="" {
+			<span>{ v.MoneyText }</span>
+		}
+		if v.HoursText!="" {
+			<span>Проверка · { v.HoursText }</span>
+		}
+		if v.Score!="" {
+			<strong>{ v.Score } в неделю на час проверки</strong>
+		}
+	</div>
+	if v.Basis!="" {
+		<p class="muted compact break-words">{ v.Basis }</p>
+	}
+	<details class="notes">
+		<summary>Оценка проверки</summary>
+		<form action="./priorities" method="post" class="grid gap-2 max-w-xl py-3">
+			<input type="hidden" name="id" value={ v.ID }/>
+			<input type="hidden" name="version" value={ v.Version }/>
+			<label class="grid gap-1">Дополнительная маржа по сценарию, ₽ в неделю<input class="input w-full" name="money" inputmode="decimal" value={ v.Money }/></label>
+			<label class="grid gap-1">Трудоёмкость проверки, чел·ч<input class="input w-full" name="hours" inputmode="decimal" value={ v.Hours }/></label>
+			<label class="grid gap-1">Источник и допущения<textarea class="textarea w-full" name="basis" maxlength="500">{ v.Basis }</textarea></label>
+			<button class="btn btn-neutral justify-self-start" type="submit">@ActionIcon("save")
+Сохранить оценку</button>
+		</form>
+	</details>
+}

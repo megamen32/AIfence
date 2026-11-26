@@ -105,13 +105,14 @@ type Assessment struct {
 	Measurement        *Measurement `json:"measurement,omitempty"`
 }
 type Record struct {
-	CardURL            string      `json:"card_url,omitempty"`
-	ContextIDs         []string    `json:"context_ids,omitempty"`
-	Hypothesis         Hypothesis  `json:"hypothesis"`
-	Version            int64       `json:"version"`
-	EvidenceSnapshotID string      `json:"evidence_snapshot_id"`
-	Task               *Task       `json:"task,omitempty"`
-	Assessment         *Assessment `json:"assessment,omitempty"`
+	Planning           *PlanningEstimate `json:"planning,omitempty"`
+	CardURL            string            `json:"card_url,omitempty"`
+	ContextIDs         []string          `json:"context_ids,omitempty"`
+	Hypothesis         Hypothesis        `json:"hypothesis"`
+	Version            int64             `json:"version"`
+	EvidenceSnapshotID string            `json:"evidence_snapshot_id"`
+	Task               *Task             `json:"task,omitempty"`
+	Assessment         *Assessment       `json:"assessment,omitempty"`
 }
 type ListResult struct {
 	Records []Record `json:"records"`

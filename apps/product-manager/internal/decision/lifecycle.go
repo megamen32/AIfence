@@ -84,7 +84,11 @@ func draft(previous *Record, in SaveInput) (Record, error) {
 	if (previous == nil && in.ExpectedVersion != 0) || (previous != nil && in.ExpectedVersion != previous.Version) {
 		return Record{}, ErrVersion
 	}
-	return Record{Hypothesis: in.Hypothesis, ContextIDs: in.ContextIDs, Version: in.ExpectedVersion + 1, EvidenceSnapshotID: in.EvidenceSnapshotID}, nil
+	next := Record{Hypothesis: in.Hypothesis, ContextIDs: in.ContextIDs, Version: in.ExpectedVersion + 1, EvidenceSnapshotID: in.EvidenceSnapshotID}
+	if previous != nil && previous.Hypothesis.ProductKey == next.Hypothesis.ProductKey && previous.Hypothesis.ProposedAction == next.Hypothesis.ProposedAction && previous.EvidenceSnapshotID == next.EvidenceSnapshotID && previous.Hypothesis.SuccessCriterion == next.Hypothesis.SuccessCriterion {
+		next.Planning = previous.Planning
+	}
+	return next, nil
 }
 func newTask(owner string, r Record) Task {
 	h := r.Hypothesis
@@ -144,12 +148,7 @@ func assess(r Record, in EvaluateInput, now time.Time) (Assessment, error) {
 		a.Reason = "Сопоставимость периодов не подтверждена."
 		return a, nil
 	}
-	start := released.AddDate(0, 0, 1)
-	// Whole-week criteria start on the next complete Monday, other windows on the next day.
-	if c.ObservationDays%7 == 0 {
-		start = start.AddDate(0, 0, (8-int(start.Weekday()))%7)
-	}
-	end := start.AddDate(0, 0, c.ObservationDays-1)
+	start, end := MeasurementWindow(released, c.ObservationDays)
 	if !end.Before(today) {
 		a.Reason = fmt.Sprintf("Наблюдение заканчивается %s включительно.", end.Format(time.DateOnly))
 		return a, nil
@@ -194,4 +193,15 @@ func assess(r Record, in EvaluateInput, now time.Time) (Assessment, error) {
 }
 func validPeriod(p PeriodValue, product, metric, from, to string) bool {
 	return p.Complete && p.Value != nil && finite(*p.Value) && p.ProductKey == product && p.MetricKey == metric && p.From == from && p.To == to && strings.TrimSpace(p.Unit) != "" && strings.TrimSpace(p.SourceRef) != ""
+}
+
+// MeasurementWindow returns the first registered observation period following the corrective release.
+func MeasurementWindow(released time.Time, days int) (time.Time, time.Time) {
+	start := released.AddDate(0, 0, 1)
+	// Whole-week criteria start on the next complete Monday, other windows on the next day.
+	if days%7 == 0 {
+		start = start.AddDate(0, 0, (8-int(start.Weekday()))%7)
+	}
+	end := start.AddDate(0, 0, days-1)
+	return start, end
 }

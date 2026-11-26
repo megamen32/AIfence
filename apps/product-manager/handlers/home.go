@@ -540,7 +540,7 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	out, err := h.svc.Evidence.Import(r.Context(), evidence.ImportInput{Document: string(raw)})
+	out, err := h.svc.Import(r.Context(), evidence.ImportInput{Document: string(raw)})
 	if err != nil {
 		http.Error(w, err.Error(), 422)
 		return nil
