@@ -71,7 +71,7 @@ templ signalLegend(m *Monitor) {
 	<section class="dashboard-signal-legend" aria-label="Легенда тревоги и контроля">
 		<div class="dashboard-heading">
 			<h2>Тревога и контроль</h2>
-			<small>Канонический процент и его окно</small>
+			<small>Процент сигнала и его окно</small>
 		</div>
 		<div class="signal-legend-list">
 			for _, p := range m.Pulse {
@@ -87,20 +87,18 @@ templ signalLegend(m *Monitor) {
 					if p.Change != "" {
 						<strong class="signal-legend-value">{ p.Change }</strong>
 					}
-				</div>
-			}
-			for _, product := range m.Products {
-				if product.Cells[0].Tone == "quiet" {
-					<div class="signal-legend-item signal-legend-control">
-						<span class="signal-legend-mark" aria-hidden="true"></span>
-						<div>
-							<strong>Контроль</strong>
-							<b>{ product.Name }</b>
-							<small>Нейтральный ориентир для того же окна</small>
+					if p.ControlName != "" || p.ControlVendor != "" {
+						<div class="signal-legend-item signal-legend-control">
+							<span class="signal-legend-mark" aria-hidden="true"></span>
+							<div>
+								<strong>Контроль</strong>
+								<b>{ pulseControlName(p) }</b>
+								<small>Нейтральный ориентир для того же окна</small>
+							</div>
+							<strong class="signal-legend-value">ориентир</strong>
 						</div>
-						<strong class="signal-legend-value">ориентир</strong>
-					</div>
-				}
+					}
+				</div>
 			}
 		</div>
 	</section>

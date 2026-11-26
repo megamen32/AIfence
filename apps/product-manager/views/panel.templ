@@ -1,7 +1,6 @@
 package views
 
 import (
-	"net/url"
 	"strconv"
 	"strings"
 )
@@ -29,18 +28,14 @@ func catalogToneLabel(tone string) string {
 	}
 }
 
-func catalogResearchURL(base string) string {
-	if base == "" {
-		return ""
+func pulseControlName(p PulseItem) string {
+	if p.ControlName != "" {
+		return p.ControlName
 	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return ""
+	if p.ControlVendor != "" {
+		return p.ControlVendor
 	}
-	query := u.Query()
-	query.Set("q", "Другие")
-	u.RawQuery = query.Encode()
-	return u.String()
+	return "Контроль из снимка"
 }
 
 templ Panel(v HomeView) {
@@ -187,13 +182,16 @@ templ catalogPanel(m *Monitor) {
 			<div class="dashboard-legend"><small>Площадь: { m.Catalog.Weight }</small><small>Цвет: отклонение товара от контроля. Серый — неизвестно.</small></div>
 			<svg viewBox="0 0 640 280" class="catalog-treemap" role="group" aria-label="Карта групп каталога">
 				for _, tile := range m.Catalog.Tiles {
-					if tile.URL != "" {
+						if tile.Name == "Другие" {
+							<a href="#catalog-other-details" aria-label={ tile.Label } onclick="document.getElementById('catalog-other-details').open = true">@catalogRectangle(tile)</a>
+						} else if tile.URL != "" {
 						<a href={ tile.URL } aria-label={ tile.Label }>@catalogRectangle(tile)</a>
 					} else {
 						<g>@catalogRectangle(tile)</g>
 					}
 				}
 			</svg>
+				@catalogOtherDetails(m)
 			@catalogLegend(m)
 		}
 		if len(m.Matches) != 0 {
@@ -207,30 +205,38 @@ templ catalogPanel(m *Monitor) {
 	</section>
 }
 
-templ catalogLegend(m *Monitor) {
-	<section class="catalog-legend" aria-label="Подписи групп каталога">
-		<div class="catalog-legend-heading">
-			<strong>Подписи групп</strong>
-			<small>Значения взяты из текущего снимка</small>
-		</div>
+templ catalogOtherDetails(m *Monitor) {
+	<details id="catalog-other-details" class="catalog-other-groups">
+		<summary>Состав «Другие» · известные строки текущей страницы</summary>
 		<ul>
-			for _, tile := range m.Catalog.Tiles {
-				<li class={ "catalog-legend-item", tile.Tone }>
-					<span class="catalog-legend-mark" aria-hidden="true"></span>
-					<span class="catalog-legend-name">{ tile.Name }</span>
-					<strong>{ tile.Value }</strong>
-					if meaning := catalogToneLabel(tile.Tone); meaning != "" {
-						<small>{ meaning }</small>
-					}
-					if tile.Name == "Другие" && m.MarketURL != "" {
-						<a href={ catalogResearchURL(m.MarketURL) } target="_blank" rel="noopener">Исследовать состав</a>
-					} else if tile.URL != "" {
-						<a href={ tile.URL }>Открыть</a>
-					}
-				</li>
+			for _, group := range m.Catalog.OtherGroups {
+				<li><span>{ group.Name }</span><strong>{ group.Value }</strong></li>
 			}
 		</ul>
-	</section>
+		if m.Catalog.OtherRemainder != "" {
+			<p>{ m.Catalog.OtherRemainder }</p>
+		}
+	</details>
+}
+
+templ catalogLegend(m *Monitor) {
+	<details class="catalog-legend" aria-label="Подписи обычных групп каталога">
+		<summary>Подписи обычных групп</summary>
+		<ul>
+			for _, tile := range m.Catalog.Tiles {
+				if tile.Name != "Другие" {
+					<li class={ "catalog-legend-item", tile.Tone }>
+						<span class="catalog-legend-mark" aria-hidden="true"></span>
+						<span class="catalog-legend-name">{ tile.Name }</span>
+						<strong>{ tile.Value }</strong>
+						if meaning := catalogToneLabel(tile.Tone); meaning != "" {
+							<small>{ meaning }</small>
+						}
+					</li>
+				}
+			}
+		</ul>
+	</details>
 }
 
 templ catalogRectangle(tile CatalogTile) {
