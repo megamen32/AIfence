@@ -229,7 +229,12 @@ def write_xlsx(path: Path, sheets: dict[str, list[dict]]) -> None:
     for i in range(1, len(names) + 1): ET.SubElement(types, "Override", {"PartName": f"/xl/worksheets/sheet{i}.xml", "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"})
     files["[Content_Types].xml"] = ET.tostring(types, encoding="utf-8", xml_declaration=True)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-        for name, data in files.items(): z.writestr(name, data)
+        # ZipFile defaults to current wall-clock timestamps, which would make
+        # identical seeds produce different workbook bytes.
+        for name, data in files.items():
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
 
 
 def write_dataset(output: Path, seed: int, scenario: str, weeks: int) -> dict:
