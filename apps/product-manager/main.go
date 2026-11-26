@@ -14,7 +14,7 @@ import (
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: `Product Manager помогает решать, что менять в магазине. Для чтения у run_js достаточно code и description. Опусти request_confirmation. Возвращай результат инструмента через return. Для проверки продаж можно выполнить return (await apps.metrika_analyst.tools.discover_watchdog_series({})).findings. В Market Watch list_offers принимает product_key (название товара или артикул) и limit. Если вопрос о цене и падении продаж, исследуй обе части. Дай директору решение по полученным данным.`, Icon: "🧭"})
+	a := agentsdk.New(agentsdk.Config{Description: `Product Manager проверяет вопросы о продажах и ценах. В run_js печатай результат чтения через console.log. Пример для продаж: console.log((await apps.metrika_analyst.tools.discover_watchdog_series({})).findings). Так факты попадут в чат. В list_offers ищи каталоговое название через product_key. Для чтения опусти request_confirmation. Ответь на вопрос директора после проверки.`, Icon: "🧭"})
 	topic := a.RegisterUIChangeTopic("product-decisions")
 	policy := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "private_model_route", Description: "Доступ закрытых снимков из чата с разрешенным локальным маршрутом модели. Значение задает владелец стенда после проверки конфигурации.", Default: "off", Pattern: "^(off|approved)$"})
 	e := evidence.New(a.DB(), topic, policy)
@@ -57,13 +57,13 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterStaticAsset(&agentsdk.StaticAsset{Name: views.AppCSSName, ContentType: "text/css; charset=utf-8", Data: views.AppCSS})
 	a.AddInstruction(&agentsdk.Instruction{Text: `Начинай разрешённые чтения сразу: вопрос пользователя уже поручает анализ. После inspectApp вызывай инструменты источника в этом же ходе. Если данные недоступны, дай результат доступной части и причину ограничения. План и вопрос о разрешении начать анализ не заменяют чтений.
 
-В hosted-чате вызывай run_js с полями code и description. Если весь вызов только читает данные, опусти request_confirmation. Действия с внешним эффектом требуют отдельного решения пользователя. Создание задачи подтверждается на штатной карточке Product Manager. Возвращай сами полученные данные через return. Пустой вывод run_js после await без return ничего не говорит о наличии данных. Проверь аргументы инструмента через platform.inspectApp и верни результат чтения. Для вопроса о цене начни таким кодом, подставив каталоговое написание названного товара или бренда без падежного окончания:
+В hosted-чате вызывай run_js с полями code и description. Если весь вызов только читает данные, опусти request_confirmation. Действия с внешним эффектом требуют отдельного решения пользователя. Создание задачи подтверждается на штатной карточке Product Manager. Печатай полученные данные с помощью console.log. Если результат вызова пуст, повтори нужное чтение с console.log и проверь результат. Один await не показывает, что вернул источник. Для вопроса о цене начни таким кодом, подставив каталоговое написание названного товара или бренда без падежного окончания:
 const name = "<название из вопроса>";
 await platform.inspectApp({app:"market-watch",section:"tools",operation:"list_offers"});
 const page = await apps.market_watch.tools.list_offers({product_key:name,limit:12});
-return {status:page.status,count:page.observations.length,warnings:page.warnings,offers:page.observations
+console.log({status:page.status,count:page.observations.length,warnings:page.warnings,offers:page.observations
   .filter(r=>r.status==="observed" && r.details?.match_status==="exact_sku" && r.product_key)
-  .map(r=>({sku:r.product_key,title:r.details.name,url:r.source_ref?.url}))};
+  .map(r=>({sku:r.product_key,title:r.details.name,url:r.source_ref?.url}))});
 
 Если первый поиск пуст, попробуй другое написание производителя или короткое название без общих слов. При полной странице проверь следующие по offset. Возьми точный SKU из подходящих строк. До ответа выполни compare_offers({sku}) по релевантным артикулам через apps.market_watch.tools. Сравнивай каждый артикул отдельно. Для вывода используй сопоставимую группу с одинаковой лицензией, известным количеством и основанием цены. Поясняй, сколько сопоставимых предложений или магазинов в знаменателе. Строки с неизвестным количеством оставляй отдельно. Текущую цену датируй и показывай отдельно от истории.
 
