@@ -1,0 +1,25 @@
+# Private contest material, recordings, datasets, credentials and runtime
+/материалы/
+/materials/
+/private/
+/data/
+/.runtime/
+/.worktrees/
+**/.env
+**/.env.*
+!**/.env.example
+**/credentials.json
+**/*.pem
+**/*.key
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/.DS_Store
+**/node_modules/
+**/__pycache__/
+**/.venv/
+**/.airlock/
+**/dist/
+**/build/
+**/bin/
+*.log
