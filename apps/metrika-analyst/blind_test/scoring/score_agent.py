@@ -98,7 +98,7 @@ def card_fields(raw: Any) -> dict[str, Any]:
         week = _first(raw, "week", "week_start", "failure_week", "release_week")
         cause = _first(raw, "cause_type", "reason_type", "type", "root_cause")
         return {"family": str(family or ""), "week": str(week or ""), "cause_type": type_norm(cause), "signals": signals,
-                "text": json.dumps(raw, ensure_ascii=False)}
+                "found": raw.get("found"), "text": json.dumps(raw, ensure_ascii=False)}
     text = str(raw)
     return {"family": re.search(r"(?:family|product_family|семейств[оа])\s*[:=]\s*([^\n,;]+)", text, re.I).group(1).strip() if re.search(r"(?:family|product_family|семейств[оа])\s*[:=]\s*([^\n,;]+)", text, re.I) else "",
             "week": re.search(r"(?:week|week_start|недел[яи])\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text, re.I).group(1) if re.search(r"(?:week|week_start|недел[яи])\s*[:=]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text, re.I) else "",
@@ -109,6 +109,8 @@ def card_fields(raw: Any) -> dict[str, Any]:
 def signal_matches(card: dict[str, Any], answer: dict[str, Any]) -> bool:
     cf, af = family_norm(card["family"]), family_norm(answer["family"])
     cw, aw = norm(card["week"]), norm(answer["week"])
+    if card.get("found") is False:
+        return False
     text = norm(card.get("text", ""))
     family_ok = bool(af and (af in cf or cf in af or af in text))
     week_ok = bool(aw and (aw == cw or aw in text))
@@ -163,14 +165,21 @@ def main() -> int:
     args = parser.parse_args()
     ensure_isolated(args.input_root, args.answers)
     rows = []
-    for answer_path in sorted(args.answers.glob("*.json")):
-        card_path = args.cards / answer_path.name
+    for answer_path in sorted(args.answers.rglob("*.json")):
+        # Generator layout is set-<hash>/answers/S#.json with one card at
+        # set-<hash>/card.json. Keep the flat layout compatible as well.
+        set_root = answer_path.parent.parent if answer_path.parent.name == "answers" else answer_path.parent
+        candidates = [args.cards / answer_path.name, args.cards / set_root.name / "card.json", args.cards / "card.json"]
+        card_path = next((candidate for candidate in candidates if candidate.exists()), candidates[0])
+        scenario_name = f"{set_root.name}/{answer_path.stem}" if answer_path.parent.name == "answers" else answer_path.stem
         if not card_path.exists():
-            rows.append({"scenario": answer_path.stem, "status": "missed", "found": False, "missed": True,
+            rows.append({"scenario": scenario_name, "status": "missed", "found": False, "missed": True,
                          "false_alarm": False, "cause_type_correct": False, "expected_family": "", "expected_week": "",
                          "expected_cause_type": "", "answer_file": str(answer_path), "card_file": str(card_path)})
         else:
-            rows.append(score_one(answer_path, card_path))
+            row = score_one(answer_path, card_path)
+            row["scenario"] = scenario_name
+            rows.append(row)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     payload = {"schema_version": "aifence.blind-score.v1", "rows": rows,
                "summary": {"scenarios": len(rows), "correct": sum(r["status"] in ("correct", "correct_silence") for r in rows),

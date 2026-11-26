@@ -33,6 +33,18 @@ class BlindScoreTests(unittest.TestCase):
             a.write_text(json.dumps({"scenario":"S0","cause_type":"clean"})); c.write_text(json.dumps({"family":"KES","week":"2026-10-05","cause_type":"clean"}))
             self.assertEqual(scorer.score_one(a,c)["status"],"false_alarm")
 
+    def test_nested_generator_layout(self):
+        scorer = load("scorer", "score_agent.py")
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td); answers=root/"answers"/"set-abc"; cards=root/"cards"/"set-abc"
+            answers.mkdir(parents=True); cards.mkdir(parents=True)
+            (answers/"S1.json").write_text(json.dumps({"scenario":"S1","family":"KES","week":"2026-10-05","cause_type":"tracking_gap"}))
+            (cards/"card.json").write_text(json.dumps({"found":True,"family":"KES","week":"2026-10-05","cause_type":"tracking_gap"}))
+            out=root/"score.json"
+            import subprocess, sys
+            proc=subprocess.run([sys.executable,str(Path(__file__).with_name("score_agent.py")),"--answers",str(root/"answers"),"--cards",str(root/"cards"),"--out",str(out)],capture_output=True,text=True)
+            self.assertEqual(proc.returncode,0); self.assertIn('"correct": 1',out.read_text())
+
     def test_sales_xlsx(self):
         exporter=load("exporter","export_sales.py")
         with tempfile.TemporaryDirectory() as td:
