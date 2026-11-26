@@ -12,21 +12,42 @@ import (
 )
 
 type BriefQuery struct {
-	Offset int `json:"offset,omitempty"`
+	Offset  int  `json:"offset,omitempty"`
+	Summary bool `json:"summary,omitempty"`
 }
 
 type BriefFact struct {
+	SKU     string `json:"sku,omitempty"`
 	Product string `json:"product"`
 	Fact    string `json:"observation"`
 	Source  string `json:"source"`
 	Locator string `json:"locator"`
 }
 
+type PriceComparison struct {
+	Product          string   `json:"product"`
+	SKU              string   `json:"sku"`
+	Sellers          []string `json:"sellers"`
+	ComparableGroups int      `json:"comparable_price_groups"`
+	Finding          string   `json:"price_evidence"`
+}
+
+type ProductReading struct {
+	Product      string      `json:"product"`
+	Price        string      `json:"price_comparison"`
+	OfferExample []BriefFact `json:"example_offers_for_one_sku,omitempty"`
+	Sales        string      `json:"measured_sales"`
+	Weekly       string      `json:"weekly_financial_impact"`
+	Source       string      `json:"sales_source"`
+}
+
 type SalesBrief struct {
-	Facts      []BriefFact `json:"observations"`
-	PriceCount int         `json:"imported_price_observations"`
-	Total      int         `json:"total"`
-	NextOffset *int        `json:"next_offset,omitempty"`
+	Readings    []ProductReading  `json:"product_readings,omitempty"`
+	Comparisons []PriceComparison `json:"price_comparisons,omitempty"`
+	Facts       []BriefFact       `json:"observations,omitempty"`
+	PriceCount  int               `json:"imported_price_observations"`
+	Total       int               `json:"total"`
+	NextOffset  *int              `json:"next_offset,omitempty"`
 }
 
 func (h *Handler) SalesBrief(ctx context.Context, q BriefQuery) (SalesBrief, error) {
@@ -42,14 +63,15 @@ func (h *Handler) SalesBrief(ctx context.Context, q BriefQuery) (SalesBrief, err
 	if err != nil {
 		return SalesBrief{}, err
 	}
-	return salesBrief(rows, records.Records, q.Offset), nil
+	return salesBrief(rows, records.Records, q), nil
 }
 
-func salesBrief(rows []monitorObservation, records []decision.Record, offset int) SalesBrief {
+func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQuery) SalesBrief {
 	rows = separateMonitorRows(rows, false)
 	slices.SortStableFunc(rows, func(a, b monitorObservation) int { return strings.Compare(b.Period.To, a.Period.To) })
 	_, active := watchdogState(rows)
 	var facts []BriefFact
+	var readings []ProductReading
 	for _, r := range active {
 		w := evidence.WatchdogWindow(r.Row)
 		if w == nil {
@@ -65,11 +87,15 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 			}
 		}
 		fact := fmt.Sprintf("%s, два окна по %d недели. С %s по сравнению с %s изменение составило %s. Изменение контроля (%s) за те же окна %s.", metric, w.WindowWeeks, m.Current, m.Baseline, m.Change, productName(r.details.Control), control)
+		reading := ProductReading{Product: observedProductName(r.Product, r)}
+		reading.Sales = fmt.Sprintf("%s, %s–%s к %s–%s (по %d недели): %s %s, %s %s.",
+			metric, date(w.Current.From), date(w.Current.To), date(w.Baseline.From), date(w.Baseline.To),
+			w.WindowWeeks, reading.Product, m.Change, productName(r.details.Control), control)
 		weekly, basis, _ := signalPlanning(records, r)
 		if weekly != "" {
-			fact += " Оценка за неделю: " + weekly + " (" + basis + ")."
+			reading.Weekly = weekly + " (" + basis + ")."
 		} else {
-			fact += " Оценки в ₽ за неделю нет: нужны потерянные за неделю заказы в штуках и вклад на заказ."
+			reading.Weekly = "Оценки в ₽ за неделю нет: нужны потерянные за неделю заказы в штуках и вклад на заказ."
 		}
 		source := r.Ref
 		var refs struct {
@@ -80,7 +106,9 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 		if json.Unmarshal([]byte(r.Details), &refs) == nil && len(refs.Refs) > 0 && refs.Refs[0].Ref.Locator != "" && refs.Refs[0].Ref.SourceID != "" {
 			source = refs.Refs[0].Ref
 		}
-		facts = append(facts, BriefFact{observedProductName(r.Product, r), fact, source.SourceID, source.Locator})
+		reading.Source = source.SourceID + ", " + source.Locator
+		readings = append(readings, reading)
+		facts = append(facts, BriefFact{Product: reading.Product, Fact: fact + " " + reading.Weekly, Source: source.SourceID, Locator: source.Locator})
 	}
 
 	salesCount := len(facts)
@@ -88,7 +116,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 	groups := map[key][]monitorObservation{}
 	var order []key
 	for _, r := range rows {
-		if r.Source != "market" || r.Status != "observed" || r.Kind != "offer" || r.Metric != "displayed_price" {
+		if r.Source != "market" || (r.Status != "observed" && r.Status != "incomparable") || r.Kind != "offer" || r.Metric != "displayed_price" {
 			continue
 		}
 		k := key{strings.ToUpper(r.Product), r.snapshot}
@@ -97,9 +125,9 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 		}
 		groups[k] = append(groups[k], r)
 	}
-	seen := map[string]bool{}
+	comparisons := map[string]PriceComparison{}
 	for _, k := range order {
-		if seen[k.sku] {
+		if _, found := comparisons[k.sku]; found {
 			continue
 		}
 		quotes := groups[k]
@@ -107,14 +135,17 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 		if prices == nil {
 			continue
 		}
-		seen[k.sku] = true
 		packages := append(prices.Comparable, prices.Separate...)
 		var title struct {
 			Name string `json:"name"`
 		}
 		_ = json.Unmarshal([]byte(quotes[0].Details), &title)
+		summary := PriceComparison{Product: title.Name, SKU: k.sku, ComparableGroups: len(prices.Comparable)}
 		for i, group := range packages {
 			for _, offer := range group.Offers {
+				if !slices.Contains(summary.Sellers, offer.Seller) {
+					summary.Sellers = append(summary.Sellers, offer.Seller)
+				}
 				// Only groups admitted by the panel have matching terms from distinct sellers.
 				match := "Нет подтверждённой пары магазинов"
 				if i < len(prices.Comparable) {
@@ -125,15 +156,76 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 				if loc == "" {
 					loc = prices.SnapshotURL
 				}
-				facts = append(facts, BriefFact{strings.TrimSpace(title.Name + " " + k.sku), fact, offer.Seller, loc})
+				facts = append(facts, BriefFact{SKU: k.sku, Product: title.Name, Fact: fact, Source: offer.Seller, Locator: loc})
 			}
 		}
+		if summary.ComparableGroups == 0 {
+			summary.Finding = "По этому артикулу нет пары магазинов с подтверждённо одинаковыми условиями. Преимущество конкурента в цене не установлено."
+		} else {
+			summary.Finding = "Сравнение цен возможно внутри подтверждённых групп с одинаковыми условиями."
+		}
+		comparisons[k.sku] = summary
 	}
-	start := min(max(0, offset), len(facts))
+	if q.Summary && len(readings) > 0 {
+		start := min(max(0, q.Offset), len(readings))
+		end := min(start+12, len(readings))
+		result := SalesBrief{Readings: readings[start:end], Total: len(readings), PriceCount: len(facts) - salesCount}
+		for i := range result.Readings {
+			addPriceContext(&result.Readings[i], comparisons, facts[salesCount:])
+		}
+		if end < len(readings) {
+			result.NextOffset = &end
+		}
+		return result
+	}
+	start := min(max(0, q.Offset), len(facts))
 	end := min(start+12, len(facts))
 	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Total: len(facts), PriceCount: len(facts) - salesCount}
+	for _, fact := range result.Facts {
+		if value, found := comparisons[fact.SKU]; found {
+			result.Comparisons = append(result.Comparisons, value)
+			delete(comparisons, fact.SKU)
+		}
+	}
 	if end < len(facts) {
 		result.NextOffset = &end
 	}
 	return result
+}
+
+// The sales family must start the catalog title on a word boundary. Individual
+// SKUs keep their own license terms and are never compared with each other.
+func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, quotes []BriefFact) {
+	family := strings.ToLower(strings.Join(strings.Fields(r.Product), " "))
+	var skus []string
+	for sku, c := range comparisons {
+		title := strings.ToLower(strings.Join(strings.Fields(c.Product), " "))
+		if family != "" && (title == family || strings.HasPrefix(title, family+" ")) {
+			skus = append(skus, sku)
+		}
+	}
+	if len(skus) == 0 {
+		r.Price = "В импортированных предложениях этого семейства нет данных для сравнения."
+		return
+	}
+	slices.Sort(skus)
+	n := 0
+	example := skus[0]
+	for _, sku := range skus {
+		if comparisons[sku].ComparableGroups > 0 {
+			if n == 0 {
+				example = sku
+			}
+			n++
+		}
+	}
+	r.Price = fmt.Sprintf("В снимках проверено артикулов: %d. Одинаковые условия лицензии у двух или более магазинов подтверждены для %d из %d.", len(skus), n, len(skus))
+	if n == 0 {
+		r.Price += " Оснований менять цену по этим предложениям нет. Для решения нужны цены на один артикул при одинаковом количестве и базисе."
+	}
+	for _, q := range quotes {
+		if q.SKU == example && len(r.OfferExample) < 4 {
+			r.OfferExample = append(r.OfferExample, q)
+		}
+	}
 }

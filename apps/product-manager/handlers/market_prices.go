@@ -31,6 +31,7 @@ type quoteComparison struct {
 type quoteKey struct {
 	group, basis, currency string
 	quantity, max          int64
+	incomparable           bool
 }
 
 func currentPrices(key, snapshot string, rows []monitorObservation, records []decision.Record) *views.MarketPrices {
@@ -41,7 +42,7 @@ func currentPrices(key, snapshot string, rows []monitorObservation, records []de
 	var taskRefs []string
 	for _, o := range rows {
 		if o.Source != "market" || o.Kind != "offer" || o.Metric != "displayed_price" ||
-			o.Status != "observed" || !strings.EqualFold(o.Product, key) || (snapshot != "" && o.snapshot != snapshot) {
+			(o.Status != "observed" && o.Status != "incomparable") || !strings.EqualFold(o.Product, key) || (snapshot != "" && o.snapshot != snapshot) {
 			continue
 		}
 		amount, parseErr := strconv.ParseFloat(o.Value, 64)
@@ -58,7 +59,7 @@ func currentPrices(key, snapshot string, rows []monitorObservation, records []de
 		if snapshot == "" {
 			snapshot = o.snapshot
 		}
-		group := quoteKey{basis: d.Basis, currency: o.Unit}
+		group := quoteKey{basis: d.Basis, currency: o.Unit, incomparable: o.Status == "incomparable"}
 		if d.Quantity != nil && *d.Quantity > 0 {
 			group.quantity = *d.Quantity
 		}
@@ -137,6 +138,8 @@ func quoteComparable(key quoteKey, source *quoteComparison) (bool, string) {
 		return false, "Базис цены неизвестен."
 	case key.basis == "per_unit" && key.max == 0:
 		return false, "Не указана верхняя граница количества."
+	case key.incomparable:
+		return false, "Источник пометил условия как несопоставимые."
 	case source == nil || source.Group == "":
 		return false, "Сопоставимость не подтверждена Market Watch."
 	case !source.Comparable:
