@@ -1,10 +1,22 @@
 # Parallel tracks
 
-Branch names (local Mac worktrees under /Users/user/AIfence-worktrees/):
-- track/market-watch: apps/market-watch
-- track/metrika-analyst: apps/metrika-analyst
-- track/product-manager: apps/product-manager
-- track/research-data: data-tools + fixtures/synthetic (schema edits only by agreement)
-- track/integration-qa: tests + docs/qa
+One shared Git checkout: /Users/user/AIfence, branch main.
+No separate worktrees are required. Every agent may read the whole repository
+and edits only its assigned directories:
 
-Read exact assignment in matching file. Each owner commits only assigned files; integration maintainer merges after tests. Do not use main for parallel edits. Private input path /Users/user/AIfence/материалы is shared read-only; normalized local results in /Users/user/AIfence/data, ignored by Git, not copied to worktrees. On remote host use authorized access to inputs, not public transfer. Track branches do not deploy automatically. 
+| Track | Owned paths | Assignment |
+|---|---|---|
+| Market Watch | apps/market-watch/ | market-watch.md |
+| Metrika Analyst | apps/metrika-analyst/ | metrika-analyst.md |
+| Product Manager | apps/product-manager/ | product-manager.md |
+| Research & Data | data-tools/, fixtures/synthetic/ | research-data.md |
+| Integration & QA | tests/, docs/qa/ | integration-qa.md |
+
+The integration owner maintains contracts/, root docs, platform/ and scripts/.
+Use explicit path-limited commits as specified in AGENTS.md. Do not switch
+branches, create worktrees, stage all files or modify another track's files.
+Private inputs under материалы/ are shared read-only; normalized local outputs
+belong in ignored data/. No private materials in Git.
+
+The existing collector implementation belongs to apps/market-watch/collector/.
+Coordinate its ownership with any already-running catalog extraction session.
