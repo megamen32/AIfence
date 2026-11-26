@@ -259,6 +259,39 @@ func (s *Service) List(ctx context.Context, _ Empty) (Index, error) {
 	}
 	return out, nil
 }
+
+// The browsing index stops at 100 recent imports. An older open alert or its
+// recovery must still participate in the monitor after unrelated imports.
+func (s *Service) MonitorSnapshotIDs(ctx context.Context, recent []Summary) ([]string, error) {
+	ids := make([]string, 0, len(recent))
+	for _, entry := range recent {
+		ids = append(ids, entry.SnapshotID)
+	}
+	if len(recent) < 100 {
+		return ids, nil
+	}
+	u, err := human(ctx)
+	if err != nil {
+		return nil, err
+	}
+	watched, err := db.New(s.db).WatchdogSnapshotIDs(ctx, db.WatchdogSnapshotIDsParams{
+		UserID: u, LocalAllowed: s.localRead(ctx),
+	})
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		seen[id] = true
+	}
+	for _, id := range watched {
+		if !seen[id] {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
 func (s *Service) Read(ctx context.Context, q Query) (Result, error) {
 	u, err := human(ctx)
 	if err != nil {

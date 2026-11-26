@@ -56,7 +56,7 @@ type MonitorCell struct{ Label, Tone string }
 
 type PulseItem struct {
 	Product, URL, Week, Detected, Change, Comparison, Origin                                     string
-	FirstDetected, Freshness, Weekly, WeeklyBasis, ProductKey, ControlKey, Vendor, ControlVendor string
+	FirstDetected, Freshness, Weekly, WeeklyBasis, ProductKey, ControlKey, ControlName, Vendor, ControlVendor string
 	Amount, Delta                                                                                *float64
 	Coverage                                                                                     []CoverageItem
 }
@@ -109,7 +109,13 @@ type CatalogMap struct {
 	Count, Date, Group, Weight, Filter string
 	Partial                            bool
 	VendorURL, CategoryURL             string
+	OtherRemainder                     string
+	OtherGroups                        []CatalogGroup
 	Tiles                              []CatalogTile
+}
+
+type CatalogGroup struct {
+	Name, Value string
 }
 
 type CatalogTile struct {

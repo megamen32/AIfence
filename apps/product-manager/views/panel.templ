@@ -28,6 +28,20 @@ func catalogToneLabel(tone string) string {
 	}
 }
 
+func pulseControlName(p PulseItem) string {
+	if p.ControlName != "" {
+		return p.ControlName
+	}
+	if p.ControlVendor != "" {
+		return p.ControlVendor
+	}
+	return "Контроль из снимка"
+}
+
+func catalogTileIsFocus(tile CatalogTile) bool {
+	return strings.Contains(tile.Tone, "signal-associated") || strings.Contains(tile.Tone, "control-context")
+}
+
 templ Panel(v HomeView) {
 	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
 		<header class="dashboard-top">
@@ -172,13 +186,17 @@ templ catalogPanel(m *Monitor) {
 			<div class="dashboard-legend"><small>Площадь: { m.Catalog.Weight }</small><small>Цвет: отклонение товара от контроля. Серый — неизвестно.</small></div>
 			<svg viewBox="0 0 640 280" class="catalog-treemap" role="group" aria-label="Карта групп каталога">
 				for _, tile := range m.Catalog.Tiles {
-					if tile.URL != "" {
+						if tile.Name == "Другие" {
+							<a href="#catalog-other-details" aria-label={ tile.Label } onclick="document.getElementById('catalog-other-details').open = true">@catalogRectangle(tile)</a>
+						} else if tile.URL != "" {
 						<a href={ tile.URL } aria-label={ tile.Label }>@catalogRectangle(tile)</a>
 					} else {
 						<g>@catalogRectangle(tile)</g>
 					}
 				}
 			</svg>
+				@catalogOtherDetails(m)
+			@catalogLegend(m)
 		}
 		if len(m.Matches) != 0 {
 			<details open class="dashboard-history">
@@ -189,6 +207,57 @@ templ catalogPanel(m *Monitor) {
 			</details>
 		}
 	</section>
+}
+
+templ catalogOtherDetails(m *Monitor) {
+	<details id="catalog-other-details" class="catalog-other-groups">
+		<summary>Состав «Другие» · известные строки текущей страницы</summary>
+		<ul>
+			for _, group := range m.Catalog.OtherGroups {
+				<li><span>{ group.Name }</span><strong>{ group.Value }</strong></li>
+			}
+		</ul>
+		if m.Catalog.OtherRemainder != "" {
+			<p>{ m.Catalog.OtherRemainder }</p>
+		}
+	</details>
+}
+
+templ catalogLegend(m *Monitor) {
+	<section class="catalog-legend" aria-label="Подписи сигнала и контроля">
+		<div class="catalog-legend-heading">
+			<strong>Сигнал и контроль</strong>
+			<small>Выделены на карте</small>
+		</div>
+		<ul>
+			for _, tile := range m.Catalog.Tiles {
+				if tile.Name != "Другие" && catalogTileIsFocus(tile) {
+					@catalogLegendItem(tile)
+				}
+			}
+		</ul>
+		<details class="catalog-legend-other">
+			<summary>Обычные вендоры</summary>
+			<ul>
+				for _, tile := range m.Catalog.Tiles {
+					if tile.Name != "Другие" && !catalogTileIsFocus(tile) {
+						@catalogLegendItem(tile)
+					}
+				}
+			</ul>
+		</details>
+	</section>
+}
+
+templ catalogLegendItem(tile CatalogTile) {
+	<li class={ "catalog-legend-item", tile.Tone }>
+		<span class="catalog-legend-mark" aria-hidden="true"></span>
+		<span class="catalog-legend-name">{ tile.Name }</span>
+		<strong>{ tile.Value }</strong>
+		if meaning := catalogToneLabel(tile.Tone); meaning != "" {
+			<small>{ meaning }</small>
+		}
+	</li>
 }
 
 templ catalogRectangle(tile CatalogTile) {

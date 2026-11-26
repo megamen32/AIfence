@@ -150,6 +150,22 @@ func TestMonitorOpensSavedAlertAlongsideNewerIncompleteWindow(t *testing.T) {
 	}
 }
 
+func TestMonitorReadsAllEvidencePages(t *testing.T) {
+	for _, tc := range []struct {
+		offset, rows, total int
+		done                bool
+	}{
+		{offset: 0, rows: 100, total: 201, done: false},
+		{offset: 100, rows: 100, total: 201, done: false},
+		{offset: 200, rows: 1, total: 201, done: true},
+		{offset: 200, rows: 0, total: 201, done: true},
+	} {
+		if got := monitorPageComplete(tc.offset, tc.rows, tc.total); got != tc.done {
+			t.Fatalf("page completion at %+v: got %v", tc, got)
+		}
+	}
+}
+
 func TestAlarmTimeSeparatesDetectionAndFirstRegistration(t *testing.T) {
 	received := time.Date(2026, 1, 20, 9, 10, 11, 0, time.UTC)
 	if got := signalTime("", &received); got != "получено в 09:10 UTC, 20.01.2026" {

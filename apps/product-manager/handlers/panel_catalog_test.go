@@ -27,12 +27,14 @@ func TestCatalogTailPreservesFullCountAndSignalVendors(t *testing.T) {
 		return catalogoverview.Overview{AsOf: time.Now(), TotalProducts: total + outside, VendorCount: 1326,
 			OutsidePageProducts: outside, Vendors: vendors}, nil
 	}}
-	m := &views.Monitor{Pulse: []views.PulseItem{{ProductKey: ksosFamily, Product: productName(ksosFamily), ControlKey: "astra_linux", URL: "./?alert=target"}}}
+	m := &views.Monitor{Pulse: []views.PulseItem{
+		{ProductKey: ksosFamily, Product: productName(ksosFamily), ControlKey: "astra_linux", URL: "./?alert=target", Change: "−31,2 %", Comparison: "К предыдущему окну из 4 нед.", Delta: float64Ptr(-28)},
+	}}
 	h.loadOverview(t.Context(), m, url.Values{}, "overview", "real")
 	found := map[string]bool{}
 	sum := int64(0)
 	for _, tile := range m.Catalog.Tiles {
-		if (tile.Tone == "signal-associated" || tile.Tone == "control-context") || tile.Name == "Другие" {
+		if (strings.Contains(tile.Tone, "signal-associated") || tile.Tone == "control-context") || tile.Name == "Другие" {
 			found[tile.Name] = true
 		}
 		value := strings.SplitN(tile.Value, " · ", 2)[0]
@@ -45,7 +47,14 @@ func TestCatalogTailPreservesFullCountAndSignalVendors(t *testing.T) {
 	if sum != total+outside || len(found) != 3 || m.Catalog.Weight != "Количество товаров" {
 		t.Fatalf("sum=%d, signal and tail=%v, map=%+v", sum, found, m.Catalog)
 	}
+	for _, tile := range m.Catalog.Tiles {
+		if tile.Name == "Kaspersky" && !strings.Contains(tile.Value, "−31,2 %") {
+			t.Fatalf("tile lost canonical change: %+v", tile)
+		}
+	}
 }
+
+func float64Ptr(value float64) *float64 { return &value }
 
 func TestCatalogSearchUsesAirlockSiblingOrigin(t *testing.T) {
 	if got := marketCatalogURL("http://product-manager.localhost:42080"); got != "http://market-watch.localhost:42080/" {

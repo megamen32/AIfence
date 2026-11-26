@@ -16,10 +16,10 @@ import (
 )
 
 type mapGroup struct {
-	name, tone, signal, link string
-	other                    bool
-	count                    int64
-	revenue                  float64
+	name, tone, signal, signalTitle, link string
+	other                                 bool
+	count                                 int64
+	revenue                               float64
 }
 
 type mapBox struct{ x, y, w, h float64 }
@@ -94,6 +94,12 @@ func (h *Handler) loadOverview(ctx context.Context, m *views.Monitor, q url.Valu
 		groups = append(groups, mapGroup{name: "Другие", count: outside, other: true})
 	}
 	markVendors(groups, m.Pulse)
+	if needle == "" {
+		c.OtherGroups = collapsedCatalogGroups(groups, useRevenue, currency)
+		if outside > 0 {
+			c.OtherRemainder = compactInt(outside) + " товаров вне страницы агрегата не раскрыты"
+		}
+	}
 	c.Tiles = catalogTiles(groups, useRevenue, currency, needle, mode)
 }
 
@@ -117,15 +123,18 @@ func markVendors(groups []mapGroup, alerts []views.PulseItem) {
 	for _, alert := range alerts {
 		if i := matchVendor(groups, alert.ControlVendor, productName(alert.ControlKey)); i >= 0 && groups[i].tone == "" {
 			groups[i].tone = "control-context"
-			groups[i].signal = "Контроль для " + alert.Product
+			groups[i].signalTitle = "Контроль для " + alert.Product
 		}
 		if i := matchVendor(groups, alert.Vendor, alert.Product); i >= 0 && groups[i].link == "" {
 			p := &groups[i]
 			p.link = alert.URL
-			p.signal = "Сигнал у товара вендора: " + alert.Product
+			p.signal = alert.Change
+			p.signalTitle = "Сигнал у товара вендора: " + alert.Product
+			if alert.Change != "" && alert.Comparison != "" {
+				p.signalTitle += " · " + alert.Change + " " + alert.Comparison
+			}
 			p.tone = "signal-associated"
 			if alert.Delta != nil {
-				p.signal += " · к контролю " + signalPercent(*alert.Delta)
 				switch {
 				case *alert.Delta <= -30:
 					p.tone += " delta-down-high"
@@ -206,6 +215,53 @@ func compactInt(n int64) string {
 		s = s[:i] + " " + s[i:]
 	}
 	return s
+}
+
+func catalogGroupValue(g mapGroup, revenue bool, currency string) string {
+	if revenue {
+		return num(g.revenue) + " " + currency
+	}
+	return compactInt(g.count) + " товаров"
+}
+
+func collapsedCatalogGroups(groups []mapGroup, revenue bool, currency string) []views.CatalogGroup {
+	type item struct {
+		group mapGroup
+		area  float64
+	}
+	items := make([]item, 0, len(groups))
+	for _, g := range groups {
+		area := float64(g.count)
+		if revenue {
+			area = g.revenue
+		}
+		if area > 0 {
+			items = append(items, item{group: g, area: area})
+		}
+	}
+	slices.SortStableFunc(items, func(a, b item) int {
+		if a.area > b.area {
+			return -1
+		}
+		if a.area < b.area {
+			return 1
+		}
+		return strings.Compare(a.group.name, b.group.name)
+	})
+	const maxVisible = 20
+	visible := 0
+	var out []views.CatalogGroup
+	for _, it := range items {
+		if it.group.other {
+			continue
+		}
+		if visible < maxVisible || it.group.tone != "" {
+			visible++
+			continue
+		}
+		out = append(out, views.CatalogGroup{Name: it.group.name, Value: catalogGroupValue(it.group, revenue, currency)})
+	}
+	return out
 }
 
 func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string) []views.CatalogTile {
@@ -291,10 +347,7 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 				tile = mapBox{x: box.x + at, y: box.y, w: length, h: thickness}
 			}
 			g := it.group
-			label := compactInt(g.count) + " товаров"
-			if revenue {
-				label = num(g.revenue) + " " + currency
-			}
+			value := catalogGroupValue(g, revenue, currency)
 			link := ""
 			if g.link != "" {
 				link = g.link
@@ -302,10 +355,14 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 				link = href("tab", "overview", "mode", mode, "q", g.name)
 			}
 			if g.signal != "" {
-				label += " · " + g.signal
+				value += " · " + g.signal
+			}
+			aria := g.name + " · " + value
+			if g.signalTitle != "" {
+				aria += " · " + g.signalTitle
 			}
 			tiles = append(tiles, views.CatalogTile{
-				Name: g.name, Label: g.name + " · " + label, Value: label, Tone: g.tone, URL: link,
+				Name: g.name, Label: aria, Value: value, Tone: g.tone, URL: link,
 				X: f(tile.x), Y: f(tile.y), W: f(tile.w), H: f(tile.h), LX: f(tile.x + 8), LY: f(tile.y + 17),
 				ShowLabel: tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26,
 			})
