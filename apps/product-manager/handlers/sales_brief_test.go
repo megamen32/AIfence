@@ -21,7 +21,7 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 	other.Status = "incomparable"
 	other.Ref.URL = "https://softline.ru/"
 	other.Details = `{"seller":"softline","name":"Kaspersky Endpoint Security","price_basis":"displayed_offer_price"}`
-	result := salesBrief([]monitorObservation{demo, quote, other, alert}, nil, 0)
+	result := salesBrief([]monitorObservation{demo, quote, other, alert}, nil, BriefQuery{})
 	raw, _ := json.Marshal(result)
 	if result.Total != 3 || result.PriceCount != 2 || len(result.Comparisons) != 1 || len(result.Comparisons[0].Sellers) != 2 || result.Comparisons[0].ComparableGroups != 0 || result.NextOffset != nil {
 		t.Fatal(string(raw))
@@ -31,10 +31,19 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 			t.Errorf("missing %q in %s", want, raw)
 		}
 	}
+	summary := salesBrief([]monitorObservation{quote, other, alert}, nil, BriefQuery{Summary: true})
+	if len(summary.Readings) != 1 || !strings.Contains(summary.Readings[0].Price, "0 из 1") || len(summary.Readings[0].OfferExample) != 2 || !strings.Contains(summary.Readings[0].Weekly, "₽") {
+		t.Fatal(summary)
+	}
+	separate := ProductReading{Product: "Kaspersky Small Office Security"}
+	addPriceContext(&separate, map[string]PriceComparison{"KL4210RAKDS": result.Comparisons[0]}, result.Facts)
+	if len(separate.OfferExample) != 0 || !strings.Contains(separate.Price, "нет данных") {
+		t.Fatal(separate)
+	}
 	closed := alert
 	closed.Value = "false"
 	closed.Period.To = "2026-01-25"
-	if v := salesBrief([]monitorObservation{alert, closed}, nil, 0); v.Total != 0 {
+	if v := salesBrief([]monitorObservation{alert, closed}, nil, BriefQuery{}); v.Total != 0 {
 		t.Fatal(v)
 	}
 }
