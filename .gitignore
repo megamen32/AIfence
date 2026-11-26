@@ -5,6 +5,9 @@
 /data/
 /.runtime/
 /.worktrees/
+# Private Airlock platform source never goes to Git
+/platform/airlock/
+/airlock/
 **/.env
 **/.env.*
 !**/.env.example
