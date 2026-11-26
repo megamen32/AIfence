@@ -2,6 +2,8 @@ package market
 
 import (
 	catalog "agent/collector"
+	"crypto/sha256"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +30,7 @@ type Details struct {
 	CurrentPrice       *float64 `json:"current_price,omitempty"`
 	PreviousURL        string   `json:"previous_url,omitempty"`
 	PreviousCapturedAt string   `json:"previous_captured_at,omitempty"`
+	MaxQuantity        *int64   `json:"max_quantity,omitempty"`
 	MatchStatus        string   `json:"match_status"`
 }
 type Observation struct {
@@ -75,7 +78,19 @@ func obs(o catalog.Offer) Observation {
 		old = &p
 	}
 	d := day(o.CapturedAt)
-	return Observation{ID: o.Source + "/" + o.SKU + "/" + o.CapturedAt, Kind: "offer", ProductKey: o.SKU, MetricKey: "displayed_price", Value: price(o.PriceMinor), Unit: "RUB", Currency: "RUB", TaxBasis: "unknown", Period: Period{From: d, To: d}, SourceRef: SourceRef{SourceID: o.Source, Locator: o.URL, URL: o.URL, Revision: o.CapturedAt}, Status: "observed", Caveats: []string{"Public displayed price; final terms and tax basis unknown. Check quantity and price basis."}, Details: Details{Seller: o.Source, Name: o.Name, Quantity: o.Quantity, PriceBasis: o.PriceBasis, CapturedAt: o.CapturedAt, OldPrice: old, MatchStatus: "exact_manufacturer_sku"}}
+	match := "source_item_only"
+	if strings.TrimSpace(o.SKU) != "" {
+		match = "exact_sku"
+	}
+	qty, maxQty := int64(0), int64(0)
+	if o.Quantity != nil {
+		qty = *o.Quantity
+	}
+	if o.MaxQuantity != nil {
+		maxQty = *o.MaxQuantity
+	}
+	identity := fmt.Sprintf("%s/%x/%s", o.Source, sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d/%d", o.SKU, o.URL, o.PriceBasis, qty, maxQty))), o.CapturedAt)
+	return Observation{ID: identity, Kind: "offer", ProductKey: o.SKU, MetricKey: "displayed_price", Value: price(o.PriceMinor), Unit: "RUB", Currency: "RUB", TaxBasis: "unknown", Period: Period{From: d, To: d}, SourceRef: SourceRef{SourceID: o.Source, Locator: o.URL, URL: o.URL, Revision: o.CapturedAt}, Status: "observed", Caveats: []string{"Public displayed price; final terms and tax basis unknown. Check quantity and price basis."}, Details: Details{Seller: o.Source, Name: o.Name, Quantity: o.Quantity, MaxQuantity: o.MaxQuantity, PriceBasis: o.PriceBasis, CapturedAt: o.CapturedAt, OldPrice: old, MatchStatus: match}}
 }
 func FromSnapshot(s Snapshot, q string, limit int, now time.Time) Evidence {
 	ev := empty(now)
@@ -164,16 +179,7 @@ func Compare(snaps []Snapshot, in ChangesInput, now time.Time) Evidence {
 			ev.Status = "partial"
 			continue
 		}
-		x := obs(b)
-		x.ID = k + "/change/" + b.CapturedAt
-		x.MetricKey = "displayed_price_change"
-		x.Period = Period{From: day(a.CapturedAt), To: day(b.CapturedAt)}
-		x.Value = price(b.PriceMinor - a.PriceMinor)
-		before, after := price(a.PriceMinor), price(b.PriceMinor)
-		x.Details.PreviousPrice = &before
-		x.Details.CurrentPrice = &after
-		x.Details.PreviousURL = a.URL
-		x.Details.PreviousCapturedAt = a.CapturedAt
+		x := changeObs(a, b)
 		ev.Observations = append(ev.Observations, x)
 	}
 	sort.Slice(ev.Observations, func(i, j int) bool { return ev.Observations[i].ID < ev.Observations[j].ID })
@@ -182,4 +188,18 @@ func Compare(snaps []Snapshot, in ChangesInput, now time.Time) Evidence {
 		ev.Warnings = append(ev.Warnings, "Insufficient distinct comparable snapshots.")
 	}
 	return ev
+}
+
+func changeObs(a, b catalog.Offer) Observation {
+	x := obs(b)
+	x.ID += "/change"
+	x.MetricKey = "displayed_price_change"
+	x.Period = Period{From: day(a.CapturedAt), To: day(b.CapturedAt)}
+	x.Value = price(b.PriceMinor - a.PriceMinor)
+	before, after := price(a.PriceMinor), price(b.PriceMinor)
+	x.Details.PreviousPrice = &before
+	x.Details.CurrentPrice = &after
+	x.Details.PreviousURL = a.URL
+	x.Details.PreviousCapturedAt = a.CapturedAt
+	return x
 }

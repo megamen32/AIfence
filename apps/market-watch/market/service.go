@@ -2,6 +2,7 @@ package market
 
 import (
 	catalog "agent/collector"
+	"agent/internal/db"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -21,10 +22,11 @@ type Store interface {
 	ListDir(context.Context, string, agentsdk.ListOpts) ([]agentsdk.FileInfo, error)
 }
 type Service struct {
-	store Store
-	fetch catalog.Fetch
-	now   func() time.Time
-	mu    sync.Mutex
+	queries *db.Queries
+	store   Store
+	fetch   catalog.Fetch
+	now     func() time.Time
+	mu      sync.Mutex
 }
 
 func New(store Store) *Service {
@@ -40,8 +42,12 @@ type Snapshot struct {
 	Warnings   []string      `json:"warnings"`
 }
 type ListInput struct {
-	ProductKey string `json:"product_key,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
+	Source      string `json:"source,omitempty"`
+	PriceBasis  string `json:"price_basis,omitempty"`
+	Quantity    *int64 `json:"quantity,omitempty"`
+	MaxQuantity *int64 `json:"max_quantity,omitempty"`
+	ProductKey  string `json:"product_key,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
 }
 type RefreshInput struct {
 	ProductKey string   `json:"product_key,omitempty"`
@@ -73,6 +79,9 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	return out, e
 }
 func (s *Service) List(ctx context.Context, in ListInput) (Evidence, error) {
+	if s.queries != nil {
+		return s.catalogList(ctx, in)
+	}
 	snap, e := s.Snapshot(ctx)
 	if e != nil {
 		return Evidence{}, e
@@ -103,6 +112,11 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 	if e != nil {
 		return Evidence{}, e
 	}
+	if s.queries != nil {
+		if err := s.storeOffers(ctx, old.Rows()); err != nil {
+			return Evidence{}, err
+		}
+	}
 	by := map[string]catalog.Run{}
 	for _, r := range old.Runs {
 		by[r.Source] = r
@@ -111,15 +125,49 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 	snap := Snapshot{CapturedAt: at.Format(time.RFC3339Nano), Runs: []catalog.Run{}, Warnings: []string{}}
 	ch := make(chan catalog.Run, len(sources))
 	count := 0
+	// An exact catalog lookup uses its observed public URLs. Store endpoints
+	// that only expose variants on configured family pages retain those seeds.
+	targets := map[string][]string{}
+	if s.queries != nil && in.ProductKey != "" {
+		rows, err := s.search(ctx, ListInput{ProductKey: in.ProductKey}, 51)
+		if err != nil {
+			return Evidence{}, err
+		}
+		if len(rows) > 50 {
+			return Evidence{}, fmt.Errorf("please refresh an exact SKU with at most 50 matching offers")
+		}
+		for _, o := range rows {
+			if strings.EqualFold(o.SKU, strings.TrimSpace(in.ProductKey)) {
+				targets[o.Source] = append(targets[o.Source], o.URL)
+			}
+		}
+	}
 	for _, src := range sources {
 		if len(sel) > 0 && !sel[src.ID] {
 			continue
+		}
+		if len(targets[src.ID]) > 0 {
+			seen := map[string]bool{}
+			for _, u := range src.Seeds {
+				seen[u] = true
+			}
+			for _, u := range targets[src.ID] {
+				if !seen[u] {
+					src.Seeds = append(src.Seeds, u)
+					seen[u] = true
+				}
+			}
 		}
 		count++
 		go func(src catalog.Source) { ch <- catalog.Collect(ctx, src, s.fetch, false, 10, at) }(src)
 	}
 	for range count {
 		r := <-ch
+		if s.queries != nil && len(r.Offers) > 0 {
+			if err := s.storeOffers(ctx, r.Offers); err != nil {
+				return Evidence{}, err
+			}
+		}
 		if r.Status == "ok" {
 			by[r.Source] = r
 			continue
@@ -151,7 +199,7 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 		return Evidence{}, e
 	}
 	rows := snap.Rows()
-	if len(rows) > 0 {
+	if s.queries == nil && len(rows) > 0 {
 		var csv bytes.Buffer
 		csv.Write([]byte{0xef, 0xbb, 0xbf})
 		if e = catalog.CSV(&csv, rows); e != nil {
@@ -163,6 +211,30 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 	}
 	if _, e = s.store.WriteFile(ctx, current, bytes.NewReader(b), "application/json"); e != nil {
 		return Evidence{}, e
+	}
+	if s.queries != nil {
+		ev, err := s.catalogList(ctx, ListInput{ProductKey: in.ProductKey})
+		if in.ProductKey != "" {
+			fresh := map[string]bool{}
+			for _, r := range snap.Runs {
+				for _, o := range r.Offers {
+					if o.CapturedAt == at.Format(time.RFC3339) && strings.EqualFold(o.SKU, strings.TrimSpace(in.ProductKey)) {
+						fresh[o.Source] = true
+					}
+				}
+			}
+			for _, o := range ev.Observations {
+				if !fresh[o.Details.Seller] {
+					ev.Warnings = append(ev.Warnings, o.Details.Seller+": returning previously indexed observation; see its capture time.")
+					ev.Status = "partial"
+				}
+			}
+		}
+		ev.Warnings = append(ev.Warnings, snap.Warnings...)
+		if len(snap.Warnings) > 0 && ev.Status == "ok" {
+			ev.Status = "partial"
+		}
+		return ev, err
 	}
 	return FromSnapshot(snap, in.ProductKey, 100, s.now()), nil
 }
@@ -183,6 +255,9 @@ func (s *Service) Changes(ctx context.Context, in ChangesInput) (Evidence, error
 		return Evidence{}, fmt.Errorf("to must be YYYY-MM-DD >= from")
 	}
 	t = t.AddDate(0, 0, 1)
+	if s.queries != nil {
+		return s.catalogChanges(ctx, in, f, t)
+	}
 	files, e := s.store.ListDir(ctx, "catalog/history", agentsdk.ListOpts{})
 	if e != nil && !errors.Is(e, agentsdk.ErrNotFound) {
 		return Evidence{}, e
