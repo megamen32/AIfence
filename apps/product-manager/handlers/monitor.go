@@ -116,7 +116,10 @@ func monitorCell(o monitorObservation) (column int, cell views.MonitorCell) {
 }
 
 func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, records []decision.Record, selected, pinned, alert string, autoOpen, demo bool) (*views.Monitor, error) {
-	ids := monitorSnapshotIDs(snapshots, pinned)
+	ids, err := h.svc.Evidence.MonitorSnapshotIDs(ctx, snapshots)
+	if err != nil {
+		return nil, err
+	}
 	var rows []monitorObservation
 	for _, id := range ids {
 		data, err := h.readMonitorSnapshot(ctx, id)
@@ -126,19 +129,6 @@ func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, rec
 		rows = append(rows, data...)
 	}
 	return monitorView(separateMonitorRows(rows, demo), records, selected, pinned, alert, autoOpen), nil
-}
-
-func monitorSnapshotIDs(snapshots []evidence.Summary, pinned string) []string {
-	ids := []string{}
-	if pinned != "" {
-		ids = append(ids, pinned)
-	}
-	for _, s := range snapshots {
-		if !slices.Contains(ids, s.SnapshotID) {
-			ids = append(ids, s.SnapshotID)
-		}
-	}
-	return ids
 }
 
 func (h *Handler) readMonitorSnapshot(ctx context.Context, snapshotID string) ([]monitorObservation, error) {
@@ -266,7 +256,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		}
 		weekly, basis, amount := signalPlanning(records, row)
 		m.Pulse = append(m.Pulse, views.PulseItem{
-			Product: p.Name, ProductKey: row.Product, ControlKey: row.details.Control, Vendor: row.details.Vendor, ControlVendor: row.details.ControlVendor, Delta: delta, URL: link, FirstDetected: first,
+			Product: p.Name, ProductKey: row.Product, ControlKey: row.details.Control, ControlName: productName(row.details.Control), Vendor: row.details.Vendor, ControlVendor: row.details.ControlVendor, Delta: delta, URL: link, FirstDetected: first,
 			Freshness: p.Freshness, Weekly: weekly, WeeklyBasis: basis, Amount: amount,
 			Coverage: signalCoverage(rows, row.Product, row.snapshot),
 			Week:     span(row.Period.From, row.Period.To), Detected: signalTime(row.details.Detected, row.received),

@@ -94,6 +94,12 @@ func (h *Handler) loadOverview(ctx context.Context, m *views.Monitor, q url.Valu
 		groups = append(groups, mapGroup{name: "Другие", count: outside, other: true})
 	}
 	markVendors(groups, m.Pulse)
+	if needle == "" {
+		c.OtherGroups = collapsedCatalogGroups(groups, useRevenue, currency)
+		if outside > 0 {
+			c.OtherRemainder = compactInt(outside) + " товаров вне страницы агрегата не раскрыты"
+		}
+	}
 	c.Tiles = catalogTiles(groups, useRevenue, currency, needle, mode)
 }
 
@@ -211,6 +217,53 @@ func compactInt(n int64) string {
 	return s
 }
 
+func catalogGroupValue(g mapGroup, revenue bool, currency string) string {
+	if revenue {
+		return num(g.revenue) + " " + currency
+	}
+	return compactInt(g.count) + " товаров"
+}
+
+func collapsedCatalogGroups(groups []mapGroup, revenue bool, currency string) []views.CatalogGroup {
+	type item struct {
+		group mapGroup
+		area  float64
+	}
+	items := make([]item, 0, len(groups))
+	for _, g := range groups {
+		area := float64(g.count)
+		if revenue {
+			area = g.revenue
+		}
+		if area > 0 {
+			items = append(items, item{group: g, area: area})
+		}
+	}
+	slices.SortStableFunc(items, func(a, b item) int {
+		if a.area > b.area {
+			return -1
+		}
+		if a.area < b.area {
+			return 1
+		}
+		return strings.Compare(a.group.name, b.group.name)
+	})
+	const maxVisible = 20
+	visible := 0
+	var out []views.CatalogGroup
+	for _, it := range items {
+		if it.group.other {
+			continue
+		}
+		if visible < maxVisible || it.group.tone != "" {
+			visible++
+			continue
+		}
+		out = append(out, views.CatalogGroup{Name: it.group.name, Value: catalogGroupValue(it.group, revenue, currency)})
+	}
+	return out
+}
+
 func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string) []views.CatalogTile {
 	type item struct {
 		group mapGroup
@@ -294,11 +347,7 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 				tile = mapBox{x: box.x + at, y: box.y, w: length, h: thickness}
 			}
 			g := it.group
-			label := compactInt(g.count) + " товаров"
-			if revenue {
-				label = num(g.revenue) + " " + currency
-			}
-			value := label
+			value := catalogGroupValue(g, revenue, currency)
 			link := ""
 			if g.link != "" {
 				link = g.link

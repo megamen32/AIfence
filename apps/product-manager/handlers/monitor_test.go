@@ -6,7 +6,6 @@ import (
 	"agent/internal/product"
 	"agent/views"
 	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -151,15 +150,7 @@ func TestMonitorOpensSavedAlertAlongsideNewerIncompleteWindow(t *testing.T) {
 	}
 }
 
-func TestMonitorReadsAllSnapshotsAndEvidencePages(t *testing.T) {
-	snapshots := make([]evidence.Summary, 9)
-	for i := range snapshots {
-		snapshots[i].SnapshotID = fmt.Sprintf("snapshot-%d", i)
-	}
-	ids := monitorSnapshotIDs(snapshots, "snapshot-old")
-	if len(ids) != 10 || ids[0] != "snapshot-old" || ids[len(ids)-1] != "snapshot-8" {
-		t.Fatalf("monitor snapshot selection was truncated: %+v", ids)
-	}
+func TestMonitorReadsAllEvidencePages(t *testing.T) {
 	for _, tc := range []struct {
 		offset, rows, total int
 		done                bool
