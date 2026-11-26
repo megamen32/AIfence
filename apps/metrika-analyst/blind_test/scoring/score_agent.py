@@ -168,7 +168,9 @@ def main() -> int:
     # In the generator layout the answer directory sits beside input/ and
     # truth.json. Never recurse into those agent-visible or QA files.
     answer_paths = sorted(p for p in args.answers.rglob("*.json")
-                          if p.parent.name == "answers" or p.parent == args.answers)
+                          if (p.parent == args.answers and args.answers.name == "answers")
+                          or p.parent.name == "answers"
+                          or p.parent.parent.name == "answers")
     for answer_path in answer_paths:
         # Generator layout is set-<hash>/answers/S#.json with one card at
         # set-<hash>/card.json. Keep the flat layout compatible as well.
