@@ -38,6 +38,17 @@ class PromptRules(unittest.TestCase):
         for text in good:
             with self.subTest(text=text): self.assertEqual(validate_prompt(text), [])
 
+    def test_tool_preamble_is_not_a_final_reply(self):
+        from live_adapter import final_reply
+        plan = {'role': 'assistant', 'runId': 'current', 'content': 'Сейчас проверю.',
+                'parts': json.dumps([{'type': 'tool-call'}])}
+        output = {'role': 'tool', 'runId': 'current', 'content': 'данные'}
+        answer = {'role': 'assistant', 'runId': 'current', 'content': 'Цену сохраняем.'}
+        for transcript in ([plan], [plan, output], [plan, output, {**answer, 'content': ''}],
+                           [{**answer, 'runId': 'previous'}]):
+            self.assertEqual(final_reply({'messages': transcript}, 'current'), '')
+        self.assertEqual(final_reply({'messages': [plan, output, answer]}, 'current'), answer['content'])
+
     def test_adapter_rejects_bad_prompt_before_network(self):
         spec=importlib.util.spec_from_file_location('blind_live', HERE/'live_adapter.py')
         live=importlib.util.module_from_spec(spec);spec.loader.exec_module(live)
