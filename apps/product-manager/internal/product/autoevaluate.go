@@ -214,6 +214,21 @@ func (s Service) reconcile(ctx context.Context, rec decision.Record, incoming st
 		}
 		return FollowupResult{}, err
 	}
+	// Ordinary metrics imported while the release was being linked could not see it yet.
+	// Scan once after committing that binding. Imports committed later see the pinned release themselves.
+	if assessment.Status == "awaiting_measurement" && assessment.ReleaseID != "" && (rec.Assessment == nil || rec.Assessment.ReleaseID == "") {
+		current, err := s.Get(ctx, decision.GetInput{HypothesisID: id})
+		if err != nil {
+			return FollowupResult{}, err
+		}
+		if current.Assessment == nil || current.Assessment.ReleaseID == "" {
+			return FollowupResult{}, errors.New("не удалось перечитать зарегистрированный релиз")
+		}
+		if current.Assessment.Status != "awaiting_measurement" {
+			return FollowupResult{HypothesisID: id, Status: current.Assessment.Status, Reason: current.Assessment.Reason}, nil
+		}
+		return s.reconcile(ctx, current, incoming, cache)
+	}
 	if why == "" {
 		why = assessment.Reason
 	}

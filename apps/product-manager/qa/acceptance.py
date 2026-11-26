@@ -122,7 +122,7 @@ def scenario_document(document, identifier):
     return document
 
 
-def run_lifecycle(sdk, initial, identifier):
+def run_lifecycle(sdk, initial, identifier, resume=False):
     followup = scenario_document(fixture("synthetic-followup.json"), identifier)
     for batch in followup["batches"]:
         if batch["source"] == "release":
@@ -142,7 +142,7 @@ def run_lifecycle(sdk, initial, identifier):
     bad = copy.deepcopy(save)
     bad["hypothesis"]["support_ids"] = ["fixture/absent"]
     sdk.call("save_hypothesis", bad, reject="отсутствуют наблюдения")
-    first = sdk.call("save_hypothesis", save)
+    first = sdk.call("get_hypothesis", key) if resume else sdk.call("save_hypothesis", save)
     check(first["version"] == 1 and first["hypothesis"] == h and first["evidence_snapshot_id"] == initial, "proposal mismatch")
     check(sdk.call("get_hypothesis", key) == first, "proposal was not persisted exactly")
     sdk.call("save_hypothesis", save, reject="версия")
@@ -206,6 +206,36 @@ def run_lifecycle(sdk, initial, identifier):
             "task_id": task["id"], "version": final["version"], "effect_pp": answer["value"]}
 
 
+def check_simultaneous_release(sdk):
+    identifier = SYNTHETIC + "/" + uuid.uuid4().hex[:12]
+    initial = register(sdk, scenario_document(fixture("synthetic-input.json"), identifier))
+    h = hypothesis(identifier)
+    h["product_key"] = identifier
+    h["success_criterion"]["control_product_key"] = identifier + "/control"
+    first = sdk.call("save_hypothesis", {"hypothesis": h, "expected_version": 0, "evidence_snapshot_id": initial})
+    sdk.approve(identifier, first["version"])
+    document = scenario_document(fixture("synthetic-followup.json"), identifier)
+    inputs = []
+    for batch in document["batches"]:
+        if batch["source"] == "release":
+            batch["observations"][0]["details"]["hypothesis_id"] = identifier
+        elif batch["source"] == "sales":
+            batch["observations"] = [r for r in batch["observations"] if r["id"] in ("fixture/after", "fixture/control-after")]
+        else:
+            continue
+        inputs.append({"document": json.dumps(dict(document, batches=[batch]), ensure_ascii=False)})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        receipts = list(pool.map(lambda payload: sdk.call("import_evidence", payload), inputs))
+    for receipt in receipts:
+        check(not receipt.get("followup_error") and all(x["status"] != "retry" for x in receipt.get("followup", [])),
+              f"overlapping unlabelled outcomes and release failed: {receipt}")
+    final = sdk.call("get_hypothesis", {"hypothesis_id": identifier})
+    assessment = final.get("assessment") or {}
+    check(assessment.get("status") == "supported" and math.isclose(assessment["value"], 20.0)
+          and len(assessment["evidence_refs"]) == 4, "release and unlabelled outcomes did not converge after concurrent import")
+    return {"hypothesis_id": identifier, "task_id": final["task"]["id"], "effect_pp": assessment["value"]}
+
+
 def prepare_chat(sdk, initial=None):
     return {"hypothesis_id": None, "prompt": "Что сейчас требует внимания в продажах?"}
 
@@ -234,18 +264,23 @@ def main():
     p.add_argument("--origin", default="http://localhost:42080")
     action = p.add_mutually_exclusive_group()
     action.add_argument("--prepare-chat", action="store_true")
+    action.add_argument("--check-release-race", action="store_true")
+    action.add_argument("--resume-draft", metavar="SYNTHETIC_ID", help="Resume a previously saved version-1 QA draft")
     action.add_argument("--check-chat", metavar="HYPOTHESIS_ID")
     action.add_argument("--check-confirmed", metavar="HYPOTHESIS_ID")
     args = p.parse_args()
     sdk = SDK(args)
-    if args.prepare_chat:
+    if args.check_release_race:
+        result = check_simultaneous_release(sdk)
+    elif args.prepare_chat:
         result = prepare_chat(sdk)
     elif args.check_chat or args.check_confirmed:
         result = check_chat(sdk, args.check_chat or args.check_confirmed, bool(args.check_confirmed))
     else:
-        identifier = SYNTHETIC + "/" + uuid.uuid4().hex[:12]
+        identifier = args.resume_draft or (SYNTHETIC + "/" + uuid.uuid4().hex[:12])
+        check(re.fullmatch(re.escape(SYNTHETIC) + "/[a-f0-9]{12}", identifier), "invalid QA identifier")
         first = register(sdk, scenario_document(fixture("synthetic-input.json"), identifier))
-        result = run_lifecycle(sdk, first, identifier)
+        result = run_lifecycle(sdk, first, identifier, resume=bool(args.resume_draft))
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
