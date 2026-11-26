@@ -151,7 +151,7 @@ func Extract(page string, html []byte, at time.Time) ([]Product, error) {
 				switch {
 				case err == nil:
 					p.State = "priced"
-					o := catalog.Offer{Source: "softline", SKU: p.SKU, Name: name, URL: p.URL, Currency: "RUB", PriceMinor: minor, Quantity: positive(item.Minimum), PriceBasis: "per_unit", CapturedAt: at.UTC().Format(time.RFC3339), MaxQuantity: positive(item.Maximum)}
+					o := catalog.Offer{Source: "softline", SKU: p.SKU, Name: name, URL: p.URL, Currency: "RUB", PriceMinor: minor, Quantity: positive(item.Minimum), PriceBasis: "per_unit", CapturedAt: at.UTC().Format(time.RFC3339), MaxQuantity: catalog.PublicMaxQuantity(positive(item.Minimum), positive(item.Maximum))}
 					if old, err := catalog.Money(number(price.List)); err == nil && old > minor {
 						o.OldPriceMinor = &old
 					}

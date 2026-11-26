@@ -86,10 +86,14 @@ func (r register) competitors(root, source string) error {
 	}
 	type variant struct{ URL, SKU, Name, Status string }
 	type page struct {
-		URL, At, State, Title string
-		Variants              []variant
+		URL, At, State, Title, Category string
+		Variants                        []variant
 	}
-	return each(filepath.Join(dir, "pages.jsonl"), true, true, func(p page) {
+	latest := map[string]page{}
+	if err := each(filepath.Join(dir, "pages.jsonl"), true, true, func(p page) { latest[p.URL] = p }); err != nil {
+		return err
+	}
+	for _, p := range latest {
 		kind := "семейство"
 		if r[source+"|вариант|"+p.URL] != nil {
 			kind = "вариант"
@@ -98,21 +102,40 @@ func (r register) competitors(root, source string) error {
 		row.State = p.State
 		row.Name = p.Title
 		row.At = p.At
-		if kind == "семейство" && row.State == "priced" {
+		outside := source == "softmagazin" && p.Category != "software"
+		if outside && p.State != "unavailable" && p.State != "error" {
+			row.State = "category_pending"
+			if p.Category == "hardware" {
+				row.State = "out_of_scope"
+			}
+		} else if kind == "семейство" && row.State == "priced" {
 			row.State = "family_with_prices"
 		}
 		for _, v := range p.Variants {
 			if v.URL == "" {
 				continue
 			}
-			row := r.add(source, "вариант", v.URL)
-			row.State = v.Status
-			row.SKU = v.SKU
-			row.Name = v.Name
-			row.At = p.At
+			item := r.add(source, "вариант", v.URL)
+			item.State = v.Status
+			item.SKU = v.SKU
+			item.Name = v.Name
+			item.At = p.At
+			if outside {
+				item.State = row.State
+			}
 		}
-	})
+	}
+	if source == "softmagazin" {
+		type exclusion struct{ URL, At string }
+		return each(filepath.Join(dir, "excluded.jsonl"), true, false, func(v exclusion) {
+			row := r.add(source, "вариант", v.URL)
+			row.State = "out_of_scope"
+			row.At = v.At
+		})
+	}
+	return nil
 }
+
 func (r register) softline(root string) error {
 	dir := filepath.Join(root, "softline")
 	cycle := "initial"
@@ -170,6 +193,10 @@ func quantity(v *int64) string {
 }
 func label(s string) string {
 	switch s {
+	case "category_pending":
+		return "Категория ПО проверяется"
+	case "out_of_scope":
+		return "Оборудование, исключено"
 	case "pending":
 		return "В очереди"
 	case "family_without_listed_variants":

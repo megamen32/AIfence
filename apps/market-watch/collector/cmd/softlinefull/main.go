@@ -187,6 +187,9 @@ func rank(p softlinefamily.Product) int {
 }
 func (s *survey) merge(c check) {
 	for _, p := range c.Products {
+		if p.Offer != nil {
+			p.Offer.MaxQuantity = catalog.PublicMaxQuantity(p.Offer.Quantity, p.Offer.MaxQuantity)
+		}
 		v, ok := s.covered[p.URL]
 		if !ok || rank(p) >= rank(v) {
 			s.covered[p.URL] = p
@@ -408,6 +411,7 @@ func run() error {
 				prior.Close()
 				return err
 			}
+			offer.MaxQuantity = catalog.PublicMaxQuantity(offer.Quantity, offer.MaxQuantity)
 			s.prior[offer.URL] = offer
 		}
 		prior.Close()
