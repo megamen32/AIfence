@@ -23,6 +23,10 @@ Mechanical checklist. A request is valid only if all of these are true; if even 
 - no hinted conclusion ("цены и учебная история относятся к разным товарам", "назови разброс действительно сопоставимых");
 - no restrictions that only a developer would write ("используй только учебные данные", "никаких изменений", "только чтение").
 
+## 1a. Data must look real
+
+The director orients by concrete names. Synthetic and demo data use real catalog products (Kaspersky Small Office Security KL4141RCEFS, Kaspersky Endpoint Security, Dr.Web, Astra Linux, MyOffice) with real SKUs and plausible prices. Never `demo_target`, `demo_control`, «учебный пример», «тестовый продукт», foo/bar, `product_a`. Synthetic origin lives in a hidden flag or path, not in the visible name. Run `python3 scripts/lint-placeholder-names.py <run inputs dir>` before every demo or graded run; it must exit 0.
+
 ## 2. GOOD prompts (few-shot)
 
 ```
