@@ -10,6 +10,7 @@ from pathlib import Path
 import plistlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -60,12 +61,20 @@ def write_atomic(path, data):
 
 def run_sync(materials, output):
     command = [sys.executable, str(APP / "sync_case.py"), "--materials", str(materials), "--output", str(output)]
-    r = subprocess.run(command, cwd=APP, capture_output=True, text=True, timeout=420)
-    if r.returncode:
+    with subprocess.Popen(command, cwd=APP, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          text=True, start_new_session=True) as child:
+        try:
+            stdout, _ = child.communicate(timeout=420)
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.communicate()
+            raise RuntimeError("Local sync timed out; retrying the next launch")
+        exit_code = child.returncode
+    if exit_code:
         # The child may report customer inputs or CLI diagnostics. Keep launchd's log public-safe.
-        raise RuntimeError(f"Local sync exited {r.returncode}; run sync_case.py interactively for diagnostics")
+        raise RuntimeError(f"Local sync exited {exit_code}; run sync_case.py interactively for diagnostics")
     try:
-        receipt = json.loads(r.stdout.rstrip().splitlines()[-1])
+        receipt = json.loads(stdout.rstrip().splitlines()[-1])
         if not all(re.fullmatch(r"ev-[0-9a-f]{64}", receipt[k]) for k in ("snapshot_id","evidence_snapshot_id")):
             raise ValueError("Invalid snapshot ID")
         if not re.fullmatch(r"orders-[0-9a-f]{16}", receipt["hypothesis_id"]):
