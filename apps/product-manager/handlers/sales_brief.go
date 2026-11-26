@@ -16,17 +16,27 @@ type BriefQuery struct {
 }
 
 type BriefFact struct {
+	SKU     string `json:"sku,omitempty"`
 	Product string `json:"product"`
 	Fact    string `json:"observation"`
 	Source  string `json:"source"`
 	Locator string `json:"locator"`
 }
 
+type PriceComparison struct {
+	Product          string   `json:"product"`
+	SKU              string   `json:"sku"`
+	Sellers          []string `json:"sellers"`
+	ComparableGroups int      `json:"comparable_price_groups"`
+	Finding          string   `json:"price_evidence"`
+}
+
 type SalesBrief struct {
-	Facts      []BriefFact `json:"observations"`
-	PriceCount int         `json:"imported_price_observations"`
-	Total      int         `json:"total"`
-	NextOffset *int        `json:"next_offset,omitempty"`
+	Comparisons []PriceComparison `json:"price_comparisons"`
+	Facts       []BriefFact       `json:"observations"`
+	PriceCount  int               `json:"imported_price_observations"`
+	Total       int               `json:"total"`
+	NextOffset  *int              `json:"next_offset,omitempty"`
 }
 
 func (h *Handler) SalesBrief(ctx context.Context, q BriefQuery) (SalesBrief, error) {
@@ -80,7 +90,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 		if json.Unmarshal([]byte(r.Details), &refs) == nil && len(refs.Refs) > 0 && refs.Refs[0].Ref.Locator != "" && refs.Refs[0].Ref.SourceID != "" {
 			source = refs.Refs[0].Ref
 		}
-		facts = append(facts, BriefFact{observedProductName(r.Product, r), fact, source.SourceID, source.Locator})
+		facts = append(facts, BriefFact{Product: observedProductName(r.Product, r), Fact: fact, Source: source.SourceID, Locator: source.Locator})
 	}
 
 	salesCount := len(facts)
@@ -88,7 +98,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 	groups := map[key][]monitorObservation{}
 	var order []key
 	for _, r := range rows {
-		if r.Source != "market" || r.Status != "observed" || r.Kind != "offer" || r.Metric != "displayed_price" {
+		if r.Source != "market" || (r.Status != "observed" && r.Status != "incomparable") || r.Kind != "offer" || r.Metric != "displayed_price" {
 			continue
 		}
 		k := key{strings.ToUpper(r.Product), r.snapshot}
@@ -97,9 +107,9 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 		}
 		groups[k] = append(groups[k], r)
 	}
-	seen := map[string]bool{}
+	comparisons := map[string]PriceComparison{}
 	for _, k := range order {
-		if seen[k.sku] {
+		if _, found := comparisons[k.sku]; found {
 			continue
 		}
 		quotes := groups[k]
@@ -107,14 +117,17 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 		if prices == nil {
 			continue
 		}
-		seen[k.sku] = true
 		packages := append(prices.Comparable, prices.Separate...)
 		var title struct {
 			Name string `json:"name"`
 		}
 		_ = json.Unmarshal([]byte(quotes[0].Details), &title)
+		summary := PriceComparison{Product: title.Name, SKU: k.sku, ComparableGroups: len(prices.Comparable)}
 		for i, group := range packages {
 			for _, offer := range group.Offers {
+				if !slices.Contains(summary.Sellers, offer.Seller) {
+					summary.Sellers = append(summary.Sellers, offer.Seller)
+				}
 				// Only groups admitted by the panel have matching terms from distinct sellers.
 				match := "Нет подтверждённой пары магазинов"
 				if i < len(prices.Comparable) {
@@ -125,13 +138,25 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 				if loc == "" {
 					loc = prices.SnapshotURL
 				}
-				facts = append(facts, BriefFact{strings.TrimSpace(title.Name + " " + k.sku), fact, offer.Seller, loc})
+				facts = append(facts, BriefFact{SKU: k.sku, Product: title.Name, Fact: fact, Source: offer.Seller, Locator: loc})
 			}
 		}
+		if summary.ComparableGroups == 0 {
+			summary.Finding = "По этому артикулу нет пары магазинов с подтверждённо одинаковыми условиями. Преимущество конкурента в цене не установлено."
+		} else {
+			summary.Finding = "Сравнение цен возможно внутри подтверждённых групп с одинаковыми условиями."
+		}
+		comparisons[k.sku] = summary
 	}
 	start := min(max(0, offset), len(facts))
 	end := min(start+12, len(facts))
 	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Total: len(facts), PriceCount: len(facts) - salesCount}
+	for _, fact := range result.Facts {
+		if value, found := comparisons[fact.SKU]; found {
+			result.Comparisons = append(result.Comparisons, value)
+			delete(comparisons, fact.SKU)
+		}
+	}
 	if end < len(facts) {
 		result.NextOffset = &end
 	}

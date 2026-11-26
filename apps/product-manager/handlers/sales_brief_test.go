@@ -17,9 +17,13 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 	demo := alert
 	demo.snapshot = "fixture"
 	demo.details.Origin = "synthetic_fixture"
-	result := salesBrief([]monitorObservation{demo, quote, alert}, nil, 0)
+	other := quote
+	other.Status = "incomparable"
+	other.Ref.URL = "https://softline.ru/"
+	other.Details = `{"seller":"softline","name":"Kaspersky Endpoint Security","price_basis":"displayed_offer_price"}`
+	result := salesBrief([]monitorObservation{demo, quote, other, alert}, nil, 0)
 	raw, _ := json.Marshal(result)
-	if result.Total != 2 || result.PriceCount != 1 || result.NextOffset != nil {
+	if result.Total != 3 || result.PriceCount != 2 || len(result.Comparisons) != 1 || len(result.Comparisons[0].Sellers) != 2 || result.Comparisons[0].ComparableGroups != 0 || result.NextOffset != nil {
 		t.Fatal(string(raw))
 	}
 	for _, want := range []string{"−37,5 %", "два окна по 4 недели", "22.12.2025", "24.11.2025", "1,4 %", "orders#19", "Оценки в ₽ за неделю нет", "KL4210RAKDS", "Allsoft", "10.02.2026", "Нет подтверждённой пары магазинов"} {
