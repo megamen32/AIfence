@@ -30,7 +30,7 @@ func TestSoftwareCategoryResumeAndAdditionalProduct(t *testing.T) {
 		if url != section {
 			t.Fatalf("unexpected path: %s", url)
 		}
-		return []byte(`<div class="wrapper-items-with-offers"><div class="wrapper-info-product"><div class="information-product"><a class="title" href="/test-vendor/family/">Family</a></div><div class="offers"><span class="articul">SKU</span><a class="name" href="/test-vendor/license/">License</a><span class="price" content="789 руб."></span></div></div></div>`), nil
+		return []byte(`<span class="productOutput">1 товар(ов)</span><div class="wrapper-items-with-offers"><div class="wrapper-info-product"><div class="information-product"><a class="title" href="/test-vendor/family/">Family</a></div><div class="offers"><span class="articul">SKU</span><a class="name" href="/test-vendor/license/">License</a><span class="price" content="789 руб."></span></div></div></div>`), nil
 	}
 	save := func(p catalog.PageResult) error { pages[p.URL] = p; return nil }
 	for range 2 {

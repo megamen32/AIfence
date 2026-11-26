@@ -1,9 +1,11 @@
 package catalog
 
 import (
+	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"io"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -128,19 +130,43 @@ func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time)
 
 // VendorListing reads the product-owned license rows on an official SoftMagazin
 // vendor page. Never treat a family's headline "from" price as a license price.
+type SoftwareListing struct {
+	Rows  []PageResult
+	Next  string
+	Total int
+}
+
+var countLabel = regexp.MustCompile(`^[\s\p{Z}]*([0-9][0-9\s\p{Z}]*)`)
+
 func VendorListing(s Source, page string, html io.Reader, at time.Time) ([]PageResult, string, error) {
+	result, err := ReadSoftwareListing(s, page, html, at)
+	return result.Rows, result.Next, err
+}
+func ReadSoftwareListing(s Source, page string, html io.Reader, at time.Time) (SoftwareListing, error) {
+	var result SoftwareListing
 	doc, err := goquery.NewDocumentFromReader(html)
 	if err != nil {
-		return nil, "", err
+		return result, err
 	}
 	base, err := url.Parse(page)
 	if err != nil {
-		return nil, "", err
+		return result, err
 	}
 	// Vendor-listing SKU spans carry the code as visible text; on the family
 	// template the same element also has a title attribute.
 	listingSource := s
 	listingSource.Rule.SKU.Attr = ""
+	if strings.HasPrefix(base.Path, "/soft/") {
+		match := countLabel.FindStringSubmatch(doc.Find(".productOutput").First().Text())
+		if len(match) != 2 {
+			return result, fmt.Errorf("software section did not publish product count")
+		}
+		total, e := strconv.Atoi(strings.Join(strings.Fields(match[1]), ""))
+		if e != nil {
+			return result, e
+		}
+		result.Total = total
+	}
 	var out []PageResult
 	doc.Find(".wrapper-items-with-offers .wrapper-info-product").Each(func(_ int, block *goquery.Selection) {
 		link := block.Find(".information-product a.title").First()
@@ -169,7 +195,7 @@ func VendorListing(s Source, page string, html io.Reader, at time.Time) ([]PageR
 	if raw != "" {
 		u, e := base.Parse(raw)
 		if e != nil {
-			return nil, "", e
+			return result, e
 		}
 		if Allowed(s, u.String()) && u.Path == base.Path && len(u.Query()) == 1 {
 			n, e := strconv.Atoi(u.Query().Get("PAGEN_1"))
@@ -178,5 +204,10 @@ func VendorListing(s Source, page string, html io.Reader, at time.Time) ([]PageR
 			}
 		}
 	}
-	return out, next, nil
+	if result.Total > 0 && len(out) == 0 {
+		return result, fmt.Errorf("software section advertised %d products but returned no product rows", result.Total)
+	}
+	result.Rows = out
+	result.Next = next
+	return result, nil
 }

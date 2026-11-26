@@ -17,14 +17,23 @@ import (
 )
 
 type categoryAudit struct {
-	InventoryAt string            `json:"inventory_at"`
-	Complete    bool              `json:"complete"`
-	Errors      map[string]string `json:"errors,omitempty"`
+	InventoryAt string                     `json:"inventory_at"`
+	Complete    bool                       `json:"complete"`
+	Errors      map[string]string          `json:"errors,omitempty"`
+	Sections    map[string]sectionEvidence `json:"sections,omitempty"`
+}
+type sectionEvidence struct {
+	Published int `json:"published_families"`
+	Observed  int `json:"observed_families"`
+	Pages     int `json:"pages"`
 }
 type listingVisit struct {
-	Next  string `json:"next,omitempty"`
-	At    string `json:"at"`
-	Issue string `json:"issue,omitempty"`
+	Next     string   `json:"next,omitempty"`
+	At       string   `json:"at"`
+	Issue    string   `json:"issue,omitempty"`
+	Verified bool     `json:"verified"`
+	Total    int      `json:"published_total"`
+	Families []string `json:"families,omitempty"`
 }
 
 func softwareSections(s catalog.Source, body []byte) ([]string, error) {
@@ -64,7 +73,7 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 	} else if !errors.Is(e, os.ErrNotExist) {
 		return e
 	}
-	audit := categoryAudit{InventoryAt: inv.DiscoveredAt, Errors: map[string]string{}}
+	audit := categoryAudit{InventoryAt: inv.DiscoveredAt, Errors: map[string]string{}, Sections: map[string]sectionEvidence{}}
 	auditFile := filepath.Join(dir, "category-audit.json")
 	if err := saveJSON(auditFile, audit); err != nil {
 		return err
@@ -87,9 +96,25 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 	}
 	for _, section := range sections {
 		seen := map[string]bool{}
+		families := map[string]bool{}
+		published := -1
+		observe := func(v listingVisit) {
+			if v.Issue != "" {
+				return
+			}
+			if published < 0 {
+				published = v.Total
+			} else if v.Total != published {
+				audit.Errors[section] = fmt.Sprintf("category count changed during pagination from %d to %d", published, v.Total)
+			}
+			for _, u := range v.Families {
+				families[u] = true
+			}
+		}
 		for current := section; current != "" && !seen[current]; {
 			seen[current] = true
-			if visit, ok := visits[current]; ok && visit.At >= inv.DiscoveredAt {
+			if visit, ok := visits[current]; ok && visit.At >= inv.DiscoveredAt && visit.Verified {
+				observe(visit)
 				if visit.Issue != "" {
 					audit.Errors[current] = visit.Issue
 				}
@@ -105,7 +130,7 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 				// The family sitemap still provides the canonical detail URLs.
 				var status *catalog.HTTPStatus
 				if errors.As(e, &status) && status.Code == 403 && status.URL == current {
-					visits[current] = listingVisit{At: at.Format(time.RFC3339), Issue: e.Error()}
+					visits[current] = listingVisit{At: at.Format(time.RFC3339), Issue: e.Error(), Verified: true}
 					if err := saveJSON(path, visits); err != nil {
 						return err
 					}
@@ -116,10 +141,17 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 				audit.Errors[current] = e.Error()
 				break
 			}
-			rows, next, e := catalog.VendorListing(s, current, bytes.NewReader(body), at)
+			listing, e := catalog.ReadSoftwareListing(s, current, bytes.NewReader(body), at)
 			if e != nil {
-				return e
+				audit.Errors[current] = e.Error()
+				break
 			}
+			rows, next := listing.Rows, listing.Next
+			visit := listingVisit{At: at.Format(time.RFC3339), Next: next, Verified: true, Total: listing.Total}
+			for _, p := range rows {
+				visit.Families = append(visit.Families, p.URL)
+			}
+			observe(visit)
 			enlarged := false
 			for _, p := range rows {
 				u, e := url.Parse(p.URL)
@@ -154,11 +186,24 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 					return e
 				}
 			}
-			visits[current] = listingVisit{At: at.Format(time.RFC3339), Next: next}
+			visits[current] = visit
 			if e = saveJSON(path, visits); e != nil {
 				return e
 			}
 			current = next
+		}
+		audit.Sections[section] = sectionEvidence{Published: published, Observed: len(families), Pages: len(seen)}
+		if published < 0 || len(families) != published {
+			audit.Errors[section] = fmt.Sprintf("publisher count %d, distinct listed families %d", published, len(families))
+			// A subsequent audit should refetch this section after page drift.
+			for page := range seen {
+				if visits[page].Issue == "" {
+					delete(visits, page)
+				}
+			}
+			if err := saveJSON(path, visits); err != nil {
+				return err
+			}
 		}
 	}
 	audit.Complete = len(audit.Errors) == 0
