@@ -58,6 +58,31 @@ services:
   js-executor-image:
     platform: linux/amd64
 YAML
+# Personal overlays are optional local artifacts, excluded from Git.
+# Verify their exact local image IDs and provenance before selecting them.
+if [[ -s "$RUNTIME/personal-overlay/manifest.json" ]]; then
+    python3 - "$RUNTIME/personal-overlay/manifest.json" "$RUNTIME/compose.local.yml" <<'PY_OVERLAY'
+import json, pathlib, re, subprocess, sys
+manifest, compose = map(pathlib.Path,sys.argv[1:])
+rows=json.loads(manifest.read_text())
+assert len(rows)==2
+text=compose.read_text()
+for service, role in (("airlock","backend"),("frontend","frontend")):
+    row=next(x for x in rows if x["name"]==role)
+    image=row["local_image"]
+    assert re.fullmatch(r"aifence-(airlock|frontend):personal-[a-f0-9]{12}",image)
+    actual=json.loads(subprocess.check_output(["docker","image","inspect",image]))[0]
+    labels=actual["Config"].get("Labels") or {}
+    assert actual["Id"]==row["local_image_id"] and actual["Architecture"]=="amd64"
+    assert labels.get("io.aifence.personal.source-image")==row["patched_id"]
+    assert labels.get("io.aifence.personal.archive-sha256")==row["sha256"]
+    old="  "+service+":\n    platform: linux/amd64"
+    assert text.count(old)==1
+    text=text.replace(old,old+"\n    image: "+image)
+compose.write_text(text)
+print("Using verified personal Airlock backend and frontend")
+PY_OVERLAY
+fi
 compose=(docker compose -f docker-compose.yml -f "$RUNTIME/compose.local.yml")
 build_if_missing() {
   local img="$1" file="$2"; shift 2
