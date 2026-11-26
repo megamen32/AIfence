@@ -5,6 +5,7 @@ go 1.26.11
 require (
 	github.com/airlockrun/agentsdk v0.11.0
 	github.com/airlockrun/goai v0.3.4
+	github.com/google/uuid v1.6.0
 )
 
 require (
@@ -19,7 +20,6 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gofrs/flock v0.13.1 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

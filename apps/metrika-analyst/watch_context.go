@@ -75,6 +75,9 @@ func registerWatch(a *agentsdk.Agent, w Watch) {
 	a.RegisterTool(tool.Typed[SignalInput, SignalBatch]("replay_signals").
 		Description("Replay weekly watchdog decisions in date order without using future observations.").
 		Execute(w.Replay).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[WatchCaseInput, WatchCaseResult]("collect_watchdog_case").
+		Description("Replay weekly decisions and prepare an evidence case for the first alert. Document is null for quiet or incomplete replay. Pass the document directly to Product Manager without printing observations.").
+		Execute(w.CollectCase).Build(), agentsdk.AccessUser)
 }
 
 func (w Watch) loadContext(ctx context.Context, path string) (WatchContext, error) {
