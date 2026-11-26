@@ -85,6 +85,12 @@ func (s *service) ui(w http.ResponseWriter, r *http.Request) error {
 			return nil
 		}
 	}
+	if r.URL.Path == browserAuthPath && r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		_, err := w.Write(browserAuthJS)
+		return err
+	}
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	if path == "/api/user/token-auth" || (path == "/api/user" && r.Method != "GET") || path == "/api/user/token-blacklist" || strings.Contains(path, "/reset-password") || strings.Contains(path, "/change-password") || strings.Contains(path, "/change-email") || strings.Contains(path, "/delete-account") {
 		http.Error(w, "Вход управляется Airlock", 403)
@@ -115,6 +121,9 @@ func (s *service) ui(w http.ResponseWriter, r *http.Request) error {
 				}
 			}
 			setNativeAuthentication(p.Out, session)
+			if p.Out.Method == http.MethodGet && !strings.HasPrefix(p.Out.URL.Path, "/api/") && !strings.HasPrefix(p.Out.URL.Path, "/_nuxt/") {
+				p.Out.Header.Set("Accept-Encoding", "identity")
+			}
 
 		},
 		ModifyResponse: func(resp *http.Response) error {
@@ -145,7 +154,7 @@ func (s *service) ui(w http.ResponseWriter, r *http.Request) error {
 			if loc := resp.Header.Get("Location"); strings.HasPrefix(loc, s.provision.base) {
 				resp.Header.Set("Location", strings.TrimPrefix(loc, s.provision.base))
 			}
-			return nil
+			return addBrowserAuthentication(resp)
 		},
 		FlushInterval: -1,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, e error) {
