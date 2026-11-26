@@ -29,6 +29,26 @@ class MatrixProjectionTests(unittest.TestCase):
         self.assertEqual(sync.normal("date", "2026-11-26T10:49:06.1Z"),
                          "2026-11-26T10:49:06.100Z")
 
+    def test_multi_store_count_keeps_incomparable_rows_separate(self):
+        import csv
+        import io
+        source = source_row()
+        source.update(cursor="sku:TEST", **{"key":"first"})
+        another = dict(source, key="other", softmagazin="", softmap="500")
+        only_url = dict(source, key="missing", cursor="url:softmap:example", sku="")
+        unique = dict(source, key="single", cursor="sku:TEST2", sku="TEST2")
+        def page(rows):
+            out = io.StringIO()
+            writer = csv.DictWriter(out, fieldnames=source.keys(), delimiter=";")
+            writer.writeheader()
+            writer.writerows(rows)
+            return out.getvalue().encode("utf-8-sig")
+        with patch.object(sync, "request", side_effect=[page([source, another, unique, only_url]), page([])]):
+            rows = dict(sync.source())
+        self.assertEqual([rows[k]["Магазинов по артикулу"] for k in ("first","other","single","missing")],
+                         ["2","2",None,None])
+        self.assertTrue(all(row["Разница"] is None for row in rows.values()))
+
     def test_refuses_untrusted_drilldown(self):
         row = source_row()
         row["compare_url"] = "https://other.invalid/"
@@ -47,7 +67,7 @@ class MatrixProjectionTests(unittest.TestCase):
             return {"results":[previous,mine],"next":None}
         with patch.object(sync,"source",lambda:iter([("sample",active)])), patch.object(sync,"api",api):
             result = sync.sync(42, {"active":13})
-        self.assertEqual(result, {"count":1,"created":0,"updated":0,"retired":0})
+        self.assertEqual(result, {"count":1,"created":0,"updated":0,"retired":0,"multi_store_skus":0,"multi_store_rows":0})
         self.assertEqual(calls, ["GET","GET"])
 
     def test_interrupted_source_does_not_retire_or_write(self):

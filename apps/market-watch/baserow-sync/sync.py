@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import fcntl
 import io
+from itertools import groupby
 import json
 import re
 from pathlib import Path
@@ -16,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / ".runtime"
 SDK = RUNTIME / "bin/market-air"
 TABLE = "Цены по лицензиям"
+TITLE = "Открыть лицензию"
+TITLE_FORMULA = "link(field('Сравнение и история'), field('Лицензия'))"
 DATABASE = "Market Watch"
 # CSV column, Baserow field, type, native grid width. Hidden metadata stays available in row details.
 COLUMNS = (
@@ -26,6 +29,7 @@ COLUMNS = (
     ("spread", "Разница", "number", 75),
     ("compare_url", "Сравнение и история", "url", 140),
     ("sku", "Артикул", "text", 130),
+    ("store_count", "Магазинов по артикулу", "number", 0),
     ("currency","Валюта","text",76),
     ("conditions","Условия","text",230),
     ("biggest_drop","Снижение за 7 дней","number",138),
@@ -50,6 +54,7 @@ VIEWS = (
     ("Подешевело за 7 дней",("biggest_drop","higher_than","0"),("biggest_drop","DESC")),
     ("Смена лидера за 7 дней",("leader","equal","Да"),("biggest_drop","DESC")),
     ("Без сопоставимой пары",("status","equal","Вне сравнения"),None),
+    ("Артикул в нескольких магазинах", ("store_count", "higher_than_or_equal", "2"), ("sku", "ASC")),
 )
 NAMES = {key:name for key,name,_,_ in COLUMNS}
 DIRECT_URL = "http://localhost:42080"
@@ -68,7 +73,7 @@ def request(app, method, path, payload=None):
 
 def api(method, path, body=None):
     result = json.loads(request("baserow", method, "/api/"+path, body))
-    if isinstance(result, dict) and "error" in result:
+    if isinstance(result, dict) and result.get("error"):
         raise RuntimeError(f"{method} {path.split('?')[0]}: {result['error']}")
     return result
 
@@ -91,21 +96,37 @@ def configure(configure_views=False):
     tid = table["id"]
     fields_path = f"database/fields/table/{tid}/"
     fields = {r["name"]:r for r in api("GET", fields_path)}
-    if NAMES["product"] not in fields or not fields[NAMES["product"]]["primary"]:
-        raise ValueError("Existing matrix has incompatible primary field")
+    primary = next((field for field in fields.values() if field["primary"]), None)
+    if not primary or primary["name"] not in (NAMES["product"], TITLE):
+        raise ValueError("Existing matrix has an incompatible primary field")
     ids = {}
     for key, name, kind, _ in COLUMNS:
         row = fields.get(name)
         if not row:
             payload = {"name":name,"type":kind}
             if kind == "number":
-                payload.update(number_decimal_places=2, number_negative=True)
+                payload.update(number_decimal_places=0 if key == "store_count" else 2,
+                               number_negative=key != "store_count")
             if kind == "date":
                 payload.update(date_include_time=True,date_format="EU",date_time_format="24")
             row = api("POST",fields_path,payload)
         if row["type"] != kind:
             raise ValueError(f"Field type changed: {name}")
         ids[key] = row["id"]
+    # Baserow can display the original product name as a native clickable primary
+    # value. Both original inputs remain intact and stay under the user's ACL.
+    title_field = fields.get(TITLE)
+    if not title_field:
+        params = {"name": TITLE, "formula": TITLE_FORMULA}
+        checked = api("POST", f"database/formula/{tid}/type/", params)
+        if checked.get("formula_type") != "link":
+            raise ValueError("Native Baserow did not validate the comparison link")
+        title_field = api("POST", fields_path, {"type": "formula", **params})
+    if title_field.get("formula") != TITLE_FORMULA or title_field.get("formula_type") != "link":
+        raise ValueError("Existing Baserow title is not the managed comparison link")
+    if primary["id"] != title_field["id"]:
+        api("POST", fields_path + "change-primary-field/", {"new_primary_field_id": title_field["id"]})
+        configure_views = True
     path = f"database/views/table/{tid}/"
     views = api("GET",path)
     view_ids = {}
@@ -125,7 +146,11 @@ def configure(configure_views=False):
         if not new_view and not configure_views:
             continue
         opts_path=f"database/views/{vid}/field-options/"
-        desired = {str(ids[key]):{"width":width or 100,"hidden":not width,"order":order} for order,(key,_,_,width) in enumerate(COLUMNS)}
+        desired = {str(ids[key]): {"width": width or 100, "hidden": not width or key == "product", "order": order}
+                   for order, (key, _, _, width) in enumerate(COLUMNS, start=1)}
+        desired[str(title_field["id"])] = {"width": 155, "hidden": False, "order": 0}
+        if rule and rule[0] == "store_count":
+            desired[str(ids["store_count"])].update(width=120, hidden=False)
         # Keep the column layout unchanged when the user reorders other personal views.
         current=api("GET",opts_path)["field_options"]
         if any(not isinstance(current.get(k),dict) or any(current[k].get(prop)!=v for prop,v in opt.items()) for k,opt in desired.items()):
@@ -177,9 +202,10 @@ def normal(kind, value):
     return value
 
 
-def mapped(row):
+def mapped(row, store_count=None):
     data = dict(row)
     data["active"]=True
+    data["store_count"] = store_count
     data["status"]="Сопоставимо" if row["comparable"]=="true" else "Вне сравнения"
     data["leader"]={"true":"Да","false":"Нет","":""}[row["leader_changed"]]
     u=urlsplit(data["compare_url"])
@@ -195,18 +221,25 @@ def source():
         query=urlencode({"days":7,"limit":400,"after":cursor})
         raw=request("market-watch","GET","/matrix.csv?"+query).decode("utf-8-sig")
         reader=csv.DictReader(io.StringIO(raw),delimiter=";")
-        required={k for k in NAMES if k not in ("active","leader","status")}|{"leader_changed","cursor","comparable"}
+        required={k for k in NAMES if k not in ("active","leader","status","store_count")}|{"leader_changed","cursor","comparable"}
         if not required.issubset(reader.fieldnames or ()):
             raise ValueError("Missing columns in Market Watch matrix: "+str(required-set(reader.fieldnames or ())))
         page=list(reader)
         if not page:
             return
-        for row in page:
-            key=row["key"]
-            if not key or key in seen:
-                raise ValueError("Duplicate or empty matrix key")
-            seen.add(key)
-            yield key,mapped(row)
+        # Market Watch paginates full SKU groups. Keep the canonical cursor so
+        # title similarity and unknown SKUs can never merge unrelated offers.
+        for group_key, group in groupby(page, key=lambda row: row["cursor"]):
+            group_rows = list(group)
+            sellers = {seller for row in group_rows for seller in ("softline", "softmap", "softmagazin")
+                       if row[seller] != ""}
+            store_count = len(sellers) if group_key.startswith("sku:") and len(sellers) >= 2 else None
+            for row in group_rows:
+                key = row["key"]
+                if not key or key in seen:
+                    raise ValueError("Duplicate or empty matrix key")
+                seen.add(key)
+                yield key, mapped(row, store_count)
         nxt=page[-1]["cursor"]
         if not nxt or nxt==cursor:
             raise ValueError("Invalid matrix continuation")
@@ -268,7 +301,9 @@ def sync(tid, ids):
     count=api("GET",base+f"?filter__field_{ids['active']}__boolean=1&size=1")["count"]
     if count!=len(rows):
         raise ValueError(f"Visible matrix has {count} rows; expected {len(rows)}")
-    return {"count":len(rows),"created":len(new),"updated":len(changed),"retired":len(inactive)}
+    multi = [row for row in rows.values() if row[NAMES["store_count"]] is not None]
+    return {"count":len(rows),"created":len(new),"updated":len(changed),"retired":len(inactive),
+            "multi_store_skus":len({r[NAMES["sku"]].upper() for r in multi}),"multi_store_rows":len(multi)}
 
 
 def main():
