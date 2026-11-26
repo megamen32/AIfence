@@ -2,6 +2,7 @@ package product
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"unicode"
@@ -17,22 +18,49 @@ func (s Service) GetFocus(ctx context.Context, _ evidence.Empty) (Focus, error) 
 	if err != nil || focus.ProductKey == "" {
 		return focus, err
 	}
-	if focus.SnapshotID != "" {
-		err = s.Evidence.Access(ctx, focus.SnapshotID)
-		if errors.Is(err, evidence.ErrLocalOnly) {
+	if focus.SnapshotID == "" {
+		if !s.Evidence.CanReadLocal(ctx) {
 			return Focus{}, nil
 		}
+		return focus, nil
+	}
+	q := evidence.Query{SnapshotID: focus.SnapshotID, ProductKey: focus.ProductKey, Limit: 100}
+	if focus.HypothesisID != "" {
+		record, err := s.Decisions.Get(ctx, decision.GetInput{HypothesisID: focus.HypothesisID})
 		if err != nil {
 			return Focus{}, err
 		}
-	} else if !s.Evidence.CanReadLocal(ctx) {
+		q.IDs = record.Hypothesis.SignalIDs
+	}
+	data, err := s.Evidence.Read(ctx, q)
+	if errors.Is(err, evidence.ErrLocalOnly) {
 		return Focus{}, nil
 	}
+	if err != nil {
+		return Focus{}, err
+	}
+	focus.Synthetic = syntheticFocus(data.Rows)
 	return focus, nil
+}
+
+// Only server-read source metadata can mark a stored focus as synthetic.
+func syntheticFocus(rows []evidence.Row) bool {
+	for _, row := range rows {
+		var provenance struct {
+			Origin    string `json:"origin"`
+			Synthetic bool   `json:"synthetic"`
+		}
+		_ = json.Unmarshal([]byte(row.Details), &provenance)
+		if provenance.Synthetic || provenance.Origin == "synthetic_fixture" || strings.HasPrefix(row.Ref.SourceID, "synthetic/") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s Service) SetFocus(ctx context.Context, in Focus) (Focus, error) {
 	in.ProductKey = strings.TrimSpace(in.ProductKey)
+	in.Synthetic = false
 	if in.HypothesisID != "" {
 		record, err := s.Get(ctx, decision.GetInput{HypothesisID: in.HypothesisID})
 		if err != nil {

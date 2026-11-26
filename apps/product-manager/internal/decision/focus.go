@@ -10,6 +10,7 @@ import (
 )
 
 type Focus struct {
+	Synthetic    bool   `json:"synthetic,omitempty"`
 	ProductKey   string `json:"product_key,omitempty"`
 	SnapshotID   string `json:"snapshot_id,omitempty"`
 	HypothesisID string `json:"hypothesis_id,omitempty"`
