@@ -10,6 +10,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / ".runtime"
@@ -33,8 +34,11 @@ def inspect(ref):
         return None
     return json.loads(p.stdout)[0]
 
-def verify(img, expected):
-    return (img is not None and img["Id"] == expected
+def verify(img, expected, manifest=None):
+    # Classic Docker reports the config digest; the containerd image
+    # store reports the OCI manifest digest. Both must resolve to the
+    # pinned config digest, not merely a matching revision label.
+    return (img is not None and img["Id"] in (expected, manifest)
         and img["Architecture"] == "amd64"
         and (img.get("Config", {}).get("Labels") or {}).get(
             "org.opencontainers.image.revision") == REV)
@@ -45,6 +49,26 @@ def digest(path):
         for chunk in iter(lambda: f.read(1024*1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+def manifest_id(path, expected):
+    with tarfile.open(path, "r:gz") as archive:
+        index = json.load(archive.extractfile("index.json"))
+        for descriptor in index["manifests"]:
+            iid = descriptor["digest"]
+            if not re.fullmatch(r"sha256:[a-f0-9]{64}", iid):
+                continue
+            raw = archive.extractfile("blobs/sha256/" + iid[7:]).read()
+            if "sha256:" + hashlib.sha256(raw).hexdigest() != iid:
+                raise RuntimeError("OCI manifest digest mismatch")
+            obj = json.loads(raw)
+            if obj.get("config", {}).get("digest") != expected:
+                continue
+            config = archive.extractfile("blobs/sha256/" + expected[7:]).read()
+            if "sha256:" + hashlib.sha256(config).hexdigest() != expected:
+                raise RuntimeError("OCI config digest mismatch")
+            return iid
+    raise RuntimeError("Archive does not contain the pinned image config")
+
 
 # The cache host independently checks the release revision and image ID.
 # Stable compressed archives permit restart without repeating the download.
@@ -85,7 +109,13 @@ finally:
 for name, entry in LOCK["release_images"].items():
     iid=entry["id"]
     tag=f"aifence-{name}:{TAG}"
-    if verify(inspect(tag),iid):
+    receipt = CACHE / (name + ".verified.json")
+    manifest = None
+    if receipt.exists():
+        data = json.loads(receipt.read_text())
+        if data.get("config") == iid and data.get("revision") == REV:
+            manifest = data.get("manifest")
+    if verify(inspect(tag),iid,manifest):
         print("Verified cached",tag,flush=True); continue
     if verify(inspect(iid),iid):
         subprocess.run(["docker","tag",iid,tag],check=True)
@@ -108,9 +138,15 @@ for name, entry in LOCK["release_images"].items():
                            stdout=out,check=True)
     if part.stat().st_size!=meta["size"] or digest(part)!=meta["sha256"]:
         sys.exit(f"Archive verification failed: {part}")
-    subprocess.run(["docker","load","-i",str(part)],check=True)
-    if not verify(inspect(iid),iid):
+    # Bind the local manifest identifier cryptographically to the
+    # expected image config from the SHA-verified remote archive.
+    manifest = manifest_id(part, iid)
+    if not (verify(inspect(iid), iid, manifest) or verify(inspect(manifest), iid, manifest)):
+        subprocess.run(["docker","load","-i",str(part)],check=True)
+    loaded = inspect(iid) or inspect(manifest)
+    if not verify(loaded,iid,manifest):
         sys.exit(f"Loaded image mismatch: {name}")
-    subprocess.run(["docker","tag",iid,tag],check=True)
+    subprocess.run(["docker","tag",loaded["Id"],tag],check=True)
+    receipt.write_text(json.dumps({"config": iid, "manifest": manifest, "revision": REV}))
     print("Verified",tag,flush=True)
 print("All five release images verified.",flush=True)
