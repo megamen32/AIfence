@@ -1,24 +1,181 @@
 #!/usr/bin/env bash
-# Deploy the completed apps, after one-time normal Airlock activation/login.
+# Stage tracked app sources outside the checkout; never bypass SDK source CAS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin:$PATH"
-slugs=(market-watch metrika-analyst product-manager)
-for slug in "${slugs[@]}"; do
-  test -f "$ROOT/apps/$slug/go.mod" && test -f "$ROOT/apps/$slug/.aifence-ready" || { echo "Not ready: $slug. Implement and test before setting .aifence-ready." >&2; exit 1; }
+export GOMAXPROCS="${GOMAXPROCS:-2}" GOFLAGS="${GOFLAGS:--p=1}"
+usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager" >&2; exit 2; }
+dry=0 create=0 auto=0 slug=""
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) dry=1;; --create) create=1;; --auto) auto=1;;
+    market-watch|metrika-analyst|product-manager) [[ -z "$slug" ]] || usage; slug="$arg";;
+    *) usage;;
+  esac
 done
-# First deployment binds the local app to this instance. Later deploys use saved binding.
-# CLI authentication is intentionally normal and interactive; do not extract tokens.
-for slug in "${slugs[@]}"; do
-  (cd "$ROOT/apps/$slug"
-    go tool air toolchain install
-    go tool air build
-    go tool air login http://localhost:42080
-    if [[ ! -f "$ROOT/.runtime/deployed-$slug" ]]; then
-      go tool air deploy --create --name "$slug" --slug "$slug" -m "AIfence $slug"
-      mkdir -p "$ROOT/.runtime"; touch "$ROOT/.runtime/deployed-$slug"
-    else
-      go tool air deploy -m "Update AIfence $slug"
-    fi)
-done
-echo "Check build readiness and actual cross-app run before declaring acceptance."
+if [[ -z "$slug" ]]; then
+  [[ "$create" == 0 && "$auto" == 0 ]] || usage
+  export AIFENCE_DEPLOY_COMMIT="$(git -C "$ROOT" rev-parse --verify 'HEAD^{commit}')"
+  for app in market-watch metrika-analyst product-manager; do
+    if [[ "$dry" == 1 ]]; then "$0" --dry-run "$app"; else "$0" --auto "$app"; fi
+  done
+  exit 0
+fi
+commit="${AIFENCE_DEPLOY_COMMIT:-$(git -C "$ROOT" rev-parse --verify 'HEAD^{commit}')}"
+[[ "$commit" == "$(git -C "$ROOT" rev-parse --verify 'HEAD^{commit}')" ]] || { echo 'HEAD changed during deployment; restart from a consistent snapshot.' >&2; exit 1; }
+url="${AIRLOCK_URL:-http://localhost:42080}"
+origin_key="$(python3 - "$url" <<'ORIGIN'
+import hashlib, sys, urllib.parse
+u = urllib.parse.urlsplit(sys.argv[1])
+if u.scheme not in ('http', 'https') or not u.hostname or u.username or u.password or u.path not in ('', '/') or u.query or u.fragment:
+    sys.exit('AIRLOCK_URL must be an HTTP(S) origin without credentials or path')
+try:
+    port = u.port
+except ValueError:
+    sys.exit('Invalid AIRLOCK_URL port')
+host = u.hostname.lower()
+if ':' in host: host = '[' + host + ']'
+if port and port != (443 if u.scheme == 'https' else 80): host += ':' + str(port)
+print(hashlib.sha256((u.scheme.lower() + '://' + host).encode()).hexdigest())
+ORIGIN
+)"
+base="$ROOT/.runtime/deploy-apps"
+mkdir -p "$base/state" "$base/stages"
+chmod 700 "$base" "$base/state" "$base/stages"
+lock="$base/state/$origin_key-$slug.lock"
+if ! mkdir "$lock" 2>/dev/null; then echo "Another deployment owns $lock; inspect before removing it." >&2; exit 1; fi
+stage="$(mktemp -d "$base/stages/$slug.XXXXXXXX")"
+state="$base/state/$origin_key/$slug"
+cleanup() {
+  result=$?
+  if [[ "$dry" == 0 && -f "$stage/.airlock/local/agent.toml" ]]; then
+    mkdir -p "$state"
+    chmod 700 "$state"
+    cp "$stage/.airlock/local/agent.toml" "$state/agent.toml"
+    chmod 600 "$state/agent.toml"
+  fi
+  rmdir "$lock"
+  echo "Staging retained: $stage" >&2
+  exit "$result"
+}
+trap cleanup EXIT
+python3 - "$ROOT" "$slug" "$stage" "$commit" <<'PY'
+import os, pathlib, shutil, subprocess, sys, tomllib
+root, slug, stage, commit = pathlib.Path(sys.argv[1]), sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4]
+prefix = f'apps/{slug}/'
+raw = subprocess.check_output(['git', '-C', str(root), 'ls-tree', '-rz', '--full-tree', commit, '--', prefix])
+entries = {}
+for item in raw.split(b'\0'):
+    if not item: continue
+    meta, path = item.split(b'\t', 1)
+    mode, kind, oid = meta.decode().split()
+    entries[os.fsdecode(path)] = (mode, kind, oid)
+if not entries:
+    sys.exit('No committed app sources')
+files = list(entries)
+ignored = subprocess.run(['git', '-C', str(root), 'check-ignore', '--no-index', '-z', '--stdin'], input=b'\0'.join(os.fsencode(p) for p in files)+b'\0', stdout=subprocess.PIPE, check=False)
+if ignored.returncode not in (0, 1):
+    sys.exit('Could not check ignore rules')
+excluded = set(os.fsdecode(p) for p in ignored.stdout.split(b'\0') if p)
+for path, (mode, kind, oid) in entries.items():
+    rel = pathlib.PurePosixPath(path[len(prefix):])
+    if path in excluded or any(part in {'data', 'private', 'materials', 'материалы', '.runtime', '.airlock'} for part in rel.parts):
+        continue
+    if kind != 'blob' or mode not in ('100644', '100755'):
+        sys.exit(f'Refusing non-regular committed source: {path}')
+    dst = stage / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with dst.open('xb') as out:
+        subprocess.run(['git', '-C', str(root), 'cat-file', 'blob', oid], stdout=out, check=True)
+    os.chmod(dst, 0o755 if mode == '100755' else 0o644)
+# The PM may select this one cross-app runtime file. Use the same commit,
+# never a potentially different or private working-tree file.
+config = stage / 'airlock.toml'
+if slug == 'product-manager' and config.exists():
+    try:
+        runtime_files = tomllib.loads(config.read_text(encoding='utf-8')).get('build', {}).get('runtime_files', [])
+    except (tomllib.TOMLDecodeError, AttributeError) as exc:
+        sys.exit(f'Invalid airlock.toml: {exc}')
+    if not isinstance(runtime_files, list) or any(not isinstance(x, str) for x in runtime_files):
+        sys.exit('Invalid build.runtime_files in airlock.toml')
+    if 'pathcheck/check_purchase_path.py' in runtime_files:
+        source = 'apps/path-check/check_purchase_path.py'
+        entry = subprocess.check_output(['git', '-C', str(root), 'ls-tree', '-z', commit, '--', source]).split(b'\0')
+        entry = [x for x in entry if x]
+        if len(entry) != 1:
+            sys.exit(f'Required runtime file must be committed: {source}')
+        meta, indexed_path = entry[0].split(b'\t', 1)
+        mode, kind, oid = meta.decode().split()
+        if os.fsdecode(indexed_path) != source or kind != 'blob' or mode not in ('100644', '100755'):
+            sys.exit(f'Required runtime file is not a regular Git blob: {source}')
+        dest = stage / 'pathcheck' / 'check_purchase_path.py'
+        if dest.exists() or dest.is_symlink():
+            sys.exit(f'Refusing to overwrite staged runtime file: {dest}')
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with dest.open('xb') as out:
+            subprocess.run(['git', '-C', str(root), 'cat-file', 'blob', oid], stdout=out, check=True)
+        os.chmod(dest, 0o755 if mode == '100755' else 0o644)
+        print(f'Staged runtime file from Git object {oid}: {source}')
+required_files = ['go.mod', 'go.sum', 'main.go', 'styles/app.css']
+if slug == 'metrika-analyst':
+    required_files += ['INSTRUCTIONS.md', 'index.html']
+for required in required_files:
+    if not (stage / required).is_file():
+        sys.exit(f'Missing tracked SDK build input: {required}')
+if b'github.com/a-h/templ/cmd/templ' not in (stage / 'go.mod').read_bytes():
+    sys.exit('Missing templ tool directive in tracked go.mod (required by SDK build)')
+(stage / 'views' / 'static').mkdir(parents=True, exist_ok=True)
+print(f'Staged {slug} from committed source {commit}; private/data directories excluded.')
+PY
+if [[ "$dry" == 1 ]]; then
+  echo "Dry run: no build, login, upload, or deployment."
+  exit 0
+fi
+mkdir -p "$stage/.airlock/local"
+if [[ -f "$state/agent.toml" ]]; then
+  cp "$state/agent.toml" "$stage/.airlock/local/agent.toml"
+elif [[ -n "${AIFENCE_BINDING_FILE:-}" ]]; then
+  [[ -f "$AIFENCE_BINDING_FILE" ]] || { echo 'AIFENCE_BINDING_FILE does not exist' >&2; exit 1; }
+  python3 - "$AIFENCE_BINDING_FILE" "$url" <<'CHECK_BINDING'
+import sys, tomllib, urllib.parse
+with open(sys.argv[1], 'rb') as f: binding = tomllib.load(f)
+def origin(value):
+    u = urllib.parse.urlsplit(value)
+    port = u.port or (443 if u.scheme == 'https' else 80)
+    return (u.scheme.lower(), (u.hostname or '').lower(), port, u.path.rstrip('/'))
+remotes = binding.get('remotes', {})
+if not remotes or any(origin(r.get('url', '')) != origin(sys.argv[2]) for r in remotes.values()):
+    sys.exit('Binding origin missing or mismatched; refusing import')
+CHECK_BINDING
+  cp "$AIFENCE_BINDING_FILE" "$stage/.airlock/local/agent.toml"
+fi
+if [[ "$create" == 1 && -f "$stage/.airlock/local/agent.toml" ]]; then
+  echo 'Refusing --create with existing binding; inspect state first.' >&2; exit 1
+fi
+# SDK build mutates go.mod/go.sum and generates files. Keep the upload tree
+# unchanged by running validation on a separate private copy.
+build_stage="$(mktemp -d "$base/stages/$slug-build.XXXXXXXX")"
+cp -R "$stage/." "$build_stage/"
+(cd "$build_stage"; go tool air toolchain install; go tool air build)
+echo "Build staging retained: $build_stage" >&2
+cd "$stage"
+if [[ "$auto" == 1 ]]; then
+  decision="$( (go tool air status --url "$url" --agent "$slug" --json || true) | python3 -c '
+import json, sys
+try: d = json.load(sys.stdin)
+except (ValueError, OSError): sys.exit("Cannot inspect target; refusing automatic creation")
+if d.get("status") != "failed": print("existing")
+elif d.get("error", {}).get("message", "").startswith("agent \"" + sys.argv[1] + "\" not found in "): print("create")
+else: sys.exit("Cannot inspect target; refusing automatic creation: " + d.get("error", {}).get("message", "unknown SDK error"))
+' "$slug")"
+  [[ "$decision" != create ]] || create=1
+fi
+if [[ "$create" == 1 && -f "$stage/.airlock/local/agent.toml" ]]; then
+  echo 'Refusing --create with existing binding; inspect state first.' >&2; exit 1
+fi
+if [[ "$create" == 1 ]]; then
+  go tool air deploy --url "$url" --create --name "$slug" --slug "$slug" -m "AIfence $slug" --wait
+else
+  go tool air deploy --url "$url" --agent "$slug" -m "AIfence $slug" --wait
+fi
+go tool air status --url "$url" --agent "$slug" --wait
