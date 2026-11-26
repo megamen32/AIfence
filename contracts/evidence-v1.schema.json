@@ -25,7 +25,8 @@
         "backlog",
         "release",
         "economics",
-        "browser"
+        "browser",
+        "competitor"
       ]
     },
     "as_of": {
@@ -40,10 +41,7 @@
       ]
     },
     "observations": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/observation"
-      }
+      "type": "array"
     },
     "warnings": {
       "type": "array",
@@ -53,7 +51,7 @@
     }
   },
   "$defs": {
-    "observation": {
+    "baseObservation": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -73,15 +71,7 @@
           "minLength": 1
         },
         "kind": {
-          "enum": [
-            "metric",
-            "offer",
-            "research",
-            "task",
-            "release",
-            "cost",
-            "path_check"
-          ]
+          "type": "string"
         },
         "product_key": {
           "type": "string",
@@ -91,14 +81,7 @@
           "type": "string",
           "minLength": 1
         },
-        "value": {
-          "type": [
-            "number",
-            "string",
-            "boolean",
-            "null"
-          ]
-        },
+        "value": {},
         "unit": {
           "type": "string"
         },
@@ -218,6 +201,95 @@
           }
         }
       ]
+    },
+    "observation": {
+      "allOf": [
+        {"$ref": "#/$defs/baseObservation"},
+        {"properties": {"kind": {"enum": ["metric", "offer", "research", "task", "release", "cost", "path_check"]}, "value": {"type": ["number", "string", "boolean", "null"]}}}
+      ]
+    },
+    "name": {"type": "string", "minLength": 1},
+    "setValue": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+    "competitorRecord": {
+      "allOf": [
+        {"$ref": "#/$defs/baseObservation"},
+        {"$ref": "#/$defs/competitorValueTypes"},
+        {
+          "if": {"properties": {"kind": {"const": "competitor_change"}}},
+          "then": {"$ref": "#/$defs/competitorChange"},
+          "else": {
+            "if": {"properties": {"status": {"const": "observed"}}},
+            "then": {"properties": {"value": {"not": {"type": "null"}}}}
+          }
+        }
+      ],
+      "required": ["details"],
+      "properties": {
+        "kind": {"enum": ["competitor_observation", "competitor_change"]},
+        "details": {
+          "type": "object",
+          "required": ["competitor", "value_type", "origin"],
+          "properties": {
+            "competitor": {"$ref": "#/$defs/name"},
+            "value_type": {"enum": ["number", "boolean", "set"]},
+            "origin": {"enum": ["agent_collected", "customer_research"]},
+            "screenshot_ref": {"$ref": "#/$defs/name"}
+          }
+        }
+      },
+      "anyOf": [
+        {"properties": {"source_ref": {"required": ["url"], "properties": {"url": {"type": "string", "format": "uri", "pattern": "^https?://[^/ ]+"}}}}},
+        {"properties": {"details": {"required": ["screenshot_ref"]}}}
+      ]
+    },
+    "competitorValueTypes": {
+      "oneOf": [
+        {
+          "properties": {"details": {"properties": {"value_type": {"const": "number"}, "before": {"type": "number"}, "after": {"type": "number"}}}},
+          "if": {"properties": {"kind": {"const": "competitor_observation"}}},
+          "then": {"properties": {"value": {"anyOf": [{"type": "number"}, {"type": "null"}]}}}
+        },
+        {
+          "properties": {"details": {"properties": {"value_type": {"const": "boolean"}, "before": {"type": "boolean"}, "after": {"type": "boolean"}}}},
+          "if": {"properties": {"kind": {"const": "competitor_observation"}}},
+          "then": {"properties": {"value": {"anyOf": [{"type": "boolean"}, {"type": "null"}]}}}
+        },
+        {
+          "properties": {"details": {"properties": {"value_type": {"const": "set"}, "before": {"$ref": "#/$defs/setValue"}, "after": {"$ref": "#/$defs/setValue"}}}},
+          "if": {"properties": {"kind": {"const": "competitor_observation"}}},
+          "then": {"properties": {"value": {"anyOf": [{"$ref": "#/$defs/setValue"}, {"type": "null"}]}}}
+        }
+      ]
+    },
+    "competitorChange": {
+      "properties": {
+        "value": {"type": ["boolean", "null"]},
+        "unit": {"const": "boolean"},
+        "details": {
+          "required": ["rule", "before", "after", "confirmed_by_second_snapshot", "snapshot_ids"],
+          "properties": {
+            "rule": {"$ref": "#/$defs/name"},
+            "confirmed_by_second_snapshot": {"type": "boolean"},
+            "snapshot_ids": {"type": "array", "items": {"$ref": "#/$defs/name"}, "uniqueItems": true, "minItems": 2}
+          },
+          "if": {"properties": {"confirmed_by_second_snapshot": {"const": true}}},
+          "then": {"properties": {"snapshot_ids": {"minItems": 3}}}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "observed"}}},
+          "then": {"properties": {"value": {"type": "boolean"}}},
+          "else": {"properties": {"value": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"value": {"const": true}, "details": {"properties": {"value_type": {"const": "number"}}}}},
+          "then": {"properties": {"details": {"properties": {"confirmed_by_second_snapshot": {"const": true}}}}}
+        }
+      ]
     }
-  }
+  },
+  "if": {"properties": {"source": {"const": "competitor"}}},
+  "then": {"properties": {"observations": {"items": {"$ref": "#/$defs/competitorRecord"}}}},
+  "else": {"properties": {"observations": {"items": {"$ref": "#/$defs/observation"}}}}
 }
