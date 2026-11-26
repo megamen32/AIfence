@@ -165,7 +165,11 @@ def main() -> int:
     args = parser.parse_args()
     ensure_isolated(args.input_root, args.answers)
     rows = []
-    for answer_path in sorted(args.answers.rglob("*.json")):
+    # In the generator layout the answer directory sits beside input/ and
+    # truth.json. Never recurse into those agent-visible or QA files.
+    answer_paths = sorted(p for p in args.answers.rglob("*.json")
+                          if p.parent.name == "answers" or p.parent == args.answers)
+    for answer_path in answer_paths:
         # Generator layout is set-<hash>/answers/S#.json with one card at
         # set-<hash>/card.json. Keep the flat layout compatible as well.
         set_root = answer_path.parent.parent if answer_path.parent.name == "answers" else answer_path.parent
@@ -173,9 +177,14 @@ def main() -> int:
         card_path = next((candidate for candidate in candidates if candidate.exists()), candidates[0])
         scenario_name = f"{set_root.name}/{answer_path.stem}" if answer_path.parent.name == "answers" else answer_path.stem
         if not card_path.exists():
-            rows.append({"scenario": scenario_name, "status": "missed", "found": False, "missed": True,
-                         "false_alarm": False, "cause_type_correct": False, "expected_family": "", "expected_week": "",
-                         "expected_cause_type": "", "answer_file": str(answer_path), "card_file": str(card_path)})
+            answer = answer_fields(read_any(answer_path), scenario_name)
+            clean = answer["cause_type"] == "clean"
+            rows.append({"scenario": scenario_name,
+                         "status": "correct_silence" if clean else "missed",
+                         "found": False, "missed": not clean, "false_alarm": False,
+                         "cause_type_correct": clean, "expected_family": answer["family"],
+                         "expected_week": answer["week"], "expected_cause_type": answer["cause_type"],
+                         "answer_file": str(answer_path), "card_file": str(card_path)})
         else:
             row = score_one(answer_path, card_path)
             row["scenario"] = scenario_name

@@ -33,6 +33,22 @@ class BlindScoreTests(unittest.TestCase):
             a.write_text(json.dumps({"scenario":"S0","cause_type":"clean"})); c.write_text(json.dumps({"family":"KES","week":"2026-10-05","cause_type":"clean"}))
             self.assertEqual(scorer.score_one(a,c)["status"],"false_alarm")
 
+    def test_missing_card_clean_is_silence(self):
+        scorer = load("scorer", "score_agent.py")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); answers = root / "answers"; cards = root / "cards"
+            answers.mkdir(); cards.mkdir()
+            (answers / "S0.json").write_text(json.dumps({"scenario": "S0", "cause_type": "none"}))
+            out = root / "score.json"
+            import subprocess, sys
+            proc = subprocess.run([sys.executable, str(Path(__file__).with_name("score_agent.py")),
+                                   "--answers", str(answers), "--cards", str(cards), "--out", str(out)],
+                                  capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0)
+            payload = json.loads(out.read_text())
+            self.assertEqual(payload["rows"][0]["status"], "correct_silence")
+            self.assertEqual(payload["summary"]["correct"], 1)
+
     def test_nested_generator_layout(self):
         scorer = load("scorer", "score_agent.py")
         with tempfile.TemporaryDirectory() as td:
