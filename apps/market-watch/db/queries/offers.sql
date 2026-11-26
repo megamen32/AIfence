@@ -32,18 +32,19 @@ SELECT l.source,count(*) AS offers,max(l.observed_at)::timestamptz AS observed_a
 FROM latest_offers l GROUP BY l.source ORDER BY l.source;
 
 -- name: OfferChanges :many
-WITH matched AS (
-  SELECT o.* FROM observations o
-  WHERE o.observed_at>=sqlc.arg(start_at)::timestamptz AND o.observed_at<sqlc.arg(end_at)::timestamptz
-    AND (sqlc.arg(query)::text='' OR upper(o.sku)=upper(sqlc.arg(query)) OR o.url=sqlc.arg(query) OR strpos(lower(o.offer->>'name'),lower(sqlc.arg(query)))>0)
-), ordered AS (
-  SELECT m.offer AS current_offer,lag(m.offer) OVER (PARTITION BY m.source,m.sku,m.url,m.basis,m.quantity,m.max_quantity ORDER BY m.observed_at) AS previous_offer
-  FROM matched m
-)
-SELECT prev.previous_offer::jsonb AS old_offer,prev.current_offer::jsonb AS new_offer
-FROM ordered prev WHERE prev.previous_offer IS NOT NULL
-  AND (prev.previous_offer->>'price_minor')::bigint<>(prev.current_offer->>'price_minor')::bigint
-ORDER BY (prev.current_offer->>'captured_at')::timestamptz DESC,prev.current_offer->>'sku',prev.current_offer->>'source',prev.current_offer->>'url'
+SELECT prior.offer::jsonb AS old_offer, cur.offer::jsonb AS new_offer
+FROM observations cur
+JOIN LATERAL (
+  SELECT p.offer FROM observations p
+  WHERE (p.source,p.sku,p.url,p.basis,p.quantity,p.max_quantity)=
+        (cur.source,cur.sku,cur.url,cur.basis,cur.quantity,cur.max_quantity)
+    AND p.observed_at < cur.observed_at
+  ORDER BY p.observed_at DESC LIMIT 1
+) prior ON true
+WHERE cur.observed_at>=sqlc.arg(start_at)::timestamptz AND cur.observed_at<sqlc.arg(end_at)::timestamptz
+  AND (sqlc.arg(query)::text='' OR upper(cur.sku)=upper(sqlc.arg(query)) OR cur.url=sqlc.arg(query) OR strpos(lower(cur.offer->>'name'),lower(sqlc.arg(query)))>0)
+  AND (prior.offer->>'price_minor')::bigint<>(cur.offer->>'price_minor')::bigint
+ORDER BY cur.observed_at DESC,cur.sku,cur.source,cur.url,cur.basis,cur.quantity,cur.max_quantity
 LIMIT 101;
 
 -- name: CatalogExport :many
