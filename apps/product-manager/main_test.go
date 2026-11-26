@@ -47,8 +47,11 @@ func TestAgentComposition(t *testing.T) {
 		}
 	}
 	if !slices.ContainsFunc(manifest.Instructions, func(instruction wire.InstructionDef) bool {
-		return strings.Contains(instruction.Text, "run_js с полями code и description") &&
-			strings.Contains(instruction.Text, "return await apps.metrika_analyst.tools.discover_watchdog_series({});") &&
+		return strings.HasPrefix(instruction.Text, "Начинай разрешённые чтения сразу") &&
+			strings.Contains(instruction.Text, "run_js с полями code и description") &&
+			strings.Contains(instruction.Text, `operation:"list_offers"`) &&
+			strings.Contains(instruction.Text, "apps.market_watch.tools.list_offers") &&
+			strings.Contains(instruction.Text, "compare_offers({sku})") &&
 			strings.Contains(instruction.Text, "scan_watchdog_series({})") &&
 			strings.Contains(instruction.Text, "«Создать эту задачу»") &&
 			strings.Contains(instruction.Text, "Не проси ответить «да»") &&
