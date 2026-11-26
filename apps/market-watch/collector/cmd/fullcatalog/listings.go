@@ -16,9 +16,15 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+type categoryAudit struct {
+	InventoryAt string            `json:"inventory_at"`
+	Complete    bool              `json:"complete"`
+	Errors      map[string]string `json:"errors,omitempty"`
+}
 type listingVisit struct {
-	Next string `json:"next,omitempty"`
-	At   string `json:"at"`
+	Next  string `json:"next,omitempty"`
+	At    string `json:"at"`
+	Issue string `json:"issue,omitempty"`
 }
 
 func softwareSections(s catalog.Source, body []byte) ([]string, error) {
@@ -58,6 +64,11 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 	} else if !errors.Is(e, os.ErrNotExist) {
 		return e
 	}
+	audit := categoryAudit{InventoryAt: inv.DiscoveredAt, Errors: map[string]string{}}
+	auditFile := filepath.Join(dir, "category-audit.json")
+	if err := saveJSON(auditFile, audit); err != nil {
+		return err
+	}
 	root := "https://" + s.Host + "/soft/"
 	body, e := fetch(ctx, s, root)
 	if e != nil {
@@ -79,6 +90,9 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 		for current := section; current != "" && !seen[current]; {
 			seen[current] = true
 			if visit, ok := visits[current]; ok && visit.At >= inv.DiscoveredAt {
+				if visit.Issue != "" {
+					audit.Errors[current] = visit.Issue
+				}
 				current = visit.Next
 				continue
 			}
@@ -91,7 +105,7 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 				// The family sitemap still provides the canonical detail URLs.
 				var status *catalog.HTTPStatus
 				if errors.As(e, &status) && status.Code == 403 && status.URL == current {
-					visits[current] = listingVisit{At: at.Format(time.RFC3339)}
+					visits[current] = listingVisit{At: at.Format(time.RFC3339), Issue: e.Error()}
 					if err := saveJSON(path, visits); err != nil {
 						return err
 					}
@@ -99,6 +113,7 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 				if errors.As(e, &status) && (status.Code == 403 || status.Code == 429 || status.Code == 503) {
 					return e
 				}
+				audit.Errors[current] = e.Error()
 				break
 			}
 			rows, next, e := catalog.VendorListing(s, current, bytes.NewReader(body), at)
@@ -146,5 +161,6 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 			current = next
 		}
 	}
-	return nil
+	audit.Complete = len(audit.Errors) == 0
+	return saveJSON(auditFile, audit)
 }

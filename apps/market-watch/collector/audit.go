@@ -52,10 +52,14 @@ func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time)
 	}
 	if s.ID == "softmagazin" {
 		switch {
-		case doc.Find(".hard-tovar-style, .info-category .base-links-tovar-item a[href^='/hard/']").Length() > 0:
+		case doc.Find(".hard-tovar-style").Length() > 0:
 			p.Category = "hardware"
-		case doc.Find(".soft-tovar-style, .info-category .base-links-tovar-item a[href^='/soft/']").Length() > 0:
+		case doc.Find(".soft-tovar-style").Length() > 0:
 			p.Category = "software"
+		case doc.Find(".info-category .base-links-tovar-item a[href^='/soft/']").Length() > 0:
+			p.Category = "software"
+		case doc.Find(".info-category .base-links-tovar-item a[href^='/hard/']").Length() > 0:
+			p.Category = "hardware"
 		default:
 			p.Category = "unknown"
 		}

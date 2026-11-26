@@ -32,6 +32,7 @@ type inventory struct {
 }
 type progress struct {
 	Source                 string         `json:"source"`
+	CategoryDiscovery      *bool          `json:"category_discovery_complete,omitempty"`
 	State                  string         `json:"state"`
 	UpdatedAt              string         `json:"updated_at"`
 	InventoryAt            string         `json:"inventory_at"`
@@ -232,7 +233,7 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 			} else if p.Category == "software" {
 				status.ListedPages++
 			}
-			if p.State != "error" {
+			if p.State != "error" && (inv.Source != "softmagazin" || p.Category == "software") {
 				for _, v := range p.Variants {
 					observed[v.URL] = true
 					status.Variants++
@@ -271,9 +272,22 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 	}
 	status.PendingPages = status.CandidatePages - status.ProcessedPages
 	status.PricedOffers = len(offers)
+	if inv.Source == "softmagazin" {
+		value := false
+		var audit categoryAudit
+		if b, err := os.ReadFile(filepath.Join(dir, "category-audit.json")); err == nil {
+			if err = json.Unmarshal(b, &audit); err != nil {
+				return status, err
+			}
+			value = audit.InventoryAt == inv.DiscoveredAt && audit.Complete
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return status, err
+		}
+		status.CategoryDiscovery = &value
+	}
 	if status.PendingPages == 0 && status.PendingVariantURLs == 0 {
 		status.State = "complete"
-		if status.States["error"] > 0 || status.States["unclassified"] > 0 || status.States["robots_excluded"] > 0 || status.States["access_denied"] > 0 || status.ExcludedVariantURLs > 0 || status.UnresolvedVariantURLs > 0 {
+		if status.CategoryDiscovery != nil && !*status.CategoryDiscovery || status.States["error"] > 0 || status.States["unclassified"] > 0 || status.States["robots_excluded"] > 0 || status.States["access_denied"] > 0 || status.ExcludedVariantURLs > 0 || status.UnresolvedVariantURLs > 0 {
 			status.State = "needs_review"
 		}
 	}
@@ -534,6 +548,31 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	}
 	if e = process(ctx, s, pending, fetch, consume); e != nil {
 		return e
+	}
+	if s.ID == "softmagazin" {
+		var audit categoryAudit
+		b, err := os.ReadFile(filepath.Join(dir, "category-audit.json"))
+		if err != nil {
+			return err
+		}
+		if err = json.Unmarshal(b, &audit); err != nil {
+			return err
+		}
+		if !audit.Complete {
+			if e = collectListings(ctx, s, dir, &inv, pages, fetch, consume); e != nil {
+				return e
+			}
+			var extra []string
+			for _, u := range inv.URLs {
+				p, ok := pages[u]
+				if !ok || p.At < inv.DiscoveredAt || p.EvidenceURL != "" {
+					extra = append(extra, u)
+				}
+			}
+			if e = process(ctx, s, extra, fetch, consume); e != nil {
+				return e
+			}
+		}
 	}
 	// A variant absent from the family DOM may still have a live standalone
 	// page. Read only those missing variants and keep HTTP 404/410 as evidence.
