@@ -10,11 +10,13 @@ An AI product manager for an online store: market observation + web analytics + 
 
 This starts the authorized private Airlock upstream at the exact revision in platform/airlock.lock.json, compiled locally, with isolated local state. On Mac with Colima it selects/starts profile `aifence`, not the existing default profile. The upstream builder has amd64-specific toolchain assets; builds use AMD64 emulation on Apple Silicon. On Linux use an already running Docker/Compose. Open http://localhost:42080 . First-time activation and model setup are interactive, as required by upstream. To see the local activation code, execute `./scripts/activation-code` in your own terminal; never commit the code.
 
-The three apps are implemented independently using SDK v0.11.0. After activation and normal CLI login, run `./scripts/deploy-apps --dry-run` to stage sources from the selected commit, then use `./scripts/deploy-apps`. Verify the deployed apps through the normal chat. [Stand and deployment instructions](docs/submission/deployment.md).
+After activation and normal CLI login, run `./scripts/deploy-apps --dry-run` to stage sources from the selected commit, then use `./scripts/deploy-apps` for local development. Product acceptance runs on the server stand through the normal chat. [Stand and deployment instructions](docs/submission/deployment.md).
 
 For another authorized machine, set AIRLOCK_UPSTREAM_URL before the first run. The checkout is fetched at the exact lock revision; local enterprise images are built from that source. The private source and all activation/model credentials remain ignored.
 
 ## Architecture
+
+Product Manager is the only application orchestrating investigations. Market Watch and Metrika Analyst supply evidence as source modules. The saved [`workflows/collect-evidence.js`](workflows/collect-evidence.js) runs in the hosted user context and writes a versioned snapshot to the shared Airlock file catalog. The conversation reads that snapshot and passes its JSON to `Product Manager.import_evidence`. Product Manager can also work with authorized imported snapshots.
 
 - `platform/airlock.lock.json`: exact upstream pin; authorized private checkout is in ignored .runtime/airlock. Do not modify platform code.
 - `apps/market-watch/`: standalone market research/monitoring.
@@ -23,7 +25,7 @@ For another authorized machine, set AIRLOCK_UPSTREAM_URL before the first run. T
 - `data-tools/`: offline import/normalization only; no service.
 - `contracts/`: versioned JSON contracts; no shared runtime service.
 - `fixtures/synthetic/`: public synthetic data (not supplied dataset).
-- `tests/`: cross-app contract and end-to-end QA.
+- `tests/`: evidence contracts and end-to-end QA.
 - `docs/tracks/`: parallel assignments and acceptance gates.
 
 Private inputs: `материалы/`, `materials/`, `data/`, `private/`; all ignored by Git. Keep them local and read-only. Import only within authorized closed workspace and configured non-training model provider. Never send raw customer data or credentials to third parties or publish them. The repository remains private until the owner decides how to share the contest version.

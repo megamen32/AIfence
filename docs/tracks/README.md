@@ -25,8 +25,9 @@ Every agent may read the whole repository and edits only its assigned paths:
 |---|---|---|
 | Market Watch | apps/market-watch/ | market-watch.md |
 | Metrika Analyst | apps/metrika-analyst/ | metrika-analyst.md |
-| Product Manager | apps/product-manager/ | product-manager.md |
-| Research & Data | data-tools/, fixtures/synthetic/ | research-data.md |
+| Product Manager | apps/product-manager/ except competitors/ | product-manager.md |
+| F · Конкурентные источники | Олег · `apps/product-manager/competitors/` и `fixtures/synthetic/competitors/` | [ТЗ](competitors.md) |
+| Research & Data | data-tools/, fixtures/synthetic/ except competitors/ | research-data.md |
 | Integration & QA | tests/, docs/qa/ | integration-qa.md |
 
 The integration owner coordinates changes to `contracts/`, root docs,
@@ -34,6 +35,10 @@ The integration owner coordinates changes to `contracts/`, root docs,
 path-scoped commits.
 Private inputs under материалы/ are shared read-only; normalized local outputs
 belong in ignored data/. No private materials in Git.
+
+Трек F использует существующий `apps/path-check/` и парсеры Market Watch.
+Изменения сторожа, карточки KES, `apps/path-check/` и `apps/market-watch/`
+проводятся через интегратора.
 
 The existing collector implementation belongs to apps/market-watch/collector/.
 Coordinate its ownership with any already-running catalog extraction session.

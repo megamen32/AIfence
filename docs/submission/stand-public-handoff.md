@@ -39,6 +39,5 @@ configuration by its owner; unrelated WIP was not edited. Confirm renewal
 and Nginx certificate reload in the normal infrastructure workflow.
 Do not re-run the local-only stand setup over this public configuration.
 
-No full authenticated Product Manager end-to-end run was performed after
-the URL switch. The 64K Gemma profile remains a separate acceptance item.
-No real customer data or credentials are included here.
+The cutover verification covered HTTPS, authorization boundaries and health.
+Authenticated Product Manager and Gemma 64K acceptance are tracked separately.
