@@ -26,3 +26,24 @@ test('lost acknowledgment resolves to persisted snapshot',async()=>{const s=setu
 test('write denial is not success',async()=>{const s=setup({denyWrite:true});await assert.rejects(()=>invoke(s.a,s.platform,s.apps),/not published/);});
 test('read-back mismatch is not success',async()=>{const s=setup({corrupt:true});await assert.rejects(()=>invoke(s.a,s.platform,s.apps),/read-back mismatch/);});
 test('wrong product query rejected before tool calls',async()=>{const s=setup();await assert.rejects(()=>invoke({...s.a,market_query:{product_key:'other'}},s.platform,s.apps),/identity mismatch/);assert.equal(s.calls(),0);});
+
+test('private evidence retains its policy through catalog read-back and PM import', async () => {
+  const s = setup();
+  const privateFile = s.seed('/home/Documents/sales.json', JSON.stringify({
+    ...batch('sales'), source_policy:'local_project_only'
+  }));
+  const receipt = await invoke({...s.a, evidence_file_ids:[privateFile.id]}, s.platform, s.apps);
+  const document = JSON.parse(s.store.get(receipt.snapshot.id).text);
+  assert.equal(document.source_policy, 'local_project_only');
+  assert.equal(document.sources.find(source => source.source === 'sales').batch.observations.length, 1);
+});
+
+test('request policy is part of immutable run identity', async () => {
+  const s = setup();
+  const request = {...s.a, source_policy:'local_project_only'};
+  const first = await invoke(request, s.platform, s.apps);
+  assert.equal(JSON.parse(s.store.get(first.snapshot.id).text).source_policy, 'local_project_only');
+  assert.equal((await invoke(request, s.platform, s.apps)).reused, true);
+  await assert.rejects(() => invoke(s.a, s.platform, s.apps), /different request/);
+  await assert.rejects(() => invoke({...s.a, source_policy:'public'}, s.platform, s.apps), /Invalid evidence source policy/);
+});
