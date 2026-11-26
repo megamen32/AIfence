@@ -1,0 +1,2 @@
+[build]
+runtime_files = ["pathcheck/check_purchase_path.py"]

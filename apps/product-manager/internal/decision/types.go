@@ -21,23 +21,28 @@ type BacklogRef struct {
 	Tag string `json:"tag"`
 }
 type Hypothesis struct {
-	SchemaVersion    string         `json:"schema_version" jsonschema:"description=Set this field to the exact literal aifence.v1"`
-	ID               string         `json:"id"`
-	Title            string         `json:"title"`
-	ProductKey       string         `json:"product_key"`
-	SignalIDs        []string       `json:"signal_ids"`
-	SupportIDs       []string       `json:"support_ids"`
-	CounterIDs       []string       `json:"counter_ids"`
-	Unknowns         []string       `json:"unknowns"`
-	ProposedAction   string         `json:"proposed_action"`
-	SuccessCriterion Criterion      `json:"success_criterion"`
-	EconomicEffect   EconomicEffect `json:"economic_effect"`
-	Status           string         `json:"status"`
-	BacklogRef       *BacklogRef    `json:"backlog_ref,omitempty"`
-	ReleaseID        string         `json:"release_id,omitempty"`
-	DecisionReason   string         `json:"decision_reason,omitempty"`
+	SchemaVersion         string         `json:"schema_version" jsonschema:"description=Set this field to the exact literal aifence.v1"`
+	ID                    string         `json:"id"`
+	Title                 string         `json:"title"`
+	ProductKey            string         `json:"product_key"`
+	SignalIDs             []string       `json:"signal_ids"`
+	SupportIDs            []string       `json:"support_ids"`
+	CounterIDs            []string       `json:"counter_ids"`
+	EvidenceLevel         string         `json:"evidence_level,omitempty" jsonschema:"enum=signal_only,enum=correlation,enum=path_verified"`
+	Forecast              string         `json:"forecast,omitempty"`
+	CompetingExplanations []string       `json:"competing_explanations,omitempty"`
+	BrowserEvidenceIDs    []string       `json:"browser_evidence_ids,omitempty"`
+	Unknowns              []string       `json:"unknowns"`
+	ProposedAction        string         `json:"proposed_action"`
+	SuccessCriterion      Criterion      `json:"success_criterion"`
+	EconomicEffect        EconomicEffect `json:"economic_effect"`
+	Status                string         `json:"status"`
+	BacklogRef            *BacklogRef    `json:"backlog_ref,omitempty"`
+	ReleaseID             string         `json:"release_id,omitempty"`
+	DecisionReason        string         `json:"decision_reason,omitempty"`
 }
 type SaveInput struct {
+	ContextIDs         []string   `json:"context_ids,omitempty"`
 	Hypothesis         Hypothesis `json:"hypothesis"`
 	ExpectedVersion    int64      `json:"expected_version"`
 	EvidenceSnapshotID string     `json:"evidence_snapshot_id"`
@@ -82,22 +87,25 @@ type Measurement struct {
 	ControlCurrent  *PeriodValue `json:"control_current,omitempty"`
 }
 type EvaluateInput struct {
-	HypothesisID string       `json:"hypothesis_id"`
-	ReleaseID    string       `json:"release_id,omitempty"`
-	ReleasedOn   string       `json:"released_on,omitempty"`
-	Measurement  *Measurement `json:"measurement,omitempty"`
+	HypothesisID       string       `json:"hypothesis_id"`
+	ReleaseID          string       `json:"release_id,omitempty"`
+	ReleasedOn         string       `json:"released_on,omitempty"`
+	ReleaseEvidenceRef string       `json:"release_evidence_ref,omitempty"`
+	Measurement        *Measurement `json:"measurement,omitempty"`
 }
 type Assessment struct {
-	Status       string       `json:"status"`
-	Reason       string       `json:"reason"`
-	ReleaseID    string       `json:"release_id,omitempty"`
-	ReleasedOn   string       `json:"released_on,omitempty"`
-	Value        *float64     `json:"value,omitempty"`
-	Unit         string       `json:"unit,omitempty"`
-	EvidenceRefs []string     `json:"evidence_refs"`
-	Measurement  *Measurement `json:"measurement,omitempty"`
+	Status             string       `json:"status"`
+	Reason             string       `json:"reason"`
+	ReleaseID          string       `json:"release_id,omitempty"`
+	ReleasedOn         string       `json:"released_on,omitempty"`
+	ReleaseEvidenceRef string       `json:"release_evidence_ref,omitempty"`
+	Value              *float64     `json:"value,omitempty"`
+	Unit               string       `json:"unit,omitempty"`
+	EvidenceRefs       []string     `json:"evidence_refs"`
+	Measurement        *Measurement `json:"measurement,omitempty"`
 }
 type Record struct {
+	ContextIDs         []string    `json:"context_ids,omitempty"`
 	Hypothesis         Hypothesis  `json:"hypothesis"`
 	Version            int64       `json:"version"`
 	EvidenceSnapshotID string      `json:"evidence_snapshot_id"`

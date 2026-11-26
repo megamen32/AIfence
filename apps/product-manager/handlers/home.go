@@ -21,9 +21,29 @@ type Handler struct{ svc product.Service }
 
 func New(s product.Service) *Handler { return &Handler{svc: s} }
 
-var sourceTitles = map[string]string{"sales": "Продажи", "metrika": "Метрика", "research": "Исследования", "market": "Конкуренты", "release": "Релизы", "backlog": "Бэклог", "economics": "Экономика"}
+var browserVerdicts = map[string]string{
+	"path_broken":              "Путь до корзины нарушен",
+	"metrika_add_not_observed": "Запрос события добавления не наблюдался",
+	"ok":                       "Путь пройден, запрос события наблюдался",
+}
+
+var evidenceLevels = map[string]string{"signal_only": "Сигнал", "correlation": "Наблюдаемая связь", "path_verified": "Путь проверен"}
+var sourceTitles = map[string]string{"sales": "Продажи", "metrika": "Метрика", "research": "Исследования", "market": "Конкуренты", "release": "Релизы", "backlog": "Бэклог", "economics": "Экономика", "browser": "Браузер"}
 var statusTitles = map[string]string{"proposed": "На рассмотрении", "approved": "Подтверждена", "in_backlog": "В бэклоге", "awaiting_release": "Ожидает релиза", "awaiting_measurement": "Ожидает замера", "supported": "Критерий достигнут", "rejected": "Критерий не достигнут", "insufficient_data": "Недостаточно данных"}
-var metricTitles = map[string]string{"family_orders_idx.relative_change_pct": "Изменение индекса самостоятельных заказов", "family_orders_idx": "Индекс самостоятельных заказов", "cfg_reach_rate.observed_rows": "Доля посещений конфигуратора", "cfg_add_to_cart_rate": "Добавления в корзину из конфигуратора", "release_log": "Изменение в релизе", "backlog_item": "Задача", "interview_excerpt": "Фрагмент интервью", "historical_competitor_price": "Сравнение цен", "store_context": "Вывод исследования магазинов"}
+
+const watchdogMetric = product.WatchdogMetric
+
+var watchdogReasons = map[string]string{
+	"incomplete_week":                 "Неполная неделя",
+	"collection_break":                "Разрыв учёта",
+	"missing_or_duplicate_week":       "Пропущенная или повторная неделя",
+	"unstable_control":                "Контроль нестабилен",
+	"incompatible_control":            "Контроль несопоставим",
+	"threshold_not_met":               "Порог не достигнут",
+	"target_drop_with_stable_control": "Падение при стабильном контроле",
+}
+
+var metricTitles = map[string]string{watchdogMetric: "Сигнал сторожа", "purchase_path": "Путь до корзины", "family_orders_idx.relative_change_pct": "Изменение индекса самостоятельных заказов", "family_orders_idx": "Индекс самостоятельных заказов", "cfg_reach_rate.observed_rows": "Доля посещений конфигуратора", "cfg_add_to_cart_rate": "Добавления в корзину из конфигуратора", "release_log": "Изменение в релизе", "backlog_item": "Задача", "interview_excerpt": "Фрагмент интервью", "historical_competitor_price": "Сравнение цен", "store_context": "Вывод исследования магазинов"}
 
 func label(m map[string]string, key string) string {
 	if v, ok := m[key]; ok {
@@ -75,10 +95,18 @@ func rowView(id string, r evidence.Row) views.EvidenceRow {
 	if u, err := url.Parse(r.Ref.URL); err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
 		v.SourceURL = u.String()
 	}
+	if r.Metric == watchdogMetric {
+		watchdogRow(&v, r)
+		return v
+	}
 	if r.Status == "missing" || r.Value == "null" {
 		v.Value = "Нет наблюдения"
 		v.Missing = true
+		v.Summary = r.Segment
 		return v
+	}
+	if r.Source == "browser" && r.Kind == "path_check" {
+		v.Value, v.Summary = label(browserVerdicts, r.Value), r.Segment
 	}
 	if f, err := strconv.ParseFloat(r.Value, 64); err == nil {
 		switch r.Unit {
@@ -137,6 +165,45 @@ func rowView(id string, r evidence.Row) views.EvidenceRow {
 
 	return v
 }
+func watchdogRow(v *views.EvidenceRow, r evidence.Row) {
+	var d struct {
+		Reason     string   `json:"reason"`
+		Control    string   `json:"control_product_key"`
+		Change     *float64 `json:"relative_change_pct"`
+		Compared   *float64 `json:"control_change_pct"`
+		Adjusted   *float64 `json:"control_adjusted_change_pct"`
+		Origin     string   `json:"origin"`
+		SourceRefs []struct {
+			Ref evidence.SourceRef `json:"source_ref"`
+		} `json:"source_refs"`
+	}
+	_ = json.Unmarshal([]byte(r.Details), &d)
+	v.Value = "Недостаточно сопоставимых данных"
+	if r.Status == "observed" {
+		switch r.Value {
+		case "true":
+			v.Value = "Тревога"
+		case "false":
+			v.Value = "Без тревоги"
+		}
+	}
+	v.Summary = label(watchdogReasons, d.Reason)
+	if d.Change != nil && d.Compared != nil {
+		v.Summary += fmt.Sprintf(" · %s %% · контроль %s %s %%", num(*d.Change), d.Control, num(*d.Compared))
+	}
+	if d.Adjusted != nil {
+		v.Summary += fmt.Sprintf(" · с поправкой на контроль %s %%", num(*d.Adjusted))
+	}
+	if d.Origin != "" {
+		v.Summary += " · " + d.Origin
+	}
+	for _, ref := range d.SourceRefs {
+		if ref.Ref.SourceID != "" && ref.Ref.Locator != "" {
+			v.Related = append(v.Related, ref.Ref.SourceID+" · "+ref.Ref.Locator)
+		}
+	}
+}
+
 func signalCards(data evidence.Result) []views.Signal {
 	var out []views.Signal
 	for _, r := range data.Rows {
@@ -156,6 +223,9 @@ func rule(c decision.Criterion) string {
 func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decision, error) {
 	p, c := r.Hypothesis, r.Hypothesis.SuccessCriterion
 	v := &views.Decision{ID: p.ID, Title: p.Title, Product: p.ProductKey, Status: label(statusTitles, p.Status), Action: p.ProposedAction, Unknowns: p.Unknowns, Metric: label(metricTitles, c.MetricKey), Baseline: span(c.BaselineFrom, c.BaselineTo), Rule: rule(c), Window: fmt.Sprintf("%d дн.", c.ObservationDays), Control: c.ControlProductKey, Version: strconv.FormatInt(r.Version, 10), SnapshotURL: href("snapshot", r.EvidenceSnapshotID)}
+	v.EvidenceLevel = label(evidenceLevels, p.EvidenceLevel)
+	v.Forecast = p.Forecast
+	v.CompetingExplanations = p.CompetingExplanations
 	for _, op := range []string{">=", "<="} {
 		if formula, n, ok := strings.Cut(c.Rule, op); ok {
 			v.Operator = op
@@ -168,14 +238,21 @@ func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decisio
 		}
 	}
 	if r.Task != nil {
-		v.TaskID = r.Task.ID
+		v.TaskID, v.TaskTag, v.TaskURL = r.Task.ID, r.Task.Tag, r.Task.URL
 	}
 	if r.Assessment != nil {
 		v.Assessment = r.Assessment.Reason
+		for _, ref := range append([]string{r.Assessment.ReleaseEvidenceRef}, r.Assessment.EvidenceRefs...) {
+			if snapshot, id, ok := strings.Cut(ref, "/"); ok {
+				v.MeasuredEvidence = append(v.MeasuredEvidence, views.Link{Label: id, URL: href("snapshot", snapshot, "obs", id)})
+			}
+		}
 	}
 	all := append([]string{}, p.SignalIDs...)
 	all = append(all, p.SupportIDs...)
 	all = append(all, p.CounterIDs...)
+	all = append(all, p.BrowserEvidenceIDs...)
+	all = append(all, r.ContextIDs...)
 	data, err := h.svc.Evidence.Read(ctx, evidence.Query{SnapshotID: r.EvidenceSnapshotID, IDs: all, Limit: 100})
 	if err != nil {
 		return nil, err
@@ -187,7 +264,7 @@ func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decisio
 	for _, g := range []struct {
 		name string
 		ids  []string
-	}{{"Сигнал", p.SignalIDs}, {"Свидетельства в пользу гипотезы", p.SupportIDs}, {"Альтернативные объяснения", p.CounterIDs}} {
+	}{{"Сигнал", p.SignalIDs}, {"Свидетельства в пользу гипотезы", p.SupportIDs}, {"Свидетельства против гипотезы", p.CounterIDs}, {"Проверка пути в браузере", p.BrowserEvidenceIDs}, {"Контекст сигнала · связь требует проверки", r.ContextIDs}} {
 		group := views.EvidenceGroup{Title: g.name}
 		for _, id := range g.ids {
 			if row, ok := lookup[id]; ok {
@@ -248,7 +325,8 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	}
 	v.Signals = signalCards(sales)
 	for _, r := range sales.Rows {
-		if r.Metric == "family_orders_idx.relative_change_pct" && r.Status == "observed" {
+		if (r.Metric == "family_orders_idx.relative_change_pct" && r.Status == "observed") ||
+			(r.Metric == watchdogMetric && r.Status == "observed" && r.Value == "true") {
 			v.CanInvestigate = true
 			break
 		}
@@ -265,11 +343,18 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	}
 	v.ShowSources = true
 	source, obs := q.Get("source"), q.Get("obs")
+	metric := ""
+	if obs == "" && q.Get("metric") == watchdogMetric {
+		metric = watchdogMetric
+		v.Signals = nil
+		v.CanInvestigate = false
+		v.IsReplay = true
+	}
 	offset, _ := strconv.Atoi(q.Get("offset"))
 	if offset < 0 || offset > 1000000 {
 		offset = 0
 	}
-	req := evidence.Query{SnapshotID: snap, Source: source, Offset: offset, Limit: 20}
+	req := evidence.Query{SnapshotID: snap, Source: source, MetricKey: metric, Offset: offset, Limit: 20}
 	if obs != "" {
 		v.Signals = nil
 		v.CanInvestigate = false
@@ -283,12 +368,29 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	v.AsOf = date(data.AsOf)
 	v.Warnings = data.Warnings
 	// Navigation preserves the selected immutable snapshot.
-	for _, k := range []string{"", "sales", "metrika", "release", "backlog", "research", "market", "economics"} {
+	for _, k := range []string{"", "sales", "metrika", "release", "backlog", "research", "market", "economics", "browser"} {
 		name := label(sourceTitles, k)
 		if k == "" {
 			name = "Все"
 		}
-		v.Filters = append(v.Filters, views.Link{Label: name, URL: href("snapshot", snap, "source", k), Active: k == source && obs == ""})
+		v.Filters = append(v.Filters, views.Link{Label: name, URL: href("snapshot", snap, "source", k), Active: k == source && obs == "" && !v.IsReplay})
+	}
+	if obs == "" {
+		history, err := h.svc.Evidence.Read(ctx, evidence.Query{SnapshotID: snap, MetricKey: watchdogMetric, Limit: 1})
+		if err != nil {
+			return v, err
+		}
+		if history.Total > 0 {
+			if !v.IsReplay {
+				v.CanInvestigate = false
+				alerts, err := h.svc.Evidence.Read(ctx, evidence.Query{SnapshotID: snap, MetricKey: watchdogMetric, Status: "observed", Value: "true", Limit: 1})
+				if err != nil {
+					return v, err
+				}
+				v.CanInvestigate = alerts.Total > 0
+			}
+			v.Filters = append(v.Filters, views.Link{Label: "Прогон по истории", URL: href("snapshot", snap, "metric", watchdogMetric), Active: v.IsReplay})
+		}
 	}
 	for _, row := range data.Rows {
 		v.Rows = append(v.Rows, rowView(snap, row))
@@ -297,10 +399,10 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		v.RowsLabel = fmt.Sprintf("%d–%d из %d", req.Offset+1, req.Offset+len(data.Rows), data.Total)
 	}
 	if obs == "" && offset > 0 {
-		v.Prev = href("snapshot", snap, "source", source, "offset", strconv.Itoa(max(0, offset-req.Limit)))
+		v.Prev = href("snapshot", snap, "source", source, "metric", metric, "offset", strconv.Itoa(max(0, offset-req.Limit)))
 	}
 	if obs == "" && offset+len(data.Rows) < data.Total {
-		v.Next = href("snapshot", snap, "source", source, "offset", strconv.Itoa(offset+req.Limit))
+		v.Next = href("snapshot", snap, "source", source, "metric", metric, "offset", strconv.Itoa(offset+req.Limit))
 	}
 	return v, nil
 }

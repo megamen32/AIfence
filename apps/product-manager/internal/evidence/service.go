@@ -45,6 +45,9 @@ type Index struct {
 type Query struct {
 	SnapshotID string   `json:"snapshot_id"`
 	Source     string   `json:"source,omitempty"`
+	MetricKey  string   `json:"metric_key,omitempty"`
+	Status     string   `json:"status,omitempty"`
+	Value      string   `json:"value,omitempty"`
 	Offset     int      `json:"offset,omitempty"`
 	Limit      int      `json:"limit,omitempty"`
 	IDs        []string `json:"ids,omitempty"`
@@ -86,6 +89,7 @@ type Document struct {
 	Warnings     []string `json:"warnings,omitempty"`
 }
 type Row struct {
+	Kind       string    `json:"kind"`
 	Segment    string    `json:"segment,omitempty"`
 	Source     string    `json:"source"`
 	ID         string    `json:"id"`
@@ -174,7 +178,7 @@ func parse(raw []byte) (Document, int, error) {
 	}
 	ids := map[string]bool{}
 	for _, b := range d.Batches {
-		if b.Schema != "aifence.v1" || !in(b.Source, "sales", "market", "metrika", "research", "backlog", "release", "economics") || !in(b.Status, "ok", "partial", "unavailable") || b.AsOf == "" {
+		if b.Schema != "aifence.v1" || !in(b.Source, "sales", "market", "metrika", "research", "backlog", "release", "economics", "browser") || !in(b.Status, "ok", "partial", "unavailable") || b.AsOf == "" {
 			return d, 0, errors.New("некорректный набор наблюдений")
 		}
 		for _, rawObs := range b.Observations {
@@ -184,6 +188,10 @@ func parse(raw []byte) (Document, int, error) {
 			}
 			if o.ID == "" || ids[o.ID] || o.ProductKey == "" || o.MetricKey == "" || o.Ref.SourceID == "" || o.Ref.Locator == "" || !validDate(o.Period.From) || !validDate(o.Period.To) || o.Period.From > o.Period.To || !in(o.Status, "observed", "estimated", "missing", "incomparable") || len(o.Value) == 0 || (o.Status == "missing" && string(o.Value) != "null") {
 				return d, 0, fmt.Errorf("проверьте ID, источник, дату и значение наблюдения %q", o.ID)
+			}
+			if b.Source == "sales" && o.MetricKey == "watchdog.alert" && o.Status == "observed" &&
+				string(o.Value) != "true" && string(o.Value) != "false" {
+				return d, 0, fmt.Errorf("наблюдаемый сигнал %q должен содержать JSON boolean", o.ID)
 			}
 			ids[o.ID] = true
 		}
@@ -201,6 +209,9 @@ func (s *Service) Import(ctx context.Context, input ImportInput) (Summary, error
 	}
 	d, n, err := parse([]byte(input.Document))
 	if err != nil {
+		return Summary{}, err
+	}
+	if err := s.checkVisibility(ctx, d.SourcePolicy); err != nil {
 		return Summary{}, err
 	}
 	// Canonical object keys make whitespace and formatting irrelevant to the snapshot ID.
@@ -293,7 +304,8 @@ func selectRows(d Document, q Query) (Result, error) {
 			if err := json.Unmarshal(raw, &o); err != nil {
 				return Result{}, err
 			}
-			if len(ids) > 0 && !ids[o.ID] {
+			if (len(ids) > 0 && !ids[o.ID]) || (q.MetricKey != "" && q.MetricKey != o.MetricKey) ||
+				(q.Status != "" && q.Status != o.Status) || (q.Value != "" && q.Value != string(o.Value)) {
 				continue
 			}
 			out.Total++
@@ -304,23 +316,23 @@ func selectRows(d Document, q Query) (Result, error) {
 			if strings.HasPrefix(value, "\"") {
 				_ = json.Unmarshal(o.Value, &value)
 			}
-			out.Rows = append(out.Rows, Row{o.Segment, b.Source, o.ID, o.ProductKey, o.MetricKey, value, o.Unit, o.Period, o.Ref, o.Status, string(o.Details), o.Caveats, o.SampleSize})
+			out.Rows = append(out.Rows, Row{o.Kind, o.Segment, b.Source, o.ID, o.ProductKey, o.MetricKey, value, o.Unit, o.Period, o.Ref, o.Status, string(o.Details), o.Caveats, o.SampleSize})
 		}
 	}
 	return out, nil
 }
-func (s *Service) Verify(ctx context.Context, snapshotID string, ids []string) error {
+func (s *Service) Verify(ctx context.Context, snapshotID string, ids []string) ([]Row, error) {
 	wanted := map[string]bool{}
 	for _, id := range ids {
 		wanted[id] = true
 	}
 	if len(wanted) == 0 || len(wanted) > 100 {
-		return errors.New("необходимы ссылки на 1..100 наблюдений")
+		return nil, errors.New("необходимы ссылки на 1..100 наблюдений")
 	}
 	q := Query{SnapshotID: snapshotID, IDs: ids, Limit: 100}
 	r, err := s.Read(ctx, q)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, row := range r.Rows {
 		delete(wanted, row.ID)
@@ -331,31 +343,11 @@ func (s *Service) Verify(ctx context.Context, snapshotID string, ids []string) e
 			missing = append(missing, id)
 		}
 		sort.Strings(missing)
-		return fmt.Errorf("в снимке отсутствуют наблюдения: %s", strings.Join(missing, ", "))
+		return nil, fmt.Errorf("в снимке отсутствуют наблюдения: %s", strings.Join(missing, ", "))
 	}
-	return nil
+	return r.Rows, nil
 }
 
-func (s *Service) localRead(ctx context.Context) bool {
-	origin := agentsdk.CallerFromContext(ctx).Origin().Interface
-	if origin == agentsdk.InterfaceHTTP {
-		return true
-	}
-	if origin != agentsdk.InterfaceChat {
-		return false
-	}
-	value, err := s.privateRoute.Get(ctx)
-	return err == nil && value == "approved"
-}
-
-var ErrLocalOnly = errors.New("этот материал доступен в локальной веб-форме Product Manager")
-
-func (s *Service) checkVisibility(ctx context.Context, policy string) error {
-	if policy == "local_project_only" && !s.localRead(ctx) {
-		return ErrLocalOnly
-	}
-	return nil
-}
 func (s *Service) Policy(ctx context.Context, id string) (string, error) {
 	u, err := human(ctx)
 	if err != nil {

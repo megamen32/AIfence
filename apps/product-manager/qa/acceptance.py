@@ -118,6 +118,11 @@ def run_lifecycle(sdk, initial, identifier):
     send["confirmed"] = True
     task = sdk.call("send_to_backlog", send)
     retry = sdk.call("send_to_backlog", send)
+    alias = {**send, "idempotency_key": f"{identifier}/backlog-alias"}
+    check(sdk.call("send_to_backlog", alias) == task, "second key did not replay the receipt")
+    other = f"{identifier}/other"
+    sdk.call("save_hypothesis", {**save, "hypothesis": hypothesis(other)})
+    sdk.call("send_to_backlog", {**alias, "hypothesis_id": other}, reject="другой карточкой")
     check(retry == task and task["hypothesis_id"] == identifier and task["tag"] == TAG and
           task["tracker"] == "local_prototype_backlog" and task["evidence_snapshot_id"] == initial and
           task["success_criterion"] == h["success_criterion"] and bool(task["url"]) and bool(task["id"]),
@@ -132,7 +137,8 @@ def run_lifecycle(sdk, initial, identifier):
     check(sdk.call("get_hypothesis", key) == in_backlog, "unknown release reference changed saved state")
     pending = sdk.call("evaluate_hypothesis", release)
     awaiting(pending)
-    check(pending["release_id"] == "fixture/fix" and pending["released_on"] == "2025-02-05", "release not recorded")
+    check(pending["release_id"] == "fixture/fix" and pending["released_on"] == "2025-02-05" and
+          pending["release_evidence_ref"] == f"{follow}/fixture/fix", "release not recorded")
     quality = sdk.call("evaluate_hypothesis", {**release, "baseline_id": "fixture/tag-before", "current_id": "fixture/tag-after"})
     awaiting(quality)
     measure = {**release, "baseline_id": "fixture/baseline", "current_id": "fixture/partial",
@@ -164,7 +170,7 @@ def prepare_chat(sdk, initial):
             "prompt": f"На учебных данных Atlas и Lumen исследуй падение самостоятельных заказов. В Product Manager "
             f"изучи только снимок {initial}, используй исходные ключи продукта и метрики. Объясни размер изменения и альтернативу со ссылками на строки. "
             f"Сохрани гипотезу с ID {identifier} и проверяемым критерием. Подтверждаю создание одной учебной задачи "
-            f"в локальном бэклоге по этой гипотезе. Перечитай её и сообщи номер задачи и статус проверки эффекта."}
+            f"в локальном бэклоге по этой гипотезе. Перечитай её и сообщи номер задачи и статус из evaluate_hypothesis."}
 
 
 def check_chat(sdk, identifier):

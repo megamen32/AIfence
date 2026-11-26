@@ -31,7 +31,7 @@ func checkDraft(in SaveInput) error {
 	if len(h.SignalIDs) == 0 || h.SupportIDs == nil || h.CounterIDs == nil || h.Unknowns == nil || h.EconomicEffect.Assumptions == nil {
 		return errors.New("укажите источники сигнала, свидетельства, неизвестные и допущения; для пустого списка передайте []")
 	}
-	for _, group := range [][]string{h.SignalIDs, h.SupportIDs, h.CounterIDs, h.Unknowns, h.EconomicEffect.Assumptions} {
+	for _, group := range [][]string{h.SignalIDs, h.SupportIDs, h.CounterIDs, h.Unknowns, h.EconomicEffect.Assumptions, h.CompetingExplanations, h.BrowserEvidenceIDs, in.ContextIDs} {
 		for _, v := range group {
 			if strings.TrimSpace(v) == "" {
 				return errors.New("пустая ссылка или формулировка в карточке")
@@ -84,7 +84,7 @@ func draft(previous *Record, in SaveInput) (Record, error) {
 	if (previous == nil && in.ExpectedVersion != 0) || (previous != nil && in.ExpectedVersion != previous.Version) {
 		return Record{}, ErrVersion
 	}
-	return Record{Hypothesis: in.Hypothesis, Version: in.ExpectedVersion + 1, EvidenceSnapshotID: in.EvidenceSnapshotID}, nil
+	return Record{Hypothesis: in.Hypothesis, ContextIDs: in.ContextIDs, Version: in.ExpectedVersion + 1, EvidenceSnapshotID: in.EvidenceSnapshotID}, nil
 }
 func newTask(owner string, r Record) Task {
 	h := r.Hypothesis
@@ -94,7 +94,7 @@ func newTask(owner string, r Record) Task {
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 func assess(r Record, in EvaluateInput, now time.Time) (Assessment, error) {
-	a := Assessment{Status: "awaiting_measurement", ReleaseID: in.ReleaseID, ReleasedOn: in.ReleasedOn, EvidenceRefs: []string{}, Measurement: in.Measurement}
+	a := Assessment{Status: "awaiting_measurement", ReleaseID: in.ReleaseID, ReleasedOn: in.ReleasedOn, ReleaseEvidenceRef: in.ReleaseEvidenceRef, EvidenceRefs: []string{}, Measurement: in.Measurement}
 	if r.Assessment != nil && in.ReleaseID == "" && in.ReleasedOn == "" && in.Measurement == nil {
 		return *r.Assessment, nil
 	}
@@ -104,6 +104,12 @@ func assess(r Record, in EvaluateInput, now time.Time) (Assessment, error) {
 		}
 		if a.ReleasedOn == "" {
 			a.ReleasedOn = r.Assessment.ReleasedOn
+		}
+		if r.Assessment.ReleaseEvidenceRef == "" && (r.Assessment.Status == "supported" || r.Assessment.Status == "rejected") {
+			a.ReleaseEvidenceRef = ""
+		}
+		if r.Assessment.ReleaseEvidenceRef != "" {
+			a.ReleaseEvidenceRef = r.Assessment.ReleaseEvidenceRef
 		}
 		if a.ReleaseID != r.Assessment.ReleaseID || a.ReleasedOn != r.Assessment.ReleasedOn {
 			return Assessment{}, errors.New("релиз уже зафиксирован для данной проверки")

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,8 @@ import (
 
 type InvestigateInput struct {
 	SnapshotID string `json:"snapshot_id"`
+	ProductKey string `json:"product_key,omitempty"`
+	WeekFrom   string `json:"week_from,omitempty"`
 }
 type salesDetails struct {
 	Variant      string  `json:"variant"`
@@ -59,29 +62,33 @@ func (s Service) Investigate(ctx context.Context, in InvestigateInput) (decision
 			break
 		}
 	}
-	draft, err := propose(rows, in.SnapshotID)
+	draft, err := investigationDraft(rows, in)
 	if err != nil {
 		return decision.Record{}, err
 	}
-	prior, err := s.Get(ctx, decision.GetInput{HypothesisID: draft.Hypothesis.ID})
+	rec, err := s.Get(ctx, decision.GetInput{HypothesisID: draft.Hypothesis.ID})
+	switch {
+	case err == nil:
+		rec, err = s.refreshBrowser(ctx, rec, draft)
+	case errors.Is(err, decision.ErrMissing):
+		rec, err = s.Save(ctx, draft)
+		if errors.Is(err, decision.ErrVersion) {
+			rec, err = s.Get(ctx, decision.GetInput{HypothesisID: draft.Hypothesis.ID})
+		}
+	}
 	if err == nil {
-		return prior, nil
-	}
-	if !errors.Is(err, decision.ErrMissing) {
-		return decision.Record{}, err
-	}
-	rec, err := s.Save(ctx, draft)
-	if errors.Is(err, decision.ErrVersion) {
-		return s.Get(ctx, decision.GetInput{HypothesisID: draft.Hypothesis.ID})
+		s.Mail.publish(ctx, rec, draft, rows)
 	}
 	return rec, err
 }
-func propose(rows []evidence.Row, snapshot string) (decision.SaveInput, error) {
+
+func proposeLegacy(rows []evidence.Row, snapshot, product string) (decision.SaveInput, error) {
 	ss := salesSignals(rows)
-	if len(ss) == 0 || ss[0].change >= 0 {
+	candidate := slices.IndexFunc(ss, func(s signal) bool { return product == "" || s.row.Product == product })
+	if candidate == -1 || ss[candidate].change >= 0 {
 		return decision.SaveInput{}, errors.New("нет снижения индекса заказов по полным неделям")
 	}
-	p := ss[0]
+	p := ss[candidate]
 	src := p.row
 	h := decision.Hypothesis{SchemaVersion: "aifence.v1", ProductKey: src.Product, Title: "Проверить снижение самостоятельных заказов " + src.Product, SignalIDs: []string{src.ID}, SupportIDs: []string{}, CounterIDs: []string{}, Unknowns: []string{}, Status: "proposed", EconomicEffect: decision.EconomicEffect{Status: "unknown", Assumptions: []string{}}}
 	sum := sha256.Sum256([]byte(src.Product + "|" + src.Metric + "|" + p.meta.BaselineFrom + "|" + p.meta.BaselineTo))
@@ -91,7 +98,7 @@ func propose(rows []evidence.Row, snapshot string) (decision.SaveInput, error) {
 		return decision.SaveInput{}, errors.New("нужны четыре полные недели для базы следующей проверки")
 	}
 	c := decision.Criterion{MetricKey: "family_orders_idx", ObservationDays: 28, BaselineFrom: end.AddDate(0, 0, -27).Format(time.DateOnly), BaselineTo: end.Format(time.DateOnly), Rule: "relative_change_pct >= 10"}
-	for _, o := range ss[1:] {
+	for _, o := range ss {
 		if o.row.Product != src.Product && o.row.Period == src.Period && o.meta.BaselineFrom == p.meta.BaselineFrom && o.meta.BaselineTo == p.meta.BaselineTo && o.meta.CurrentFrom == p.meta.CurrentFrom {
 			h.CounterIDs = append(h.CounterIDs, o.row.ID)
 			c.ControlProductKey = o.row.Product
@@ -100,6 +107,15 @@ func propose(rows []evidence.Row, snapshot string) (decision.SaveInput, error) {
 		}
 	}
 	h.SuccessCriterion = c
+	h.EvidenceLevel = "signal_only"
+	if c.ControlProductKey != "" {
+		h.EvidenceLevel = "correlation"
+	}
+	h.CompetingExplanations = []string{
+		"Изменился общий спрос на продукт.",
+		"Часть покупателей перешла в другой канал оформления.",
+	}
+	h.Forecast = "Если исправление влияет на самостоятельное оформление, индекс после релиза вырастет."
 	var release, task string
 	var manager, cart, price bool
 	for _, r := range rows {

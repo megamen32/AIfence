@@ -25,5 +25,15 @@ ON CONFLICT DO NOTHING;
 -- name: PMReadTask :one
 SELECT receipt FROM pm_backlog WHERE owner_id = $1 AND hypothesis_id = $2;
 
--- name: PMTaskKeyOwner :one
-SELECT hypothesis_id FROM pm_backlog WHERE owner_id = $1 AND request_key = $2;
+-- name: PMClaimTaskKey :one
+INSERT INTO pm_backlog_replay_keys AS keys (owner_id, request_key, hypothesis_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (owner_id, request_key) DO UPDATE SET hypothesis_id = keys.hypothesis_id
+RETURNING hypothesis_id;
+
+-- name: PMClaimSignalNotification :execrows
+INSERT INTO pm_signal_notifications (owner_id, signal_key) VALUES ($1, $2)
+ON CONFLICT DO NOTHING;
+
+-- name: PMReleaseSignalNotification :exec
+DELETE FROM pm_signal_notifications WHERE owner_id = $1 AND signal_key = $2;

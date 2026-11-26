@@ -55,6 +55,9 @@ templ Board(v HomeView) {
 			if v.Detail!=nil {
 				<div class="muted meta">{ v.Detail.Product }<span class="chip">{ v.Detail.Status }</span></div>
 				<h2 class="headline">{ v.Detail.Title }</h2>
+				if v.Detail.EvidenceLevel != "" {
+					<p class="muted compact">Уровень доказанности · { v.Detail.EvidenceLevel }</p>
+				}
 				if len(v.Signals)>0 {
 					@signals(v.Signals)
 				}
@@ -68,6 +71,16 @@ templ Board(v HomeView) {
 						for _,row:=range g.Rows {
 							@observation(row, false)
 						}
+					</section>
+				}
+				if len(v.Detail.CompetingExplanations) > 0 {
+					<section class="section-block">
+						<h3>Конкурирующие объяснения</h3>
+						<ul class="unknowns">
+							for _, explanation := range v.Detail.CompetingExplanations {
+								<li>{ explanation }</li>
+							}
+						</ul>
 					</section>
 				}
 				if len(v.Detail.Unknowns)>0 {
@@ -96,8 +109,18 @@ templ Board(v HomeView) {
 							<dd>{ v.Detail.Control }</dd>
 						}
 					</dl>
+					if v.Detail.Forecast != "" {
+						<p>Прогноз · { v.Detail.Forecast }</p>
+					}
 					if v.Detail.Assessment!="" {
 						<p class="result">{ v.Detail.Assessment }</p>
+						if len(v.Detail.MeasuredEvidence) > 0 {
+							<ul class="unknowns">
+								for _, link := range v.Detail.MeasuredEvidence {
+									<li><a class="text-link" href={ link.URL }>{ link.Label }</a></li>
+								}
+							</ul>
+						}
 					} else {
 						<p class="muted compact">Оценка появится после регистрации релиза и замера.</p>
 					}
@@ -107,7 +130,7 @@ templ Board(v HomeView) {
 					if v.Detail.TaskID!="" {
 						<p class="task-line">
 							@lucide.Icon("circle-check", "size-5")
-							<strong>{ v.Detail.TaskID }</strong> · сгенерирована ИИ-помощником
+							<a class="text-link" href={ v.Detail.TaskURL }>{ v.Detail.TaskID }</a> · { v.Detail.TaskTag }
 						</p>
 					} else {
 						@editForm(v.Detail)
@@ -127,7 +150,11 @@ templ Board(v HomeView) {
 				</section>
 			} else if v.ShowSources {
 				<div class="meta muted">Снимок данных · { v.AsOf }</div>
-				<h2 class="headline">Наблюдения</h2>
+				if v.IsReplay {
+					<h2 class="headline">Прогон по истории</h2>
+				} else {
+					<h2 class="headline">Наблюдения</h2>
+				}
 				if len(v.Signals)>0 {
 					@signals(v.Signals)
 				}
@@ -224,6 +251,13 @@ templ observation(o EvidenceRow, showProduct bool) {
 				<span>{ o.Locator }</span>
 			</summary>
 			<p>{ o.SourceName }</p>
+			if len(o.Related) > 0 {
+				<ul class="unknowns">
+					for _, ref := range o.Related {
+						<li>{ ref }</li>
+					}
+				</ul>
+			}
 			if o.Note!="" {
 				<p>{ o.Note }</p>
 			}

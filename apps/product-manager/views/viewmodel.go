@@ -5,6 +5,7 @@ type Link struct {
 	Active             bool
 }
 type EvidenceRow struct {
+	Related                                                                                          []string
 	ID, Product, Metric, Value, Source, Date, SourceName, Locator, SourceURL, OpenURL, Note, Summary string
 	Missing                                                                                          bool
 }
@@ -14,6 +15,9 @@ type EvidenceGroup struct {
 	Rows  []EvidenceRow
 }
 type Decision struct {
+	EvidenceLevel, Forecast, TaskURL, TaskTag                                                                             string
+	CompetingExplanations                                                                                                 []string
+	MeasuredEvidence                                                                                                      []Link
 	Threshold, Operator, RuleLabel                                                                                        string
 	ID, Title, Product, Status, Action, Metric, Baseline, Rule, Control, Window, TaskID, Assessment, Version, SnapshotURL string
 	Groups                                                                                                                []EvidenceGroup
@@ -26,5 +30,5 @@ type HomeView struct {
 	Rows                                              []EvidenceRow
 	Warnings                                          []string
 	BoardURL, SnapshotID, AsOf, RowsLabel, Prev, Next string
-	ShowSources, CanInvestigate                       bool
+	ShowSources, CanInvestigate, IsReplay             bool
 }

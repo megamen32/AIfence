@@ -11,8 +11,10 @@ import (
 )
 
 type Service struct {
-	Decisions *decision.Service
-	Evidence  *evidence.Service
+	Decisions     *decision.Service
+	Evidence      *evidence.Service
+	Notifications *SignalNotifications
+	Mail          *SignalMail
 }
 
 func (s Service) Save(ctx context.Context, in decision.SaveInput) (decision.Record, error) {
@@ -24,15 +26,65 @@ func (s Service) Save(ctx context.Context, in decision.SaveInput) (decision.Reco
 		if err = s.samePolicy(ctx, old.EvidenceSnapshotID, in.EvidenceSnapshotID); err != nil {
 			return decision.Record{}, err
 		}
+		if in.ContextIDs == nil {
+			in.ContextIDs = old.ContextIDs
+		}
 	}
 	h := in.Hypothesis
 	ids := append([]string{}, h.SignalIDs...)
 	ids = append(ids, h.SupportIDs...)
 	ids = append(ids, h.CounterIDs...)
-	if err := s.Evidence.Verify(ctx, in.EvidenceSnapshotID, ids); err != nil {
+	ids = append(ids, h.BrowserEvidenceIDs...)
+	ids = append(ids, in.ContextIDs...)
+	rows, err := s.Evidence.Verify(ctx, in.EvidenceSnapshotID, ids)
+	if err != nil {
 		return decision.Record{}, err
 	}
-	return s.Decisions.Save(ctx, in)
+	if err := checkEvidenceLevel(h, rows); err != nil {
+		return decision.Record{}, err
+	}
+	record, err := s.Decisions.Save(ctx, in)
+	if err == nil && in.ExpectedVersion == 0 {
+		s.Notifications.publish(ctx, record, rows)
+	}
+	return record, err
+}
+
+func checkEvidenceLevel(h decision.Hypothesis, rows []evidence.Row) error {
+	byID := make(map[string]evidence.Row, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	verified := false
+	for _, id := range h.BrowserEvidenceIDs {
+		row := byID[id]
+		if row.Source != "browser" || row.Kind != "path_check" || row.Product != h.ProductKey {
+			return fmt.Errorf("наблюдение %s должно быть браузерной проверкой пути для этого продукта", id)
+		}
+		verified = verified || verifiedPath(row)
+	}
+	switch h.EvidenceLevel {
+	case "", "signal_only", "correlation":
+		return nil
+	case "path_verified":
+		if verified {
+			return nil
+		}
+		return errors.New("для path_verified нужен наблюдаемый исход проверки пути")
+	default:
+		return errors.New("неизвестный уровень доказанности")
+	}
+}
+
+func verifiedPath(row evidence.Row) bool {
+	if row.Status != "observed" {
+		return false
+	}
+	switch row.Value {
+	case "path_broken", "metrika_add_not_observed", "ok":
+		return true
+	}
+	return false
 }
 
 // Chat selects evidence IDs; dates, values and quality come from the imported snapshot.
@@ -72,6 +124,9 @@ func (s Service) Evaluate(ctx context.Context, in EvaluateInput) (decision.Asses
 	if len(ids) == 0 {
 		return s.Decisions.Evaluate(ctx, input)
 	}
+	if in.SnapshotID == "" {
+		return decision.Assessment{}, errors.New("укажите снимок для замеров и релиза")
+	}
 	data, err := s.Evidence.Read(ctx, evidence.Query{SnapshotID: in.SnapshotID, IDs: ids, Limit: 10})
 	if err != nil {
 		return decision.Assessment{}, err
@@ -89,11 +144,12 @@ func (s Service) Evaluate(ctx context.Context, in EvaluateInput) (decision.Asses
 		r := rows[in.ReleaseObservationID]
 		var meta measurementMeta
 		_ = json.Unmarshal([]byte(r.Details), &meta)
-		if r.Source != "release" || r.Status != "observed" || r.Period.From != r.Period.To || meta.HypothesisID != in.HypothesisID {
+		if r.Source != "release" || r.Status != "observed" || r.Period.From != r.Period.To || r.Product != record.Hypothesis.ProductKey || meta.HypothesisID != in.HypothesisID {
 			return decision.Assessment{}, errors.New("нужен подтвержденный релиз с привязкой к этой гипотезе")
 		}
 		input.ReleaseID = r.ID
 		input.ReleasedOn = r.Period.From
+		input.ReleaseEvidenceRef = in.SnapshotID + "/" + r.ID
 	}
 	if in.BaselineID != "" || in.CurrentID != "" || in.ControlBaselineID != "" || in.ControlCurrentID != "" {
 		if in.CurrentID == "" || in.BaselineID == "" {

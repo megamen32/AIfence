@@ -16,7 +16,7 @@ func TestCardsAndSnapshotsRenderActionsAndEvidence(t *testing.T) {
 	}{
 		{"snapshot", HomeView{ShowSources: true, CanInvestigate: true, Rows: []EvidenceRow{row}, Warnings: []string{"fixture warning"}}, []string{"./investigate", "Sales!B2:B3", "10,0 %", "fixture warning"}, []string{"./approve"}},
 		{"proposed", HomeView{Detail: &Decision{Title: "Сверить изменение", ID: "test-hyp", Version: "3", Groups: []EvidenceGroup{{Title: "Сигнал", Rows: []EvidenceRow{row}}}}}, []string{"./approve", "confirmed", "Sales!B2:B3", "Сверить изменение"}, []string{"./investigate"}},
-		{"created", HomeView{Detail: &Decision{Title: "Уже в бэклоге", TaskID: "PM-test"}}, []string{"PM-test", "сгенерирована ИИ-помощником"}, []string{"./approve"}},
+		{"created", HomeView{Detail: &Decision{Title: "Уже в бэклоге", TaskID: "PM-test", TaskURL: "./?id=test-hyp", TaskTag: "сгенерирована ИИ-помощником"}}, []string{"PM-test", "сгенерирована ИИ-помощником"}, []string{"./approve"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

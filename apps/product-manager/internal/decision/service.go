@@ -144,11 +144,11 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Task, error) {
 		if e != nil {
 			return e
 		}
-		existing, e := q.PMTaskKeyOwner(ctx, db.PMTaskKeyOwnerParams{OwnerID: who, RequestKey: in.IdempotencyKey})
-		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		existing, e := q.PMClaimTaskKey(ctx, db.PMClaimTaskKeyParams{OwnerID: who, RequestKey: in.IdempotencyKey, HypothesisID: in.HypothesisID})
+		if e != nil {
 			return e
 		}
-		if e == nil && existing != in.HypothesisID {
+		if existing != in.HypothesisID {
 			return errors.New("ключ операции уже связан с другой карточкой")
 		}
 		if r.Task == nil {
@@ -175,7 +175,7 @@ func (s *Service) Send(ctx context.Context, in SendInput) (Task, error) {
 				return e
 			}
 		}
-		// Read the committed representation from the backlog table even on retries.
+		// Read the persisted receipt from the backlog table even on retries.
 		raw, e := q.PMReadTask(ctx, db.PMReadTaskParams{OwnerID: who, HypothesisID: in.HypothesisID})
 		if e != nil {
 			return e
