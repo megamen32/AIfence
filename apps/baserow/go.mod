@@ -2,13 +2,15 @@ module agent
 
 go 1.26.11
 
-require github.com/airlockrun/agentsdk v0.11.0
+require (
+	github.com/airlockrun/agentsdk v0.11.0
+	github.com/airlockrun/goai v0.3.4
+)
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/a-h/parse v0.0.0-20250122154542-74294addb73e // indirect
 	github.com/a-h/templ v0.3.1020 // indirect
-	github.com/airlockrun/goai v0.3.4 // indirect
 	github.com/airlockrun/sol v0.1.23 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect

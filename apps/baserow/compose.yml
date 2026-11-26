@@ -1,22 +1,19 @@
-# Separate, local-only Baserow instance. Airlock source is untouched.
+# Native Baserow, reachable only through the authenticated Airlock application.
 services:
   baserow:
     image: baserow/baserow:2.4.3
-    platform: linux/arm64
+    platform: ${BASEROW_PLATFORM:-linux/arm64}
     environment:
-      BASEROW_PUBLIC_URL: http://localhost:42081
+      BASEROW_PUBLIC_URL: ${BASEROW_PUBLIC_URL:?Set the Airlock application origin}
       BASEROW_FRONTEND_COOKIE_PREFIX: aifence_baserow
-      BASEROW_MCP_OAUTH_ENABLED: "true"
-    ports:
-      - "127.0.0.1:42081:80"
     volumes:
       - data:/baserow/data
     networks:
-      - airlock_private
+      - app_private
     restart: unless-stopped
 volumes:
   data:
 networks:
-  airlock_private:
+  app_private:
     external: true
-    name: aifence
+    name: ${BASEROW_AIRLOCK_NETWORK:?Set the Airlock application runtime network}

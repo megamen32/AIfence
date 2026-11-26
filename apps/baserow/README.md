@@ -1,24 +1,35 @@
 # Baserow for Airlock
 
-Native Baserow 2.4.3 (ARM64 on Mac M1) runs in its own persisted Docker
-container. Airlock remains unchanged. The Go SDK app registers Baserow's
-existing MCP endpoint and opens a configured native Baserow page. No
-replacement database UI, no custom MCP implementation.
+The existing personal Airlock Baserow adapter is reused on SDK v0.11.0.
+Baserow's original web UI is served through the authenticated app routes,
+without a nested iframe or separate visible login. The caller's platform
+user ID selects its own native Baserow identity. The identity seed lives
+in the application's PostgreSQL schema, not in Git. Each user's API calls
+use the same native identity as the web UI; there is no shared MCP token.
 
-## Local run
+The Baserow container is reachable only on the app's private runtime
+network. Native UI and API routes reject users without Airlock membership
+and reject requests with another origin; the upstream Baserow session
+is selected server-side. Never expose the internal service publicly.
+The first native initialization must follow the application's authorized
+account provisioning flow. Preserve the identity seed and Baserow data
+volume together; do not reset one while retaining the other.
 
-```sh
-docker --context colima-aifence compose -p aifence-baserow -f compose.yml up -d
-```
+## Deployment
+Deploy with the pinned official CLI and start the app to allocate its private
+runtime network. Set BASEROW_AIRLOCK_NETWORK to that network and
+BASEROW_PUBLIC_URL to the deployed app's routeBaseUrl. On Apple Silicon
+use linux/arm64; set BASEROW_PLATFORM=linux/amd64 on x86.
 
-Only loopback port 42081 is published. The internal service is attached to
-the existing private Airlock backend network. Use the instance's normal
-authentication. Configure a workspace-scoped Baserow MCP endpoint key through
-the Airlock credentials UI (never place keys in source or URL). Review MCP
-permissions; keep public-price observations read-only where supported.
+Run:
+    docker --context colima-aifence compose -p aifence-baserow -f compose.yml up -d
 
-For data, use the current Market Watch CSV as a one-way projection, not a second
-authoritative price source. Preserve exact SKU, URL, captured time and quantity
-basis. Baserow UI edits may not alter the source's prices. Use user-created views
-and notes for review. Native embedding depends on Baserow's frame policy;
-the open-in-Baserow link remains available.
+The app's private network has the native Baserow DNS alias. No host port
+is published. Only Airlock's app URL is a supported user entry point.
+A local Airlock deployment must use a browser-compatible same-site domain
+and the correct port in frame policies so its own native relay completes.
+No weakening of session verification or global CSP is required.
+
+Tools: list_workspaces, list_fields, list_rows, get_row, create_row.
+A separate user-owned view can represent Market Watch data; observed
+prices must remain a one-way projection of the source.
