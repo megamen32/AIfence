@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMonitorUsesObservedValuesAndActualDetection(t *testing.T) {
@@ -36,7 +37,7 @@ func TestMonitorUsesObservedValuesAndActualDetection(t *testing.T) {
 	if _, cell := monitorCell(p); cell.Tone != "" {
 		t.Fatalf("missing observation shown as confirmed: %+v", cell)
 	}
-	if result := detectedAt("2026-01-19T10:17:00+03:00"); !strings.Contains(result, "07:17 UTC") {
+	if result := signalTime("2026-01-19T10:17:00+03:00", nil); !strings.Contains(result, "07:17 UTC") {
 		t.Fatal(result)
 	}
 }
@@ -148,5 +149,18 @@ func TestMonitorOpensSavedAlertAlongsideNewerIncompleteWindow(t *testing.T) {
 	if v.Selected == nil || v.Selected.Chart.Target == "" || v.Selected.Chart.Control == "" ||
 		v.Selected.Detected != "Время обнаружения неизвестно" || v.Selected.AlertID != alert.ID {
 		t.Fatalf("wrong opened investigation: %+v", v.Selected)
+	}
+}
+
+func TestAlarmTimeSeparatesDetectionAndFirstRegistration(t *testing.T) {
+	received := time.Date(2026, 1, 20, 9, 10, 11, 0, time.UTC)
+	if got := signalTime("", &received); got != "получено в 09:10 UTC, 20.01.2026" {
+		t.Fatal(got)
+	}
+	if got := signalTime("2026-01-19T10:17:00+03:00", &received); got != "Обнаружено 19.01.2026, 07:17 UTC" {
+		t.Fatal(got)
+	}
+	if got := signalTime("", nil); got != "Время обнаружения неизвестно" {
+		t.Fatal(got)
 	}
 }

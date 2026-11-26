@@ -22,6 +22,7 @@ import (
 type monitorObservation struct {
 	evidence.Row
 	snapshot string
+	received *time.Time
 	details  monitorDetails
 }
 
@@ -66,12 +67,14 @@ func originText(d monitorDetails) string {
 	return ""
 }
 
-func detectedAt(value string) string {
-	t, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		return "Время обнаружения неизвестно"
+func signalTime(detected string, received *time.Time) string {
+	if t, err := time.Parse(time.RFC3339, detected); err == nil {
+		return "Обнаружено " + t.UTC().Format("02.01.2006, 15:04 UTC")
 	}
-	return "Обнаружено " + t.UTC().Format("02.01.2006, 15:04 UTC")
+	if received != nil && !received.IsZero() {
+		return "получено в " + received.UTC().Format("15:04 UTC, 02.01.2006")
+	}
+	return "Время обнаружения неизвестно"
 }
 
 func monitorCell(o monitorObservation) (column int, cell views.MonitorCell) {
@@ -138,7 +141,7 @@ func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, rec
 			return nil, err
 		}
 		for _, row := range data.Rows {
-			o := monitorObservation{Row: row, snapshot: id}
+			o := monitorObservation{Row: row, snapshot: id, received: data.ImportedAt}
 			_ = json.Unmarshal([]byte(row.Details), &o.details)
 			rows = append(rows, o)
 		}
@@ -200,7 +203,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		}
 		m.Pulse = append(m.Pulse, views.PulseItem{
 			Product: p.Name, URL: link,
-			Week: span(row.Period.From, row.Period.To), Detected: detectedAt(row.details.Detected),
+			Week: span(row.Period.From, row.Period.To), Detected: signalTime(row.details.Detected, row.received),
 			Change: change, Origin: originText(row.details),
 		})
 	}
@@ -269,7 +272,7 @@ func (h *Handler) cardInvestigation(ctx context.Context, record decision.Record,
 			return nil, err
 		}
 		for _, row := range data.Rows {
-			o := monitorObservation{Row: row, snapshot: snapshot}
+			o := monitorObservation{Row: row, snapshot: snapshot, received: data.ImportedAt}
 			_ = json.Unmarshal([]byte(row.Details), &o.details)
 			rows = append(rows, o)
 		}
@@ -310,7 +313,7 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 		}
 	}
 	if signal != nil {
-		v.Origin, v.Detected, v.Week = originText(signal.details), detectedAt(signal.details.Detected), span(signal.Period.From, signal.Period.To)
+		v.Origin, v.Detected, v.Week = originText(signal.details), signalTime(signal.details.Detected, signal.received), span(signal.Period.From, signal.Period.To)
 		if signal.details.Control != "" {
 			v.Control = productName(signal.details.Control)
 		}
@@ -372,7 +375,12 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 	if signal != nil {
 		v.Chart = plot(signal, rows, v.ReleaseDate)
 	} else if record != nil {
-		v.Chart, v.Control, v.Origin = legacyTrend(*record, rows, v.ReleaseDate)
+		var source *monitorObservation
+		v.Chart, v.Control, source = legacyTrend(*record, rows, v.ReleaseDate)
+		if source != nil {
+			v.Origin = originText(source.details)
+			v.Detected = signalTime(source.details.Detected, source.received)
+		}
 	}
 	return v
 }
@@ -431,7 +439,7 @@ func legacyReading(row monitorObservation) (legacyWindows, bool) {
 	return legacyWindows{d.BaselineFrom, d.BaselineTo, d.CurrentFrom, d.Baseline, d.Current}, true
 }
 
-func legacyTrend(record decision.Record, rows []monitorObservation, release string) (views.Chart, string, string) {
+func legacyTrend(record decision.Record, rows []monitorObservation, release string) (views.Chart, string, *monitorObservation) {
 	h := record.Hypothesis
 	for _, row := range rows {
 		if row.Product != h.ProductKey || row.snapshot != record.EvidenceSnapshotID || !slices.Contains(h.SignalIDs, row.ID) {
@@ -461,9 +469,9 @@ func legacyTrend(record decision.Record, rows []monitorObservation, release stri
 				break
 			}
 		}
-		return drawTrend(points, release, "Средние индексы по полным неделям"), control, originText(row.details)
+		return drawTrend(points, release, "Средние индексы по полным неделям"), control, &row
 	}
-	return views.Chart{}, "", ""
+	return views.Chart{}, "", nil
 }
 
 func drawTrend(data []reading, release, caption string) views.Chart {
