@@ -105,6 +105,8 @@ type observation struct {
 	Details    offerDetails `json:"details"`
 }
 type batch struct {
+	AsOf          string        `json:"as_of"`
+	Warnings      []string      `json:"warnings"`
 	SchemaVersion string        `json:"schema_version"`
 	Source        string        `json:"source"`
 	Status        string        `json:"status"`
@@ -120,18 +122,19 @@ type Offer struct {
 	MaxQuantity *int64  `json:"max_quantity,omitempty"`
 }
 type Signal struct {
-	Trigger       string  `json:"trigger"`
-	Demand        *Demand `json:"demand,omitempty"`
-	Metric        string  `json:"store_metric"`
-	ChangePct     float64 `json:"change_pct"`
-	BaselineFrom  string  `json:"baseline_from"`
-	BaselineTo    string  `json:"baseline_to"`
-	CurrentFrom   string  `json:"current_from"`
-	CurrentTo     string  `json:"current_to"`
-	ObservationID string  `json:"observation_id"`
-	ContextSKU    string  `json:"market_sku"`
-	MarketStatus  string  `json:"market_status"`
-	Offers        []Offer `json:"sample_offers"`
+	WordstatStatus string  `json:"wordstat_status,omitempty"`
+	Trigger        string  `json:"trigger"`
+	Demand         *Demand `json:"demand,omitempty"`
+	Metric         string  `json:"store_metric"`
+	ChangePct      float64 `json:"change_pct"`
+	BaselineFrom   string  `json:"baseline_from"`
+	BaselineTo     string  `json:"baseline_to"`
+	CurrentFrom    string  `json:"current_from"`
+	CurrentTo      string  `json:"current_to"`
+	ObservationID  string  `json:"observation_id"`
+	ContextSKU     string  `json:"market_sku"`
+	MarketStatus   string  `json:"market_status"`
+	Offers         []Offer `json:"sample_offers"`
 }
 type Outcome struct {
 	Status        string `json:"status"`
@@ -166,6 +169,7 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		}
 	}
 	var demand *Demand
+	demandUnavailable := false
 	if w.WordstatBinding != "" {
 		err = read(ctx, w.WordstatBinding, map[string]string{"phrase": w.Phrase, "monday": w.Monday}, &wordstat)
 		if err != nil {
@@ -176,7 +180,10 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		}
 		demand = extractDemand(wordstat, w.Phrase, before, current)
 		if demand == nil {
-			return Outcome{Status: "incomplete"}, nil
+			demandUnavailable = wordstat.unavailableFor(monday)
+			if !demandUnavailable {
+				return Outcome{Status: "incomplete"}, nil
+			}
 		}
 	}
 	if metrika.Status != "ok" || (w.MarketBinding != "" && market.Status != "ok" && market.Status != "partial") {
@@ -209,12 +216,15 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		}
 	}
 	if trigger == "" {
+		if demandUnavailable {
+			return Outcome{Status: "incomplete"}, nil
+		}
 		return Outcome{Status: "quiet"}, nil
 	}
 	if !approved {
 		return Outcome{Status: "model_route_unapproved"}, nil
 	}
-	sig := Signal{Trigger: trigger, Demand: demand, Metric: w.Metric, ChangePct: *delta.Value, BaselineFrom: before.From, BaselineTo: before.To, CurrentFrom: current.From, CurrentTo: current.To, ObservationID: delta.ID, ContextSKU: w.SKU, MarketStatus: market.Status, Offers: []Offer{}}
+	sig := Signal{WordstatStatus: wordstat.Status, Trigger: trigger, Demand: demand, Metric: w.Metric, ChangePct: *delta.Value, BaselineFrom: before.From, BaselineTo: before.To, CurrentFrom: current.From, CurrentTo: current.To, ObservationID: delta.ID, ContextSKU: w.SKU, MarketStatus: market.Status, Offers: []Offer{}}
 	if len(market.Observations) > 5 {
 		return Outcome{}, errors.New("market sample exceeded requested bound")
 	}

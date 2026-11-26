@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -154,5 +156,68 @@ func TestScopedIDsAreStable(t *testing.T) {
 	in.Monday = "2026-11-30"
 	if id == ID("alice", "delivery", in) {
 		t.Fatal("weeks must have different idempotency keys")
+	}
+}
+
+func TestMissingWordstatDoesNotHideAnObservedStoreDrop(t *testing.T) {
+	cfg := Window{MetrikaBinding: "62057b9c-7d10-4439-9985-3888e7b259b3", WordstatBinding: "00000000-0000-4000-8000-000000000002", Phrase: "офисная лицензия", Metric: "visits", Monday: "2026-11-23", DropPct: 25, DemandDropPct: 20}
+	unavailable := `{"schema_version":"aifence.v1","source":"wordstat","as_of":"2026-11-23T06:00:00Z","status":"unavailable","observations":[],"warnings":["pending"]}`
+	observedZero := `{"schema_version":"aifence.v1","source":"wordstat","as_of":"2026-11-23T06:00:00Z","status":"ok","warnings":[],"observations":[{"id":"base","kind":"metric","product_key":"офисная лицензия","metric_key":"search_queries","status":"observed","unit":"count","value":100,"period":{"from":"2026-11-09","to":"2026-11-15"},"source_ref":{"source_id":"yandex-wordstat:search-api","locator":"fixture-week"}},{"id":"last","kind":"metric","product_key":"офисная лицензия","metric_key":"search_queries","status":"observed","unit":"count","value":0,"period":{"from":"2026-11-16","to":"2026-11-22"},"source_ref":{"source_id":"yandex-wordstat:search-api","locator":"fixture-week"}}]}`
+	for _, tc := range []struct {
+		name                             string
+		drop                             float64
+		payload, want, trigger, wordstat string
+		wantDemand, wantErr              bool
+	}{
+		{"store threshold, provider pending", -25, unavailable, "submitted", "metrika", "unavailable", false, false},
+		{"quiet store, provider pending", -24, unavailable, "incomplete", "", "", false, false},
+		{"published zero demand", -24, observedZero, "submitted", "wordstat", "ok", true, false},
+		{"null observed count", -80, strings.Replace(observedZero, `"value":0`, `"value":null`, 1), "incomplete", "", "", false, false},
+		{"missing observations array", -80, strings.Replace(unavailable, `"observations":[],`, "", 1), "incomplete", "", "", false, false},
+		{"null observations array", -80, strings.Replace(unavailable, `"observations":[]`, `"observations":null`, 1), "incomplete", "", "", false, false},
+		{"missing as-of", -80, strings.Replace(unavailable, `"as_of":"2026-11-23T06:00:00Z",`, "", 1), "incomplete", "", "", false, false},
+		{"missing warnings", -80, strings.Replace(unavailable, `,"warnings":["pending"]`, "", 1), "incomplete", "", "", false, false},
+		{"stale unavailable envelope", -80, strings.Replace(unavailable, "2026-11-23T", "2026-11-16T", 1), "incomplete", "", "", false, false},
+		{"wrong period despite store drop", -80, strings.Replace(observedZero, "2026-11-22", "2026-11-21", 1), "incomplete", "", "", false, false},
+		{"unavailable with unexpected field", -80, strings.Replace(unavailable, `"warnings"`, `"notice":"unexpected","warnings"`, 1), "", "", "", false, true},
+		{"mismatched contract", -80, strings.Replace(unavailable, "aifence.v1", "other.v1", 1), "", "", "", false, true},
+		{"unavailable carrying rows", -80, strings.Replace(observedZero, `"status":"ok"`, `"status":"unavailable"`, 1), "incomplete", "", "", false, false},
+		{"refused read despite store drop", -80, "", "", "", "", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			read := func(_ context.Context, binding string, _ any, out any) error {
+				if binding == cfg.WordstatBinding {
+					if tc.payload == "" {
+						return errors.New("binding revoked")
+					}
+					return json.Unmarshal([]byte(tc.payload), out)
+				}
+				*out.(*batch) = batch{SchemaVersion: "aifence.v1", Source: "metrika", Status: "ok", Observations: []observation{{ID: "store-change", ProductKey: "store", MetricKey: "visits.relative_change_pct", Status: "observed", Unit: "percent", Value: &tc.drop, Period: period{"2026-11-16", "2026-11-22"}, SourceRef: sourceRef{"yandex-metrika:1337"}}}}
+				return nil
+			}
+			starts := 0
+			result, err := Check(t.Context(), cfg, true, read, func(_ context.Context, s Signal) (string, error) {
+				starts++
+				b, e := json.Marshal(s)
+				if e != nil {
+					t.Fatal(e)
+				}
+				var data map[string]json.RawMessage
+				if e = json.Unmarshal(b, &data); e != nil {
+					t.Fatal(e)
+				}
+				_, hasDemand := data["demand"]
+				if s.Trigger != tc.trigger || string(data["wordstat_status"]) != strconv.Quote(tc.wordstat) || hasDemand != tc.wantDemand {
+					t.Fatalf("payload %s", b)
+				}
+				if hasDemand && (s.Demand.CurrentCount != 0 || s.Demand.ChangePct == nil || *s.Demand.ChangePct != -100) {
+					t.Fatalf("zero treated as absent: %s", b)
+				}
+				return "analysis", nil
+			})
+			if (err != nil) != tc.wantErr || result.Status != tc.want || (starts == 1) != (tc.want == "submitted") {
+				t.Fatalf("result=%+v err=%v starts=%d", result, err, starts)
+			}
+		})
 	}
 }

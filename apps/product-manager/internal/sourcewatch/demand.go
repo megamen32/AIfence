@@ -1,6 +1,11 @@
 package sourcewatch
 
-import "math"
+import (
+	"bytes"
+	"encoding/json"
+	"math"
+	"time"
+)
 
 type Demand struct {
 	Phrase        string   `json:"phrase"`
@@ -36,4 +41,29 @@ func extractDemand(b batch, phrase string, baseline, current period) *Demand {
 		result.ChangePct = &pct
 	}
 	return result
+}
+
+// unavailableFor distinguishes the producer's explicit, current empty response
+// from absent fields, stale receipts and contradictory records.
+func (b batch) unavailableFor(monday time.Time) bool {
+	if b.Status != "unavailable" || b.Observations == nil || len(b.Observations) != 0 || b.Warnings == nil {
+		return false
+	}
+	stamp, err := time.Parse(time.RFC3339, b.AsOf)
+	return err == nil && !stamp.Before(monday)
+}
+
+// Preserve extensions on ordinary source reads. A Wordstat unavailable envelope
+// can release a store-only signal, so check that exact evidence-v1 envelope.
+func (b *batch) UnmarshalJSON(raw []byte) error {
+	type fields batch
+	if err := json.Unmarshal(raw, (*fields)(b)); err != nil {
+		return err
+	}
+	if b.Source != "wordstat" || b.Status != "unavailable" || len(b.Observations) > 0 {
+		return nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode((*fields)(b))
 }
