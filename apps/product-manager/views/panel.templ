@@ -42,6 +42,16 @@ func catalogTileIsFocus(tile CatalogTile) bool {
 	return strings.Contains(tile.Tone, "signal-associated") || strings.Contains(tile.Tone, "control-context")
 }
 
+func catalogTileLabelClass(tile CatalogTile) string {
+	if tile.Name == "Другие" {
+		return "catalog-label-other"
+	}
+	if strings.Contains(strings.ToLower(tile.Name), "kaspersky") {
+		return "catalog-label-kaspersky"
+	}
+	return "catalog-label-secondary"
+}
+
 templ Panel(v HomeView) {
 	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
 		<header class="dashboard-top">
@@ -263,7 +273,7 @@ templ catalogLegendItem(tile CatalogTile) {
 templ catalogRectangle(tile CatalogTile) {
 	<rect class={ "catalog-tile", tile.Tone } x={ tile.X } y={ tile.Y } width={ tile.W } height={ tile.H }><title>{ tile.Label }</title></rect>
 	if tile.ShowLabel {
-		<text class="catalog-name" x={ tile.LX } y={ tile.LY } aria-hidden="true">
+		<text class={ "catalog-name", catalogTileLabelClass(tile) } x={ tile.LX } y={ tile.LY } aria-hidden="true">
 			{ tile.Name }
 			<tspan class="catalog-value" x={ tile.LX } dy="17">{ tile.Value }</tspan>
 		if meaning := catalogToneLabel(tile.Tone); meaning != "" {

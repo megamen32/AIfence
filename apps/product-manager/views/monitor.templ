@@ -31,7 +31,6 @@ templ MonitorPanel(m *Monitor) {
 				}
 			</details>
 		}
-			@signalLegend(m)
 		<section class="dashboard-exceptions" aria-label="Открытые исключения">
 			<div class="dashboard-heading"><h2>Открытые исключения</h2><small>Потенциал в ₽/нед</small></div>
 			if len(m.Pulse) == 0 {
@@ -64,43 +63,6 @@ templ MonitorPanel(m *Monitor) {
 				</article>
 			}
 		</section>
-	</section>
-}
-
-templ signalLegend(m *Monitor) {
-	<section class="dashboard-signal-legend" aria-label="Легенда тревоги и контроля">
-		<div class="dashboard-heading">
-			<h2>Тревога и контроль</h2>
-			<small>Процент сигнала и его окно</small>
-		</div>
-		<div class="signal-legend-list">
-			for _, p := range m.Pulse {
-				<div class="signal-legend-item signal-legend-alert">
-					<span class="signal-legend-mark" aria-hidden="true"></span>
-					<div>
-						<strong>Тревога</strong>
-						<b>{ p.Product }</b>
-						if p.Comparison != "" {
-							<small>{ p.Comparison }</small>
-						}
-					</div>
-					if p.Change != "" {
-						<strong class="signal-legend-value">{ p.Change }</strong>
-					}
-					if p.ControlName != "" || p.ControlVendor != "" {
-						<div class="signal-legend-item signal-legend-control">
-							<span class="signal-legend-mark" aria-hidden="true"></span>
-							<div>
-								<strong>Контроль</strong>
-								<b>{ pulseControlName(p) }</b>
-								<small>Нейтральный ориентир для того же окна</small>
-							</div>
-							<strong class="signal-legend-value">ориентир</strong>
-						</div>
-					}
-				</div>
-			}
-		</div>
 	</section>
 }
 
