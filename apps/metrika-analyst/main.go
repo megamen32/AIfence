@@ -8,6 +8,7 @@ import (
 	"github.com/airlockrun/agentsdk"
 	"github.com/airlockrun/goai/tool"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,8 +16,16 @@ import (
 	"strings"
 )
 
-//go:embed INSTRUCTIONS.md index.html
+//go:embed INSTRUCTIONS.md index.html fixtures/*.json
 var assets embed.FS
+
+func embeddedEvidence(path string) ([]byte, bool) {
+	if !strings.HasPrefix(path, "fixtures/") {
+		return nil, false
+	}
+	b, err := assets.ReadFile(path)
+	return b, err == nil
+}
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
@@ -26,6 +35,11 @@ func newAgent() *agentsdk.Agent {
 	ec := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "ecommerce_confirmed", Description: "Подтверждена непрерывная инструментация e-commerce за анализируемые периоды", Default: "false", Pattern: "^(true|false)$"})
 	file := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "evidence_path", Description: "Необязательный путь к явно выбранному evidence-v1 JSON в файлах Airlock; пусто — live MCP"})
 	demoRoot := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "demo_data_root", Description: "Разрешённый каталог demo_sources/data с original/sandbox evidence-v1 JSON"})
+	watchContext := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "watch_context_path", Description: "Путь к авторизованному JSON с релизами, задачами, разрывами и интервью"})
+	a.RegisterDirectory("evidence", agentsdk.DirectoryOpts{
+		Read: agentsdk.AccessUser, Write: agentsdk.AccessAdmin, List: agentsdk.AccessUser, Scope: agentsdk.ScopeUser,
+		Description: "Authorized evidence files provisioned for this caller or workspace",
+	})
 	s := Service{call: func(ctx context.Context, n string, args any) (json.RawMessage, error) {
 		r, e := m.CallTool(ctx, n, args)
 		if e != nil || r == nil || r.IsError {
@@ -47,29 +61,54 @@ func newAgent() *agentsdk.Agent {
 		p, _ := file.Get(ctx)
 		return Settings{n, e == "true", p}
 	}, read: func(ctx context.Context, p string) ([]byte, error) {
+		if fixture, ok := embeddedEvidence(p); ok {
+			return fixture, nil
+		}
 		root, _ := demoRoot.Get(ctx)
-		if root == "" {
-			root = filepath.Join("demo_sources", "data")
-		}
-		base, _ := filepath.Abs(root)
-		candidate := p
-		if !filepath.IsAbs(candidate) {
-			candidate = filepath.Join(base, candidate)
-		}
-		candidate, _ = filepath.Abs(candidate)
-		allowed := candidate == base || strings.HasPrefix(candidate, base+string(os.PathSeparator))
-		if allowed && strings.HasSuffix(strings.ToLower(candidate), ".json") {
-			if b, err := os.ReadFile(candidate); err == nil {
-				return b, nil
+		if root != "" && strings.HasSuffix(strings.ToLower(p), ".json") {
+			name := p
+			if filepath.IsAbs(name) {
+				if !filepath.IsAbs(root) {
+					name = ""
+				} else {
+					name, _ = filepath.Rel(root, name)
+				}
+			}
+			if name != "" && filepath.IsLocal(name) {
+				r, err := os.OpenRoot(root)
+				if err == nil {
+					defer r.Close()
+					f, err := r.Open(name)
+					if err == nil {
+						defer f.Close()
+						info, err := f.Stat()
+						if err == nil && info.Mode().IsRegular() {
+							return io.ReadAll(io.LimitReader(f, (8<<20)+1))
+						}
+					}
+				}
 			}
 		}
-		return a.ReadFile(ctx, p)
+		resolved, err := a.ResolveFilePath(ctx, p, agentsdk.FileOperationRead)
+		if err != nil {
+			return nil, err
+		}
+		f, err := a.OpenFile(ctx, string(resolved))
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		return io.ReadAll(io.LimitReader(f, (8<<20)+1))
 	}}
 	instructions, _ := assets.ReadFile("INSTRUCTIONS.md")
 	a.AddInstruction(&agentsdk.Instruction{Text: string(instructions)})
 	a.RegisterTool(tool.Typed[Query, Batch]("query_metrics").Description("Read exact period metrics from configured MCP or explicitly selected historical evidence file.").Execute(s.Query).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[Compare, Batch]("compare_periods").Description("Compare equal non-overlapping periods; output evidence-v1 including changes.").Execute(s.Compare).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[CheckInput, CheckResult]("check_metrika").Description("Check authorized counter or historical file. Never returns token.").Execute(s.Check).Build(), agentsdk.AccessUser)
+	registerWatch(a, Watch{series: s, contextPath: func(ctx context.Context) string {
+		p, _ := watchContext.Get(ctx)
+		return p
+	}})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Что изменилось?", Prompt: "Сравни две последние полные недели. Покажи источники, отклонения и ограничения."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Оценить релиз", Prompt: "Помоги оценить результат релиза: уточни дату, критерий успеха и сопоставимые периоды."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Проверить источник", Prompt: "Проверь подключение Метрики или выбранную выгрузку."})

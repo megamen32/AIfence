@@ -1,0 +1,495 @@
+{
+  "schema_version": "aifence.v1",
+  "source": "metrika",
+  "as_of": "2023-03-03T23:59:59Z",
+  "status": "ok",
+  "observations": [
+    {
+      "id": "synthetic-watch/demo_target/1",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 100,
+      "unit": "index",
+      "period": {
+        "from": "2022-12-26",
+        "to": "2023-01-01"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 1",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/2",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 100,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-02",
+        "to": "2023-01-08"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 2",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/3",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 100,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-09",
+        "to": "2023-01-15"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 3",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/4",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 100,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-16",
+        "to": "2023-01-22"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 4",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/5",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 145,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-23",
+        "to": "2023-01-29"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 5",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/6",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 100,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-30",
+        "to": "2023-02-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 6",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/7",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 75,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-06",
+        "to": "2023-02-12"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 7",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/8",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 65,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-13",
+        "to": "2023-02-19"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 8",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/9",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 60,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-20",
+        "to": "2023-02-26"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 9",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_target/10",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 35,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-27",
+        "to": "2023-03-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_target, week 10",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch",
+        "partial_week": true,
+        "available_on": "2023-03-03"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/1",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2022-12-26",
+        "to": "2023-01-01"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 1",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/2",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 91,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-02",
+        "to": "2023-01-08"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 2",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/3",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-09",
+        "to": "2023-01-15"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 3",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/4",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 89,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-16",
+        "to": "2023-01-22"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 4",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/5",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-23",
+        "to": "2023-01-29"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 5",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/6",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 91,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-30",
+        "to": "2023-02-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 6",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/7",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-06",
+        "to": "2023-02-12"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 7",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/8",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-13",
+        "to": "2023-02-19"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 8",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/9",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 89,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-20",
+        "to": "2023-02-26"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 9",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch"
+      }
+    },
+    {
+      "id": "synthetic-watch/demo_control/10",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 45,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-27",
+        "to": "2023-03-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-watch",
+        "locator": "demo_control, week 10",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "watch",
+        "partial_week": true,
+        "available_on": "2023-03-03"
+      }
+    }
+  ],
+  "warnings": [
+    "Synthetic watchdog replay fixture. No customer observations."
+  ]
+}

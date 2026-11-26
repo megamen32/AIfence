@@ -1,0 +1,395 @@
+{
+  "schema_version": "aifence.v1",
+  "source": "metrika",
+  "as_of": "2023-03-27T00:00:00Z",
+  "status": "ok",
+  "observations": [
+    {
+      "id": "synthetic-after-fix/demo_target/1",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 100,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-30",
+        "to": "2023-02-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 1",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_target/2",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 75,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-06",
+        "to": "2023-02-12"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 2",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_target/3",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 65,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-13",
+        "to": "2023-02-19"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 3",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_target/4",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 60,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-20",
+        "to": "2023-02-26"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 4",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_target/5",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 103,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-27",
+        "to": "2023-03-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 5",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_target/6",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 107,
+      "unit": "index",
+      "period": {
+        "from": "2023-03-06",
+        "to": "2023-03-12"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 6",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_target/7",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 104,
+      "unit": "index",
+      "period": {
+        "from": "2023-03-13",
+        "to": "2023-03-19"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 7",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_target/8",
+      "kind": "metric",
+      "product_key": "demo_target",
+      "metric_key": "orders_index",
+      "value": 106,
+      "unit": "index",
+      "period": {
+        "from": "2023-03-20",
+        "to": "2023-03-26"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_target, week 8",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/1",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 91,
+      "unit": "index",
+      "period": {
+        "from": "2023-01-30",
+        "to": "2023-02-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 1",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/2",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-06",
+        "to": "2023-02-12"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 2",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/3",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-13",
+        "to": "2023-02-19"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 3",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/4",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 89,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-20",
+        "to": "2023-02-26"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 4",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/5",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-02-27",
+        "to": "2023-03-05"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 5",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/6",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 90,
+      "unit": "index",
+      "period": {
+        "from": "2023-03-06",
+        "to": "2023-03-12"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 6",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/7",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 91,
+      "unit": "index",
+      "period": {
+        "from": "2023-03-13",
+        "to": "2023-03-19"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 7",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    },
+    {
+      "id": "synthetic-after-fix/demo_control/8",
+      "kind": "metric",
+      "product_key": "demo_control",
+      "metric_key": "orders_index",
+      "value": 89,
+      "unit": "index",
+      "period": {
+        "from": "2023-03-20",
+        "to": "2023-03-26"
+      },
+      "segment": "self_service",
+      "source_ref": {
+        "source_id": "synthetic-after-fix",
+        "locator": "demo_control, week 8",
+        "revision": "fixture:v1"
+      },
+      "status": "observed",
+      "details": {
+        "synthetic": true,
+        "origin": "synthetic_fixture",
+        "scenario_id": "after_fix"
+      }
+    }
+  ],
+  "warnings": [
+    "Synthetic follow-up for demonstration. No customer observations."
+  ]
+}

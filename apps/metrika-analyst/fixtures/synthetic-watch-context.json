@@ -1,0 +1,155 @@
+{
+  "schema_version": "aifence.watch-context.v1",
+  "synthetic": true,
+  "batches": {
+    "release": {
+      "schema_version": "aifence.v1",
+      "source": "release",
+      "as_of": "2023-03-03T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "synthetic-context/release",
+          "kind": "release",
+          "product_key": "demo_target",
+          "metric_key": "release_log",
+          "value": "Reworked the order options panel.",
+          "unit": "text",
+          "period": {
+            "from": "2023-02-05",
+            "to": "2023-02-05"
+          },
+          "source_ref": {
+            "source_id": "synthetic-watch-context",
+            "locator": "Releases!A2",
+            "revision": "fixture:v1"
+          },
+          "status": "observed",
+          "details": {
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "evidence_direction": "unknown",
+            "release_id": "DEMO-R1",
+            "metric_keys": [
+              "orders_index"
+            ]
+          }
+        }
+      ],
+      "warnings": [
+        "Synthetic context for the watchdog demo."
+      ]
+    },
+    "backlog": {
+      "schema_version": "aifence.v1",
+      "source": "backlog",
+      "as_of": "2023-03-03T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "synthetic-context/backlog",
+          "kind": "task",
+          "product_key": "demo_target",
+          "metric_key": "backlog_item",
+          "value": "Check orders from the product selection form.",
+          "unit": "text",
+          "period": {
+            "from": "2023-02-07",
+            "to": "2023-03-03"
+          },
+          "source_ref": {
+            "source_id": "synthetic-watch-context",
+            "locator": "Backlog!A2",
+            "revision": "fixture:v1"
+          },
+          "status": "observed",
+          "details": {
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "evidence_direction": "unknown",
+            "task_id": "DEMO-T1",
+            "metric_keys": [
+              "orders_index"
+            ]
+          }
+        }
+      ],
+      "warnings": [
+        "Synthetic context for the watchdog demo."
+      ]
+    },
+    "research": {
+      "schema_version": "aifence.v1",
+      "source": "research",
+      "as_of": "2023-03-03T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "synthetic-context/research",
+          "kind": "research",
+          "product_key": "demo_target",
+          "metric_key": "interview_excerpt",
+          "value": "I called to order when I could not find the options I needed.",
+          "unit": "text",
+          "period": {
+            "from": "2023-02-14",
+            "to": "2023-02-14"
+          },
+          "source_ref": {
+            "source_id": "synthetic-watch-context",
+            "locator": "Interviews!B2",
+            "revision": "fixture:v1"
+          },
+          "status": "observed",
+          "details": {
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "evidence_direction": "unknown"
+          }
+        }
+      ],
+      "warnings": [
+        "Synthetic context for the watchdog demo."
+      ]
+    },
+    "metrika": {
+      "schema_version": "aifence.v1",
+      "source": "metrika",
+      "as_of": "2023-03-03T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "synthetic-context/metrika",
+          "kind": "metric",
+          "product_key": "demo_target",
+          "metric_key": "data_break",
+          "value": null,
+          "unit": "text",
+          "period": {
+            "from": "2023-02-01",
+            "to": "2023-03-03"
+          },
+          "source_ref": {
+            "source_id": "synthetic-watch-context",
+            "locator": "Instrumentation!A2",
+            "revision": "fixture:v1"
+          },
+          "status": "missing",
+          "details": {
+            "synthetic": true,
+            "origin": "synthetic_fixture",
+            "evidence_direction": "unknown",
+            "effect": "missing",
+            "metric_keys": [
+              "add_to_cart"
+            ],
+            "reason": "event_not_instrumented"
+          }
+        }
+      ],
+      "warnings": [
+        "Synthetic context for the watchdog demo."
+      ]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+/demo_sources/data/
+/views/static/app.css
+**/__pycache__/
+**/.venv/
+**/node_modules/
+**/.env
+**/.env.*
+**/.DS_Store

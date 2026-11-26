@@ -12,6 +12,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 import zipfile
@@ -20,9 +21,6 @@ from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
-DATA.mkdir(exist_ok=True)
-WORKBOOK_ID = "1ieTD31tRX6m021Kw6Nz-o25V9K1pk4ZN"
-WORKBOOK_NAME = "Датасет_ИИ-помощник_PM_v17.xlsx"
 COUNTER_ID = 114698578
 HOLDOUT_SHEETS = {"Эталонный_кейс"}  # organizers' answer key: never agent input
 
@@ -41,9 +39,7 @@ def digest(value: object) -> str:
 
 def ref(source_id: str, locator: str) -> dict:
     out = {"source_id": source_id, "locator": locator}
-    if source_id == "softline-workbook-imported":
-        out["revision"] = "workbook:" + WORKBOOK_ID
-    else:
+    if source_id != "softline-workbook-imported":
         out["revision"] = "fixture:aifence-sandbox-v1"
     return out
 
@@ -69,7 +65,7 @@ def evidence(source: str, observations: list[dict], warnings: list[str]) -> dict
 SALES_SHEET = "Продажи"
 SALES_PRODUCT_KEYS = {"Kaspersky Endpoint Security": "kaspersky_endpoint_security",
                       "Astra Linux Special Edition": "astra_linux_special_edition"}
-SALES_CAVEATS = ["orders_index is an index (base period 04.05.2026-28.06.2026 = 100), not a count of orders or revenue.",
+SALES_CAVEATS = ["orders_index is an index, not a count of orders or revenue.",
                  "Only self-service orders (Самостоятельные заказы клиентов) are included."]
 
 
@@ -85,7 +81,7 @@ def sales_index_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
     pos = {name: i for i, name in enumerate(rows[0])}
 
     def cell(row: list[str], name: str) -> str:
-        i = pos[name]
+        i = pos.get(name, len(row))
         return row[i].strip() if i < len(row) else ""
 
     out: list[dict] = []
@@ -105,7 +101,7 @@ def sales_index_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
             caveats.append(comment)
         details = {"workbook_sheet": SALES_SHEET, "workbook_row": row_no, "product_family": family,
                    "base_period": cell(row, "base_period"), "channel": cell(row, "channel"),
-                   "orders_index_4w": cell(row, "orders_index_4w"), "synthetic": False}
+                   "partial_week": "неполн" in comment.casefold(), "synthetic": False}
         out.append(obs(product_key, "orders_index", value, "index", start.isoformat(),
                        (start + dt.timedelta(days=6)).isoformat(), "softline-workbook-imported",
                        f"{SALES_SHEET}!row {row_no}", "observed" if value is not None else "missing",
@@ -145,8 +141,8 @@ def sandbox_observations() -> list[dict]:
         out.append(obs(product, metric, value, unit, start, end, sid, f"scenario:{scenario}", status, segment,
                        caveats, {"scenario_id": scenario, "synthetic": True}))
     # Equal seven-day windows make compare_periods deterministic.
-    add("kes_regression", "kaspersky_endpoint_security", "orders", 166, "count", "2026-09-14", "2026-09-20")
-    add("kes_regression", "kaspersky_endpoint_security", "orders", 112, "count", "2026-10-05", "2026-10-11")
+    add("kes_regression", "kaspersky_endpoint_security", "orders", 150, "count", "2026-09-14", "2026-09-20")
+    add("kes_regression", "kaspersky_endpoint_security", "orders", 100, "count", "2026-10-05", "2026-10-11")
     add("kes_regression", "astra_control", "orders", 90, "count", "2026-09-14", "2026-09-20")
     add("kes_regression", "astra_control", "orders", 87, "count", "2026-10-05", "2026-10-11")
     add("tracking_gap", "kaspersky_endpoint_security", "add_to_cart", None, "count", "2026-10-05", "2026-10-11", status="missing",
@@ -178,23 +174,43 @@ def _xlsx_values(path: Path) -> dict[str, list[list[str]]]:
         out: dict[str, list[list[str]]] = {}
         for sheet in wb.findall("m:sheets/m:sheet", NS):
             name = sheet.attrib["name"]
+            if name.strip().casefold() in {item.casefold() for item in HOLDOUT_SHEETS}:
+                continue
             target = targets[sheet.attrib["{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"]]
             target = target.lstrip("/")
             if not target.startswith("xl/"):
                 target = "xl/" + target
             root = ET.fromstring(z.read(target))
-            rows: list[list[str]] = []
+            rows = {}
             for row in root.findall("m:sheetData/m:row", NS):
-                vals: list[str] = []
+                fields = {}
                 for cell in row.findall("m:c", NS):
                     val = cell.find("m:v", NS)
                     text = "" if val is None else (val.text or "")
                     if cell.attrib.get("t") == "s" and text:
                         text = shared[int(text)]
-                    vals.append(text)
-                rows.append(vals)
-            out[name] = rows
+                    elif cell.attrib.get("t") == "inlineStr":
+                        text = "".join(t.text or "" for t in cell.findall(".//m:t", NS))
+                    fields[re.match(r"[A-Z]+", cell.attrib["r"]).group()] = text
+                rows[int(row.attrib["r"])] = fields
+            out[name] = xlsx_rows(rows)
         return out
+
+
+def xlsx_rows(rows, usable=lambda row: True):
+    """Keep empty row/column positions so observations retain actual worksheet coordinates."""
+    values = [[] for _ in range(max(rows, default=0))]
+    for n, row in rows.items():
+        if not usable(row) or any(h.casefold() in str(v).casefold() for v in row.values() for h in HOLDOUT_SHEETS):
+            continue
+        vals = values[n-1]
+        for column, value in row.items():
+            index = 0
+            for ch in column:
+                index = index * 26 + ord(ch) - ord("A") + 1
+            vals.extend([""] * (index - len(vals)))
+            vals[index - 1] = str(value)
+    return values
 
 
 def workbook_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
@@ -205,7 +221,10 @@ def workbook_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
     pos = {name: i for i, name in enumerate(header)}
     out: list[dict] = []
     for row_no, row in enumerate(rows[1:], 2):
-        if not row or len(row) < 7 or not row[pos.get("date", 0)] or not row[pos.get("metric_id", 1)]:
+        if not row:
+            continue
+        row = row + [""] * max(0, len(header) - len(row))
+        if not row[pos["date"]] or not row[pos["metric_id"]]:
             continue
         date = row[pos["date"]]
         metric = row[pos["metric_id"]]
@@ -225,7 +244,7 @@ def workbook_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
                    "period_type": row[pos.get("period_type", 4)] if len(row) > pos.get("period_type", 4) else "",
                    "sample_size": sample, "product_label": product, "synthetic": False}
         out.append(obs(product_key, metric, value, unit, date, date, "softline-workbook-imported",
-                        f"Metрики_данные!row {row_no}", status, row[pos.get("segment", 3)] or "all",
+                        f"Метрики_данные!row {row_no}", status, row[pos.get("segment", 3)] or "all",
                         [comment] if comment else [], details))
     return out
 
@@ -256,14 +275,20 @@ def build_db(workbook: Path | None = None) -> dict:
         for sheet, rows in sheets.items():
             sheet_counts[sheet] = len(rows)
             for n, row in enumerate(rows, 1):
+                if not row:
+                    continue
                 if any(h in cell for h in HOLDOUT_SHEETS for cell in row):
                     skipped_refs += 1  # rows that name the answer-key sheet are not agent input
                     continue
                 con.execute("insert into raw_rows values (?,?,?,?)",
                             ("softline-workbook-imported", sheet, n, json.dumps(row, ensure_ascii=False)))
                 workbook_rows += 1
-    provenance = {"kind": "imported_historical", "immutable": True, "workbook_name": WORKBOOK_NAME,
-                  "workbook_id": WORKBOOK_ID, "sheet_counts": sheet_counts,
+    workbook_ref = {}
+    if workbook and workbook.exists():
+        with workbook.open("rb") as source_file:
+            workbook_ref = {"source_id": workbook.name, "revision": "sha256:" + hashlib.file_digest(source_file, "sha256").hexdigest()}
+    provenance = {"kind": "imported_historical", "immutable": True, "workbook": workbook_ref,
+                  "sheet_counts": sheet_counts,
                   "complete_workbook_available": bool(workbook and workbook.exists()),
                   "holdout_reference_rows_skipped": skipped_refs,
                   "snapshot_note": "Workbook rows and the weekly sales index are ingested when --workbook is supplied; holdout sheet excluded."}
@@ -288,9 +313,10 @@ def build_db(workbook: Path | None = None) -> dict:
             json.dumps(item.get("caveats", []), ensure_ascii=False), item["source_ref"]["locator"], json.dumps(details, ensure_ascii=False)))
     con.commit()
     con.close()
+    for item in imported + sales:
+        item["source_ref"].update(workbook_ref)
     original = evidence("original", imported + sales, [
         "Imported historical source: preserve as evidence; no live fallback.",
-        "Source workbook: " + WORKBOOK_NAME + " (Drive file " + WORKBOOK_ID + ").",
         "Kaspersky cart additions are unknown because T-08 tracking is absent; unknown is not zero.",
     ])
     sandbox = evidence("sandbox", sandbox_observations(), [

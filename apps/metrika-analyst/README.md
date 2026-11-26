@@ -55,3 +55,58 @@ INSTRUCTIONS.md встроен в Go-бинарник и зарегистрир�
 - Actual npm packages installed; Supergateway streamable HTTP initialized, requests without gateway key rejected, six-tool allowlist verified. Real BoxLab metadata, report and comparison calls against a local synthetic API passed (-20% comparison).
 - Reproduce: `npm ci --omit=dev && python3 smoke_boxlab.py`. This test uses only a localhost synthetic API and never accesses a customer's account.
 - Live Yandex token/counter not configured. Local Airlock HTTP at :42080 was unavailable. No end-to-end deployment or real customer data acceptance claimed.
+
+## Сторож и исторические свидетельства
+
+| SDK tool | Вход | Результат |
+|---|---|---|
+| `detect_signal`, `replay_signals` | `product_key`, `control_product_key`, `metric_key`, `from`, `to`; опционально `as_of`, `segment`, `source_path`, `context_path`, `scenario_id`, `drop_pct`, `control_max_pct` | Evidence-v1 `source=sales`, `watchdog.alert`. Одна неделя для detect, ряд для replay. |
+| `releases_in_window` | `from`, `to`; опционально `product_key`, `source_path`, `limit` | Релизы и связанные метрики и задачи. |
+| `backlog_for_metrics` | `metric_keys`; опционально пара `from`, `to`, а также `product_key`, `source_path`, `limit` | Задачи, у которых указана хотя бы одна из метрик, и ссылки на определения. |
+| `data_breaks_in_window` | `from`, `to`; опционально `metric_keys`, `product_key`, `source_path`, `limit` | Разрывы учёта, исключаемые и неполные периоды. |
+| `interview_search` | `keywords`; опционально `product_key`, `source_path`, `limit` | Короткие цитаты с координатами ячеек. Поиск буквальный, без учёта регистра. |
+
+Даты включительные. Для каждой недели сравниваются два соседних окна по
+четыре недели у цели и контроля. В каждом окне верхний вклад недели ограничен
+1,4 медианы окна. Тревога требует падения цели и падения с поправкой на контроль
+минимум на `drop_pct` (20% по умолчанию). Контроль должен оставаться в пределах
+`control_max_pct` (20% по умолчанию). Пропуск, дубль, разрыв учёта, открытая
+или помеченная неполной неделя дают `null` с причиной. Соседние недели могут
+обе вернуть `true`. Идентификатор решения стабилен для недели и серии.
+
+`query_metrics` и `compare_periods` считают средние исторического
+`orders_index` по окнам с понедельника по воскресенье. Для индекса окна
+могут иметь разную длину. По умолчанию наличие неполной недели оставляет
+среднее неизвестным. В `compare_periods` опция `include_incomplete: true`
+показывает опубликованное значение как `estimated`, включая зависимые изменения.
+
+### Встроенный синтетический прогон
+
+```javascript
+await platform.inspectApp({app:"metrika-analyst",section:"tools"})
+await apps.metrika_analyst.tools.replay_signals({
+  product_key:"demo_target", control_product_key:"demo_control",
+  metric_key:"orders_index", from:"2023-02-13", to:"2023-03-05", as_of:"2023-03-03",
+  source_path:"fixtures/synthetic-watch.json",
+  context_path:"fixtures/synthetic-watch-context.json"
+})
+```
+
+Ожидаемые значения `false → true → null`. Для контекстных вызовов
+выберите `source_path:"fixtures/synthetic-watch-context.json"`.
+Для повторного замера цели и контроля используйте
+`fixtures/synthetic-after-fix.json`, база 2023-01-30–2023-02-26,
+окно после исправления 2023-02-27–2023-03-26.
+
+Приватные входы готовит [импорт](../../data-tools/README.md). Для штатного
+хранилища Airlock укажите авторизованные пути в `evidence_path` и
+`watch_context_path`. Каталог `evidence` имеет область текущего пользователя.
+`demo_data_root` включает отдельный режим общей папки в закрытой установке,
+где все допущенные пользователи приложения имеют доступ к загруженным данным.
+Приватная папка исключена из source bundle SDK. В публичной конфигурации
+используйте встроенные фикстуры и оставьте приватные источники ненастроенными.
+
+Сборка выполняется одним процессом сборки SDK.
+`GOMAXPROCS=2 GOFLAGS=-p=1 go tool air build` проверяет исходный пакет,
+манифест, replay, контроль, разрывы и повторный замер. Для приватной проверки
+укажите `AIFENCE_WATCH_CASE` на каталог со снимками и локальным оракулом.

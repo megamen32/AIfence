@@ -21,12 +21,15 @@ type Ref struct {
 	URL      string `json:"url,omitempty"`
 	Revision string `json:"revision,omitempty"`
 }
-type Observation struct {
+type Observation = EvidenceObservation[float64]
+type Batch = EvidenceBatch[float64]
+
+type EvidenceObservation[V any] struct {
 	ID            string         `json:"id"`
 	Kind          string         `json:"kind"`
 	ProductKey    string         `json:"product_key"`
 	MetricKey     string         `json:"metric_key"`
-	Value         *float64       `json:"value"`
+	Value         *V             `json:"value"`
 	Unit          string         `json:"unit"`
 	Period        Period         `json:"period"`
 	Segment       string         `json:"segment,omitempty"`
@@ -40,13 +43,13 @@ type Observation struct {
 	ComparisonKey string         `json:"comparison_key,omitempty"`
 	Details       map[string]any `json:"details,omitempty"`
 }
-type Batch struct {
-	SchemaVersion string        `json:"schema_version"`
-	Source        string        `json:"source"`
-	AsOf          string        `json:"as_of"`
-	Status        string        `json:"status"`
-	Observations  []Observation `json:"observations"`
-	Warnings      []string      `json:"warnings"`
+type EvidenceBatch[V any] struct {
+	SchemaVersion string                   `json:"schema_version"`
+	Source        string                   `json:"source"`
+	AsOf          string                   `json:"as_of"`
+	Status        string                   `json:"status"`
+	Observations  []EvidenceObservation[V] `json:"observations"`
+	Warnings      []string                 `json:"warnings"`
 }
 type Query struct {
 	ProductKey string   `json:"product_key"`
@@ -57,14 +60,15 @@ type Query struct {
 	SourcePath string   `json:"source_path,omitempty"`
 }
 type Compare struct {
-	ProductKey   string   `json:"product_key"`
-	MetricKeys   []string `json:"metric_keys"`
-	BaselineFrom string   `json:"baseline_from"`
-	BaselineTo   string   `json:"baseline_to"`
-	CurrentFrom  string   `json:"current_from"`
-	CurrentTo    string   `json:"current_to"`
-	Segment      string   `json:"segment,omitempty"`
-	SourcePath   string   `json:"source_path,omitempty"`
+	IncludeIncomplete bool     `json:"include_incomplete,omitempty"`
+	ProductKey        string   `json:"product_key"`
+	MetricKeys        []string `json:"metric_keys"`
+	BaselineFrom      string   `json:"baseline_from"`
+	BaselineTo        string   `json:"baseline_to"`
+	CurrentFrom       string   `json:"current_from"`
+	CurrentTo         string   `json:"current_to"`
+	Segment           string   `json:"segment,omitempty"`
+	SourcePath        string   `json:"source_path,omitempty"`
 }
 type CheckInput struct {
 	SourcePath string `json:"source_path,omitempty"`
@@ -111,6 +115,9 @@ func normalize(q Query) (Query, error) {
 	}
 	if q.Segment == "" {
 		q.Segment = "all"
+		if len(q.MetricKeys) == 1 && strings.TrimSpace(q.MetricKeys[0]) == "orders_index" {
+			q.Segment = "self_service"
+		}
 	}
 	if len(q.MetricKeys) == 0 || len(q.MetricKeys) > 12 {
 		return q, fmt.Errorf("specify 1–12 metric keys")
@@ -194,7 +201,20 @@ func (s Service) query(ctx context.Context, q Query, c Settings) (Batch, error) 
 		if x.Status != "ok" {
 			out.Status = "partial"
 		}
+		start, _ := time.Parse(time.DateOnly, q.From)
+		end, _ := time.Parse(time.DateOnly, q.To)
 		for _, k := range q.MetricKeys {
+			if k == "orders_index" && start.Weekday() == time.Monday && end.Weekday() == time.Sunday {
+				o, err := weeklyAverage(x, q, p, false)
+				if err != nil {
+					return Batch{}, err
+				}
+				out.Observations = append(out.Observations, o)
+				if o.Status != "observed" {
+					out.Status = "partial"
+				}
+				continue
+			}
 			var matches []Observation
 			for _, o := range x.Observations {
 				seg := chosen(o.Segment, "all")
@@ -327,6 +347,15 @@ func observed(o Observation, value *float64, scale float64, meta reportMeta) Obs
 	return o
 }
 func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
+	cfg := s.config(ctx)
+	path := chosen(in.SourcePath, cfg.EvidencePath)
+	weekly := path != "" && len(in.MetricKeys) == 1 && strings.TrimSpace(in.MetricKeys[0]) == "orders_index"
+	if weekly && in.Segment == "" {
+		in.Segment = "self_service"
+	}
+	if in.IncludeIncomplete && !weekly {
+		return Batch{}, fmt.Errorf("include_incomplete applies only to historical orders_index")
+	}
 	a, e := normalize(Query{in.ProductKey, in.MetricKeys, in.BaselineFrom, in.BaselineTo, in.Segment, in.SourcePath})
 	if e != nil {
 		return Batch{}, e
@@ -337,10 +366,12 @@ func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
 	}
 	ad, _ := days(Period{a.From, a.To})
 	bd, _ := days(Period{b.From, b.To})
-	if ad != bd || a.To >= b.From {
-		return Batch{}, fmt.Errorf("require equal non-overlapping chronological periods")
+	if a.To >= b.From || !weekly && ad != bd {
+		return Batch{}, fmt.Errorf("require non-overlapping chronological periods, equal except for weekly index means")
 	}
-	cfg := s.config(ctx)
+	if weekly {
+		return s.compareWeekly(ctx, in, path, a, b)
+	}
 	if cfg.Counter > 0 && chosen(a.SourcePath, cfg.EvidencePath) == "" {
 		return s.compareLive(ctx, a, b, cfg)
 	}
@@ -383,7 +414,7 @@ func deltas(a, b Observation) []Observation {
 		abs.MetricKey = b.MetricKey + ".change_pp"
 		abs.Unit = "pp"
 	}
-	if a.Status != "observed" || b.Status != "observed" || a.Value == nil || b.Value == nil || a.Unit != b.Unit || a.Currency != b.Currency {
+	if a.Status != "observed" || b.Status != "observed" || a.Value == nil || b.Value == nil || a.Unit != b.Unit || a.Currency != b.Currency || a.ComparisonKey != b.ComparisonKey {
 		abs.Caveats = []string{"Missing, estimated or incompatible values."}
 		pct.Caveats = abs.Caveats
 		return []Observation{abs, pct}
