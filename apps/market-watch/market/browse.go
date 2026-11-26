@@ -136,6 +136,7 @@ type Comparison struct {
 	SKU       string            `json:"sku"`
 	Groups    []ComparisonGroup `json:"groups"`
 	Truncated bool              `json:"truncated"`
+	Partial   bool              `json:"partial,omitempty"`
 	ViewPath  string            `json:"view_path"`
 	ViewURL   string            `json:"view_url,omitempty"`
 }
@@ -213,11 +214,17 @@ func (s *Service) CompareSKU(ctx context.Context, in CompareInput) (Comparison, 
 	if err != nil {
 		return Comparison{}, err
 	}
-	result := Comparison{SKU: sku, Groups: []ComparisonGroup{}, Truncated: more,
+	result := Comparison{SKU: sku, Groups: []ComparisonGroup{}, Truncated: more, Partial: ev.Status == "partial",
 		ViewPath: "/?" + url.Values{"tab": {"compare"}, "q": {sku}}.Encode()}
 	if origin, err := agentsdk.AgentURLFromContext(ctx); err == nil {
 		result.ViewURL = strings.TrimRight(origin, "/") + result.ViewPath
 	}
+	result.Groups = groupOffers(ev.Observations, more, ev.Status == "partial")
+	return result, nil
+}
+
+func groupOffers(rows []Observation, more, partial bool) []ComparisonGroup {
+	groups := []ComparisonGroup{}
 	type conditions struct {
 		comparisonTerms
 		basis                 string
@@ -226,8 +233,8 @@ func (s *Service) CompareSKU(ctx context.Context, in CompareInput) (Comparison, 
 	// Convert only when both actual quote bases occur under the same explicitly
 	// documented pack terms. All stored rows keep their original units.
 	bases := map[comparisonTerms]packBases{}
-	keys := make([]conditions, len(ev.Observations))
-	for i, row := range ev.Observations {
+	keys := make([]conditions, len(rows))
+	for i, row := range rows {
 		d := row.Details
 		terms := termsOf(row)
 		keys[i] = conditions{terms, d.PriceBasis, quantityValue(d.Quantity), quantityValue(d.MaxQuantity)}
@@ -241,7 +248,7 @@ func (s *Service) CompareSKU(ctx context.Context, in CompareInput) (Comparison, 
 		bases[terms] = b
 	}
 	positions := map[conditions]int{}
-	for i, row := range ev.Observations {
+	for i, row := range rows {
 		key := keys[i]
 		label := ""
 		if bases[key.comparisonTerms].mixed() && onePackBasis(row, key.comparisonTerms) != "" {
@@ -251,15 +258,15 @@ func (s *Service) CompareSKU(ctx context.Context, in CompareInput) (Comparison, 
 		}
 		position, ok := positions[key]
 		if !ok {
-			position = len(result.Groups)
+			position = len(groups)
 			positions[key] = position
-			result.Groups = append(result.Groups, ComparisonGroup{Label: label})
+			groups = append(groups, ComparisonGroup{Label: label})
 		}
-		g := &result.Groups[position]
+		g := &groups[position]
 		g.Rows = append(g.Rows, row)
 	}
-	for i := range result.Groups {
-		g := &result.Groups[i]
+	for i := range groups {
+		g := &groups[i]
 		first := g.Rows[0]
 		d := first.Details
 		sellers := map[string]bool{}
@@ -269,7 +276,7 @@ func (s *Service) CompareSKU(ctx context.Context, in CompareInput) (Comparison, 
 		switch {
 		case more:
 			g.Reason = "Показаны первые 100 вариантов артикула. Общий минимум не рассчитан."
-		case ev.Status == "partial":
+		case partial:
 			g.Reason = "Снимок охватывает часть магазинов или содержит ранее сохранённые цены."
 		case keysInvalidTerms(first):
 			g.Reason = "В описании указаны несколько сроков или диапазон количества. Проверьте условия у продавца."
@@ -288,5 +295,5 @@ func (s *Service) CompareSKU(ctx context.Context, in CompareInput) (Comparison, 
 			g.Reason = "Минимум опубликованных цен при этих условиях. Даты наблюдений указаны у предложений. Налоги и итоговую сумму уточните у продавца."
 		}
 	}
-	return result, nil
+	return groups
 }
