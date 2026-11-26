@@ -1,0 +1,188 @@
+{
+  "schema_version": "aifence.case.v1",
+  "as_of": "2025-02-02T23:59:59Z",
+  "batches": [
+    {
+      "schema_version": "aifence.v1",
+      "source": "sales",
+      "as_of": "2025-02-02T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "fixture/earlier",
+          "kind": "metric",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "self_service_order_index",
+          "value": 100,
+          "unit": "index",
+          "period": {
+            "from": "2024-12-09",
+            "to": "2025-01-05"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!C2:C5"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        },
+        {
+          "id": "fixture/baseline",
+          "kind": "metric",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "self_service_order_index",
+          "value": 80,
+          "unit": "index",
+          "period": {
+            "from": "2025-01-06",
+            "to": "2025-02-02"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!C6:C9"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        },
+        {
+          "id": "fixture/control-earlier",
+          "kind": "metric",
+          "product_key": "qa/synthetic/lumen",
+          "metric_key": "self_service_order_index",
+          "value": 100,
+          "unit": "index",
+          "period": {
+            "from": "2024-12-09",
+            "to": "2025-01-05"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!D2:D5"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        },
+        {
+          "id": "fixture/control-baseline",
+          "kind": "metric",
+          "product_key": "qa/synthetic/lumen",
+          "metric_key": "self_service_order_index",
+          "value": 100,
+          "unit": "index",
+          "period": {
+            "from": "2025-01-06",
+            "to": "2025-02-02"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!D6:D9"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "schema_version": "aifence.v1",
+      "source": "research",
+      "as_of": "2025-02-02T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "fixture/interview",
+          "kind": "research",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "checkout_feedback",
+          "value": "Один участник не нашёл продление лицензии, другой попросил менеджера оформить заказ.",
+          "unit": "text",
+          "period": {
+            "from": "2025-01-31",
+            "to": "2025-01-31"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "research!B2:B3"
+          },
+          "status": "observed"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "schema_version": "aifence.v1",
+      "source": "backlog",
+      "as_of": "2025-02-02T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "fixture/auditing",
+          "kind": "task",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "existing_task",
+          "value": "Проверка разметки корзины открыта, результат отсутствует.",
+          "unit": "text",
+          "period": {
+            "from": "2025-01-30",
+            "to": "2025-01-30"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "backlog!A2:D2"
+          },
+          "status": "observed"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "schema_version": "aifence.v1",
+      "source": "market",
+      "as_of": "2025-02-02T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "fixture/prices",
+          "kind": "offer",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "comparable_offer_changes_pct",
+          "value": 0,
+          "unit": "percent",
+          "period": {
+            "from": "2025-01-06",
+            "to": "2025-02-02"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "prices!A2:D6"
+          },
+          "status": "observed"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "warnings": [
+    "Synthetic QA fixture. All brands, respondents, releases, measurements and locators are invented."
+  ]
+}

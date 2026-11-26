@@ -1,0 +1,217 @@
+{
+  "schema_version": "aifence.case.v1",
+  "as_of": "2025-03-09T23:59:59Z",
+  "batches": [
+    {
+      "schema_version": "aifence.v1",
+      "source": "sales",
+      "as_of": "2025-03-09T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "fixture/baseline",
+          "kind": "metric",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "self_service_order_index",
+          "value": 80,
+          "unit": "index",
+          "period": {
+            "from": "2025-01-06",
+            "to": "2025-02-02"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!C6:C9"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        },
+        {
+          "id": "fixture/control-baseline",
+          "kind": "metric",
+          "product_key": "qa/synthetic/lumen",
+          "metric_key": "self_service_order_index",
+          "value": 100,
+          "unit": "index",
+          "period": {
+            "from": "2025-01-06",
+            "to": "2025-02-02"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!D6:D9"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        },
+        {
+          "id": "fixture/after",
+          "kind": "metric",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "self_service_order_index",
+          "value": 100,
+          "unit": "index",
+          "period": {
+            "from": "2025-02-10",
+            "to": "2025-03-09"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!C11:C14"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        },
+        {
+          "id": "fixture/control-after",
+          "kind": "metric",
+          "product_key": "qa/synthetic/lumen",
+          "metric_key": "self_service_order_index",
+          "value": 105,
+          "unit": "index",
+          "period": {
+            "from": "2025-02-10",
+            "to": "2025-03-09"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!D11:D14"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        },
+        {
+          "id": "fixture/partial",
+          "kind": "metric",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "self_service_order_index",
+          "value": 95,
+          "unit": "index",
+          "period": {
+            "from": "2025-02-10",
+            "to": "2025-03-09"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "orders!C11:C13"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": false,
+            "quality": "comparable",
+            "measurement_kind": "product_outcome"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "schema_version": "aifence.v1",
+      "source": "metrika",
+      "as_of": "2025-03-09T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "fixture/tag-before",
+          "kind": "metric",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "self_service_order_index",
+          "value": 70,
+          "unit": "index",
+          "period": {
+            "from": "2025-01-06",
+            "to": "2025-02-02"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "events!B2:B5"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "measurement_repair"
+          }
+        },
+        {
+          "id": "fixture/tag-after",
+          "kind": "metric",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "self_service_order_index",
+          "value": 130,
+          "unit": "index",
+          "period": {
+            "from": "2025-02-10",
+            "to": "2025-03-09"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "events!B7:B10"
+          },
+          "status": "observed",
+          "segment": "all",
+          "details": {
+            "complete": true,
+            "quality": "comparable",
+            "measurement_kind": "measurement_repair"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "schema_version": "aifence.v1",
+      "source": "release",
+      "as_of": "2025-03-09T23:59:59Z",
+      "status": "ok",
+      "observations": [
+        {
+          "id": "fixture/fix",
+          "kind": "release",
+          "product_key": "qa/synthetic/atlas",
+          "metric_key": "published_change",
+          "value": "Обновлён выбор продления и проведена независимая проверка заказов.",
+          "unit": "text",
+          "period": {
+            "from": "2025-02-05",
+            "to": "2025-02-05"
+          },
+          "source_ref": {
+            "source_id": "synthetic/shop-lab-v1",
+            "locator": "releases!A3:C3"
+          },
+          "status": "observed",
+          "details": {
+            "hypothesis_id": "qa/synthetic/atlas/renewal"
+          }
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "warnings": [
+    "Synthetic QA fixture. All brands, respondents, releases, measurements and locators are invented."
+  ]
+}

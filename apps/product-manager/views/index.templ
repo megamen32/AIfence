@@ -1,0 +1,267 @@
+package views
+
+import "github.com/airlockrun/agentsdk/lucide"
+
+templ Index(v HomeView) {
+	@Layout("Продуктовые решения") {
+		<header class="app-identity" data-airlock-standalone-only>
+			@lucide.Icon("compass", "size-5")
+			<h1>Продуктовые решения</h1>
+		</header>
+		<section class="pm-tools" aria-label="Импорт данных">
+			<details>
+				<summary>
+					@lucide.Icon("upload", "size-4")
+					Импорт данных
+				</summary>
+				<form method="post" action="./import" enctype="multipart/form-data" class="upload-form">
+					<label>Снимок наблюдений в JSON, до 1 МиБ<input required type="file" name="file" accept="application/json,.json" class="file-input"/></label>
+					<button type="submit" class="btn btn-neutral">
+						@ActionIcon("upload")
+						Загрузить
+					</button>
+				</form>
+			</details>
+		</section>
+		<div data-airlock-topic="product-decisions" hx-get={ v.BoardURL } hx-trigger="airlock:change" hx-swap="innerHTML">
+			@Board(v)
+		</div>
+	}
+}
+
+templ Board(v HomeView) {
+	<div class="pm-board">
+		<nav class="pm-index" aria-label="Навигация">
+			<section>
+				<h2>Гипотезы</h2>
+				if len(v.Records)==0 {
+					<p class="muted compact">Пока нет решений</p>
+				}
+				for _,l:=range v.Records {
+					@navLink(l)
+				}
+			</section>
+			<section>
+				<h2>Снимки данных</h2>
+				if len(v.Snapshots)==0 {
+					<p class="muted compact">Пока нет данных</p>
+				}
+				for _,l:=range v.Snapshots {
+					@navLink(l)
+				}
+			</section>
+		</nav>
+		<article class="work">
+			if v.Detail!=nil {
+				<div class="muted meta">{ v.Detail.Product }<span class="chip">{ v.Detail.Status }</span></div>
+				<h2 class="headline">{ v.Detail.Title }</h2>
+				if len(v.Signals)>0 {
+					@signals(v.Signals)
+				}
+				<section class="next-action">
+					<h3>Что проверить первым</h3>
+					<p>{ v.Detail.Action }</p>
+				</section>
+				for _,g:=range v.Detail.Groups {
+					<section class="section-block">
+						<h3>{ g.Title }</h3>
+						for _,row:=range g.Rows {
+							@observation(row, false)
+						}
+					</section>
+				}
+				if len(v.Detail.Unknowns)>0 {
+					<section class="section-block">
+						<h3>Что ещё неизвестно</h3>
+						<ul class="unknowns">
+							for _,u:=range v.Detail.Unknowns {
+								<li>{ u }</li>
+							}
+						</ul>
+					</section>
+				}
+				<section class="section-block">
+					<h3>Как оценим результат</h3>
+					<dl class="criteria">
+						<dt>Показатель</dt>
+						<dd>{ v.Detail.Metric }</dd>
+						<dt>Условие успеха</dt>
+						<dd>{ v.Detail.Rule }</dd>
+						<dt>Базовый период</dt>
+						<dd>{ v.Detail.Baseline }</dd>
+						<dt>После релиза</dt>
+						<dd>{ v.Detail.Window }</dd>
+						if v.Detail.Control!="" {
+							<dt>Контроль</dt>
+							<dd>{ v.Detail.Control }</dd>
+						}
+					</dl>
+					if v.Detail.Assessment!="" {
+						<p class="result">{ v.Detail.Assessment }</p>
+					} else {
+						<p class="muted compact">Оценка появится после регистрации релиза и замера.</p>
+					}
+				</section>
+				<section class="task-area">
+					<h3>Локальный бэклог</h3>
+					if v.Detail.TaskID!="" {
+						<p class="task-line">
+							@lucide.Icon("circle-check", "size-5")
+							<strong>{ v.Detail.TaskID }</strong> · сгенерирована ИИ-помощником
+						</p>
+					} else {
+						@editForm(v.Detail)
+						<form method="post" action="./approve">
+							<input type="hidden" name="id" value={ v.Detail.ID }/>
+							<input type="hidden" name="version" value={ v.Detail.Version }/>
+							<button type="submit" name="confirmed" value="yes" class="btn btn-neutral">
+								@ActionIcon("list-plus")
+								Подтвердить и создать задачу
+							</button>
+						</form>
+					}
+					<a class="text-link" href={ v.Detail.SnapshotURL }>
+						<span>Открыть исходный снимок</span>
+						@lucide.Icon("arrow-up-right", "size-4")
+					</a>
+				</section>
+			} else if v.ShowSources {
+				<div class="meta muted">Снимок данных · { v.AsOf }</div>
+				<h2 class="headline">Наблюдения</h2>
+				if len(v.Signals)>0 {
+					@signals(v.Signals)
+				}
+				if v.CanInvestigate {
+					<form method="post" action="./investigate" class="investigate">
+						<input type="hidden" name="snapshot_id" value={ v.SnapshotID }/>
+						<button class="btn btn-neutral" type="submit">
+							@ActionIcon("search")
+							Разобрать изменение заказов
+						</button>
+					</form>
+				}
+				<nav class="filters" aria-label="Тип наблюдений">
+					for _,l:=range v.Filters {
+						<a href={ l.URL } aria-current={ active(l.Active) }>{ l.Label }</a>
+					}
+				</nav>
+				if len(v.Rows)==0 {
+					<p class="empty">В этом источнике нет наблюдений для выбранного среза.</p>
+				}
+				for _,row:=range v.Rows {
+					@observation(row, true)
+				}
+				<div class="paging">
+					if v.Prev!="" {
+						<a class="text-link" href={ v.Prev }>← Назад</a>
+					}
+					<span class="muted">{ v.RowsLabel }</span>
+					if v.Next!="" {
+						<a class="text-link" href={ v.Next }>Далее →</a>
+					}
+				</div>
+				if len(v.Warnings)>0 {
+					<details class="notes">
+						<summary>Ограничения источников</summary>
+						<ul class="unknowns">
+							for _,note:=range v.Warnings {
+								<li>{ note }</li>
+							}
+						</ul>
+					</details>
+				}
+			} else {
+				<h2 class="headline">Первое продуктовое решение</h2>
+				<p class="empty">Загрузите снимок через «Импорт данных». Здесь появятся цифры, источники и решения по бэклогу.</p>
+			}
+		</article>
+	</div>
+}
+
+func active(value bool) string {
+	if value {
+		return "page"
+	}
+	return "false"
+}
+
+templ navLink(l Link) {
+	<a class="nav-item" href={ l.URL } aria-current={ active(l.Active) }>
+		<strong>{ l.Label }</strong><small>{ l.Detail }</small>
+	</a>
+}
+
+templ signals(items []Signal) {
+	<section class="signal-grid" aria-label="Динамика индекса самостоятельных заказов">
+		for _,s:=range items {
+			<a class="signal" href={ s.URL }>
+				<span>{ s.Product }</span><strong>{ s.Change }</strong>
+				<small>Индекс { s.Before } → { s.After }</small>
+				<small class="muted">{ s.Period }</small>
+			</a>
+		}
+	</section>
+}
+
+templ observation(o EvidenceRow, showProduct bool) {
+	<div class="observation">
+		<div class="meta muted">
+			<span>{ o.Source }</span><span>{ o.Date }</span>
+			if showProduct {
+				<span>{ o.Product }</span>
+			}
+		</div>
+		<div class="obs-value">
+			<strong>{ o.Metric }</strong>
+			<span>{ o.Value }</span>
+		</div>
+		if o.Summary!="" {
+			<p class="muted compact">{ o.Summary }</p>
+		}
+		<details class="trace">
+			<summary>
+				@lucide.Icon("file-text", "size-4")
+				<span>{ o.Locator }</span>
+			</summary>
+			<p>{ o.SourceName }</p>
+			if o.Note!="" {
+				<p>{ o.Note }</p>
+			}
+			if o.SourceURL!="" {
+				<a class="text-link" href={ o.SourceURL } target="_blank" rel="noopener noreferrer">
+					<span>Перейти к источнику</span>
+					@lucide.Icon("arrow-up-right", "size-4")
+				</a>
+			}
+			<a class="text-link" href={ o.OpenURL }>Открыть наблюдение</a>
+		</details>
+	</div>
+}
+
+templ editForm(d *Decision) {
+	<details class="pm-edit" hx-preserve id={ "pm-edit-" + d.ID }>
+		<summary>@lucide.Icon("pencil", "size-4")
+<span>Изменить гипотезу</span></summary>
+		<form action="./edit" method="post">
+			<input name="id" type="hidden" value={ d.ID }/>
+			<input name="version" type="hidden" value={ d.Version }/>
+			<label>Название гипотезы<input class="input" name="title" value={ d.Title } required/></label>
+			<label>Что проверить первым<textarea class="textarea" name="action" rows="4" required>{ d.Action }</textarea></label>
+			<fieldset>
+				<legend>{ d.RuleLabel }</legend>
+				<div class="rule-edit">
+					<label>
+						Условие
+						<select name="operator" class="select" required>
+							<option value=">=" selected?={ d.Operator==">=" }>Не меньше</option>
+							<option value="<=" selected?={ d.Operator=="<=" }>Не больше</option>
+						</select>
+					</label>
+					<label>Порог<input type="text" name="threshold" inputmode="decimal" value={ d.Threshold } class="input" required/></label>
+				</div>
+			</fieldset>
+			<button type="submit" class="btn btn-outline">@ActionIcon("check")
+Сохранить изменения</button>
+		</form>
+	</details>
+}

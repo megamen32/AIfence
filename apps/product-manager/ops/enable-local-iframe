@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Run on the project's Mac after scripts/up to enable the Product Manager iframe."""
+
+import argparse
+import json
+import os
+import subprocess
+from pathlib import Path
+
+CONTEXT = "colima-aifence"
+CONTAINER = "aifence-caddy-local-1"
+SCOPE = "/config/apps/http/servers"
+HOST = "product-manager.localhost"
+BASE_HOSTS = {"market-watch.localhost", "baserow.localhost"}
+EXPRESSION = '{http.request.header.Sec-Fetch-Dest} == "iframe" || ({http.request.header.Sec-Fetch-Dest} != "document" && {http.request.header.Sec-Fetch-Storage-Access} != "")'
+HEADER = {
+    "handler": "headers",
+    "response": {
+        "deferred": True,
+        "replace": {"Set-Cookie": [{
+            "search_regexp": "^((?:__air_relay_nonce|__air_session)=[^;]*; Path=/; .*; HttpOnly); SameSite=Lax$",
+            "replace": "$1; Secure; SameSite=None; Partitioned",
+        }]},
+    },
+}
+
+
+def docker(*args):
+    process = subprocess.run(["docker", *args], capture_output=True, timeout=25)
+    if process.returncode:
+        raise SystemExit(f"Local Docker command failed (exit {process.returncode}).")
+    return process.stdout
+
+
+def validate_target():
+    endpoint = docker("context", "inspect", CONTEXT, "--format", "{{.Endpoints.docker.Host}}").decode().strip()
+    if endpoint != "unix://" + str(Path.home() / ".colima/aifence/docker.sock"):
+        raise SystemExit("Expected the local AIfence Colima socket.")
+    fmt = '{{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.service"}} {{json .NetworkSettings.Ports}}'
+    identity = docker("--context", CONTEXT, "inspect", CONTAINER, "--format", fmt).decode().split(maxsplit=2)
+    if identity[:2] != ["aifence", "caddy-local"]:
+        raise SystemExit("Expected the AIfence Caddy service.")
+    ports = json.loads(identity[2])
+    if ports.get("80/tcp") != [{"HostIp": "127.0.0.1", "HostPort": "42080"}] or ports.get("2019/tcp"):
+        raise SystemExit("Expected the loopback-only AIfence gateway and private admin endpoint.")
+
+
+def admin(path, *options):
+    # Never log config response bodies: unrelated routes can include private settings.
+    raw = docker("--context", CONTEXT, "exec", CONTAINER, "curl", "--noproxy", "*",
+                 "--silent", "--show-error", "--max-time", "12", "--include",
+                 *options, "http://localhost:2019" + path)
+    headers, separator, body = raw.partition(b"\r\n\r\n")
+    if not separator:
+        raise SystemExit("Malformed local Caddy response.")
+    lines = headers.decode("latin1").splitlines()
+    status = int(lines[0].split()[1])
+    values = dict((key.lower(), val.strip()) for key, val in
+                  (line.split(":", 1) for line in lines[1:] if ":" in line))
+    return status, values, body
+
+
+def matches(obj, path):
+    if isinstance(obj, list):
+        for i, item in enumerate(obj):
+            yield from matches(item, f"{path}/{i}")
+    if not isinstance(obj, dict):
+        return
+    conditions = obj.get("match")
+    if obj.get("handle") == [HEADER] and isinstance(conditions, list) and len(conditions) == 1:
+        cond = conditions[0]
+        if (isinstance(cond, dict) and set(cond) == {"expression", "host"}
+                and cond["expression"] == {"expr": EXPRESSION, "name": "market_embedded_login"}
+                and isinstance(cond["host"], list) and BASE_HOSTS <= set(cond["host"])
+                and all(isinstance(h, str) and h.endswith(".localhost") and "*" not in h for h in cond["host"])):
+            yield path + "/match/0/host", cond["host"]
+    for key, item in obj.items():
+        yield from matches(item, path + "/" + key)
+
+
+def read():
+    status, headers, body = admin(SCOPE)
+    if status != 200 or not headers.get("etag"):
+        raise SystemExit("Local Caddy did not return a versioned server configuration.")
+    config = json.loads(body)
+    found = list(matches(config, SCOPE))
+    if len(found) != 1:
+        raise SystemExit("Expected exactly one existing local CHIPS rule matching the pinned selector and headers.")
+    path, hosts = found[0]
+    if hosts.count(HOST) > 1:
+        raise SystemExit("Duplicate Product Manager host in the local matcher.")
+    return config, headers["etag"], path, hosts
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="inspect the matcher without changing it")
+    check = parser.parse_args().check
+    os.environ["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")
+    validate_target()
+    for _ in range(3):
+        config, etag, path, hosts = read()
+        if HOST in hosts:
+            print("Product Manager iframe host is already configured.")
+            return
+        if check:
+            raise SystemExit("Product Manager iframe host is missing.")
+        status, _, _ = admin(path, "-X", "POST", "-H", "Content-Type: application/json",
+                             "-H", "If-Match: " + etag, "--data-binary", json.dumps(HOST))
+        if status == 412:
+            continue
+        if not 200 <= status < 300:
+            raise SystemExit(f"Caddy declined the single-host update (HTTP {status}).")
+        hosts.append(HOST)
+        current, _, _, new_hosts = read()
+        if current != config or new_hosts.count(HOST) != 1:
+            raise SystemExit("The configuration changed during verification. Inspect the active matcher before retrying.")
+        print("Added only product-manager.localhost to the existing embedded-login rule.")
+        return
+    raise SystemExit("Concurrent configuration changes prevented a version-matched update. Retry after they finish.")
+
+
+if __name__ == "__main__":
+    main()
