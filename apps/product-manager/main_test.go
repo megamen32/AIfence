@@ -13,7 +13,7 @@ import (
 func TestAgentComposition(t *testing.T) {
 	manifest := newAgent().Manifest()
 	// The app description is visible before the model has inspected the detailed instructions.
-	for _, contract := range []string{"console.log((await", "discover_watchdog_series", "product_key", "опусти request_confirmation"} {
+	for _, contract := range []string{"console.log((await", "review_sales_and_prices", "observations", "опусти request_confirmation"} {
 		if !strings.Contains(manifest.Description, contract) {
 			t.Fatalf("visible description omits %q", contract)
 		}
@@ -27,7 +27,7 @@ func TestAgentComposition(t *testing.T) {
 	if len(manifest.Routes) == 0 {
 		t.Fatal("app must declare its HTTP routes")
 	}
-	for _, name := range []string{"save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis", "get_product_focus", "set_product_focus", "rank_hypotheses", "set_review_estimate", "private_review_link", "get_catalog_overview", "import_catalog_overview"} {
+	for _, name := range []string{"review_sales_and_prices", "save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis", "get_product_focus", "set_product_focus", "rank_hypotheses", "set_review_estimate", "private_review_link", "get_catalog_overview", "import_catalog_overview"} {
 		if !slices.ContainsFunc(manifest.Tools, func(tool wire.ToolDef) bool {
 			return tool.Name == name && tool.Access == wire.AccessUser && len(tool.InputSchema) > 0
 		}) {
@@ -55,10 +55,7 @@ func TestAgentComposition(t *testing.T) {
 	if !slices.ContainsFunc(manifest.Instructions, func(instruction wire.InstructionDef) bool {
 		return strings.HasPrefix(instruction.Text, "Начинай разрешённые чтения сразу") &&
 			strings.Contains(instruction.Text, "run_js с полями code и description") &&
-			strings.Contains(instruction.Text, `operation:"list_offers"`) &&
-			strings.Contains(instruction.Text, "apps.market_watch.tools.list_offers") &&
-			strings.Contains(instruction.Text, "compare_offers({sku})") &&
-			strings.Contains(instruction.Text, "scan_watchdog_series({})") &&
+			strings.Contains(instruction.Text, "console.log(await apps.product_manager.tools.review_sales_and_prices({}))") &&
 			strings.Contains(instruction.Text, "«Создать эту задачу»") &&
 			strings.Contains(instruction.Text, "Не проси ответить «да»") &&
 			!strings.Contains(instruction.Text, "fixtures/")
