@@ -15,9 +15,21 @@ python3 blind_test_generator.py generate \
   --output /path/to/blind-runs
 ```
 
-Each opaque `set-<hash>/input` contains only generic names:
+Use a new output directory for each run. The generator refuses to replace an
+existing dataset. Visible product names and SKU fields identify verified Market
+Watch offers. Seven independently configured profiles cover Kaspersky Small Office
+Security (`KL4141RCEFR`), Astra Linux Special Edition (`OS2304ELB81BOX000WS01-SO36`),
+Microsoft 365 Family (`6GQ-00084`), VMware vSphere Edition Starter Kit
+(`PRGN-0121-105`), Kaspersky Endpoint Security (`KL4210RAKDE`), Dr.Web Desktop
+Security Suite (`LBW-BC-12M-100-A3`) and МойОфис Частное облако
+(`X2-CLD-NB-3NUNL-A`). Every SKU is accompanied by its exact offer URL.
+The Astra link identifies an OS licence for the specified hardware variant.
+The generated observations and prices are synthetic. The taxonomy case changes an observed
+catalog key from the canonical family to its genuine SKU alias.
 
-- `metrika.json` — 28+ weeks × 5 product families × desktop/mobile, with visits, card views, cart additions, checkouts, orders and revenue;
+Each opaque `set-<hash>/input` contains:
+
+- `metrika.json` — 28+ weeks × 7 verified catalog families × desktop/mobile, with visits, card views, cart additions, checkouts, orders and revenue;
 - `Продажи.xlsx` — sheets `Продажи`, `Релизы`, `Бэклог_задачи`;
 - `releases.json` and `backlog.json` — noisy product context;
 - `manifest.json` — no scenario name, answer path or cause hint.
@@ -61,7 +73,7 @@ revenue for the sales workbook.
 Write one card per opaque dataset at `<cards>/set-<hash>/card.json`:
 
 ```json
-{"found": true, "family": "KES", "week": 13, "cause_type": "release_regression"}
+{"found": true, "family": "kaspersky_small_office_security", "week": 13, "cause_type": "release_regression"}
 ```
 
 Then run:

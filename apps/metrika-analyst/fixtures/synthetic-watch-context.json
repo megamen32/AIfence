@@ -11,7 +11,7 @@
         {
           "id": "synthetic-context/release",
           "kind": "release",
-          "product_key": "demo_target",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "release_log",
           "value": "Reworked the order options panel.",
           "unit": "text",
@@ -32,7 +32,11 @@
             "release_id": "DEMO-R1",
             "metric_keys": [
               "orders_index"
-            ]
+            ],
+            "product_label": "Kaspersky Small Office Security",
+            "sku": "KL4141RCEFR",
+            "catalog_seller": "Softline",
+            "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
           }
         }
       ],
@@ -49,7 +53,7 @@
         {
           "id": "synthetic-context/backlog",
           "kind": "task",
-          "product_key": "demo_target",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "backlog_item",
           "value": "Check orders from the product selection form.",
           "unit": "text",
@@ -70,7 +74,11 @@
             "task_id": "DEMO-T1",
             "metric_keys": [
               "orders_index"
-            ]
+            ],
+            "product_label": "Kaspersky Small Office Security",
+            "sku": "KL4141RCEFR",
+            "catalog_seller": "Softline",
+            "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
           }
         }
       ],
@@ -87,7 +95,7 @@
         {
           "id": "synthetic-context/research",
           "kind": "research",
-          "product_key": "demo_target",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "interview_excerpt",
           "value": "I called to order when I could not find the options I needed.",
           "unit": "text",
@@ -104,7 +112,11 @@
           "details": {
             "synthetic": true,
             "origin": "synthetic_fixture",
-            "evidence_direction": "unknown"
+            "evidence_direction": "unknown",
+            "product_label": "Kaspersky Small Office Security",
+            "sku": "KL4141RCEFR",
+            "catalog_seller": "Softline",
+            "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
           }
         }
       ],
@@ -121,7 +133,7 @@
         {
           "id": "synthetic-context/metrika",
           "kind": "metric",
-          "product_key": "demo_target",
+          "product_key": "kaspersky_small_office_security",
           "metric_key": "data_break",
           "value": null,
           "unit": "text",
@@ -143,7 +155,11 @@
             "metric_keys": [
               "add_to_cart"
             ],
-            "reason": "event_not_instrumented"
+            "reason": "event_not_instrumented",
+            "product_label": "Kaspersky Small Office Security",
+            "sku": "KL4141RCEFR",
+            "catalog_seller": "Softline",
+            "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
           }
         }
       ],

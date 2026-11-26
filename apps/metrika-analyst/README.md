@@ -109,14 +109,16 @@ INSTRUCTIONS.md встроен в Go-бинарник и зарегистрир�
 ```javascript
 await platform.inspectApp({app:"metrika-analyst",section:"tools"})
 await apps.metrika_analyst.tools.replay_signals({
-  product_key:"demo_target", control_product_key:"demo_control",
+  product_key:"kaspersky_small_office_security", control_product_key:"dr_web_desktop_security_suite",
   metric_key:"orders_index", from:"2023-02-13", to:"2023-03-05", as_of:"2023-03-03",
   source_path:"fixtures/synthetic-watch.json",
   context_path:"fixtures/synthetic-watch-context.json"
 })
 ```
 
-Ожидаемые значения `false → true → null`. Для контекстных вызовов
+Ожидаемые значения `false → true → null`. Цель — Kaspersky Small Office
+Security (Softline, `KL4141RCEFR`), контроль — Dr.Web Desktop Security Suite
+(SoftMagazin, `LBW-BC-12M-100-A3`). Наблюдения обоих рядов синтетические. Для контекстных вызовов
 выберите `source_path:"fixtures/synthetic-watch-context.json"`.
 Для повторного замера цели и контроля используйте
 `fixtures/synthetic-after-fix.json`, база 2023-01-30–2023-02-26,

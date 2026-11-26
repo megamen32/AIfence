@@ -9,6 +9,17 @@ MCP (`query_metrics`, `compare_periods`, `check_metrika`):
 | `original` | `softline-workbook-imported` | Неизменяемая выгрузка исходного Softline workbook. Строки `Метрики_данные` и недельный индекс заказов из `Продажи` превращаются в evidence-v1 с `sheet/row` provenance. Лист с эталонным кейсом организаторов исключён из всех артефактов и не является входом агента. |
 | `sandbox` | `aifence-sandbox-synthetic` | Изолированные синтетические сценарии. Они помечены `synthetic=true` и никогда не смешиваются с original. |
 
+Синтетические ряды используют идентификаторы проверенных позиций Market Watch.
+Kaspersky Small Office Security — `kaspersky_small_office_security`, Softline
+`KL4141RCEFR`. Dr.Web Desktop Security Suite — `dr_web_desktop_security_suite`,
+SoftMagazin `LBW-BC-12M-100-A3`. Другие сценарии sandbox используют Astra Linux,
+Microsoft 365, VMware vSphere и МойОфис. Наблюдения маркируются `synthetic: true`.
+
+Для отдельной свежей выгрузки sandbox:
+```sh
+python3 demo_sources/aifence_demo_sources.py build-sandbox --out demo_sources/data/catalog-sandbox/sandbox-evidence.json
+```
+
 ## Сборка
 
 Исходный workbook хранится только в приватном каталоге проекта:
@@ -31,7 +42,7 @@ python3 demo_sources/aifence_demo_sources.py build \
 ```sh
 python3 demo_sources/aifence_demo_sources.py list-sources
 python3 demo_sources/aifence_demo_sources.py query --source original
-python3 demo_sources/aifence_demo_sources.py query --source sandbox --scenario kes_regression
+python3 demo_sources/aifence_demo_sources.py query --source sandbox --scenario orders_regression
 python3 demo_sources/aifence_demo_sources.py replay-plan
 ```
 
@@ -42,11 +53,8 @@ cd /Users/user/AIfence/apps/metrika-analyst
 python3 -m unittest discover -s demo_sources -p 'test_*.py' -v
 ```
 
-Тест пересобирает источники из workbook (путь можно переопределить переменной
-`AIFENCE_WORKBOOK`) и проверяет, что лист эталонного кейса не попадает ни в один
-артефакт, что средние недельного индекса по окнам совпадают с эталонными значениями
-в пределах 0.01, и что служебные ожидания сценариев не попадают в файлы, которые
-читает агент.
+Тесты используют синтетические строки и проверяют локаторы, пропуски,
+покрытие каталога sandbox и идентичность SKU в событиях Measurement Protocol.
 
 ## Как сравнивать периоды
 
@@ -77,8 +85,7 @@ source_path=sandbox-evidence.json
 
 `historical()` не делает live fallback, проверяет схему `aifence.v1`, требует
 точное окно и возвращает `missing`, если значения нет. Поэтому отсутствие
-`add_to_cart` у Kaspersky остаётся пропуском с caveat T-08, а не превращается в
-ноль.
+`add_to_cart` в сценарии с Astra Linux возвращается как пропуск с пояснением.
 
 ## Яндекс Метрика и счётчики
 
@@ -94,6 +101,6 @@ replay/smoke-событий. Исторические агрегаты нель�
 
 ## Сценарии
 
-Идентификаторы: `kes_regression`, `tracking_gap`, `mobile_regression`,
+Идентификаторы: `orders_regression`, `tracking_gap`, `mobile_regression`,
 `recommendation_ctr`, `false_anomaly`. Описания намеренно нейтральны и не содержат
 ожидаемых выводов; агент должен проверить данные сам.

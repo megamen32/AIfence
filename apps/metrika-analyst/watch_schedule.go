@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	watchJobName = "watchdog_run"
-	watchCron    = "watchdog_daily"
-	watchAtUTC   = 6
+	watchJobName          = "watchdog_run"
+	watchCron             = "watchdog_daily"
+	watchAtUTC            = 6
+	syntheticWatchProduct = "kaspersky_small_office_security"
+	syntheticWatchControl = "dr_web_desktop_security_suite"
 )
 
 type watchdogInput struct {
@@ -105,7 +107,7 @@ func (s *privateWatch) runJob(ctx context.Context, job agentsdk.JobContext, inpu
 			contextPath: func(context.Context) string { return "" },
 		}
 		batch, err := w.Replay(ctx, SignalInput{
-			ProductKey: "demo_target", ControlProductKey: "demo_control", MetricKey: "orders_index",
+			ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 			From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03",
 			SourcePath: "fixtures/synthetic-watch.json", ContextPath: "fixtures/synthetic-watch-context.json",
 		})

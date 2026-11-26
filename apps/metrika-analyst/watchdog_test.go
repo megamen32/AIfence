@@ -19,7 +19,7 @@ func testWatch(t *testing.T, target, control []float64, mutate func(*Observation
 	src := batch()
 	src.AsOf = "2034-06-01T00:00:00Z"
 	start, _ := time.Parse(time.DateOnly, "2034-01-02")
-	for product, series := range map[string][]float64{"target": target, "control": control} {
+	for product, series := range map[string][]float64{syntheticWatchProduct: target, syntheticWatchControl: control} {
 		for i, v := range series {
 			p := week(start.AddDate(0, 0, i*7))
 			o := Observation{ID: product + "/" + p.From, Kind: "metric", ProductKey: product, MetricKey: "orders_index",
@@ -60,7 +60,7 @@ func TestWatchdogScenarios(t *testing.T) {
 	spike := []float64{100, 100, 100, 5000, 100, 100, 100, 100}
 	decline := []float64{100, 100, 100, 100, 63, 65, 64, 61}
 	mark := func(o *Observation) {
-		if o.Period.From == "2034-02-20" && o.ProductKey == "target" {
+		if o.Period.From == "2034-02-20" && o.ProductKey == syntheticWatchProduct {
 			o.Details["partial_week"] = true
 		}
 	}
@@ -81,7 +81,7 @@ func TestWatchdogScenarios(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := testWatch(t, tt.target, tt.control, tt.mutate)
-			in := SignalInput{ProductKey: "target", ControlProductKey: "control", MetricKey: "orders_index",
+			in := SignalInput{ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 				From: "2034-02-13", To: "2034-02-26", AsOf: tt.closed}
 			out, err := w.Replay(context.Background(), in)
 			if err != nil || len(out.Observations) != 2 {
@@ -141,7 +141,7 @@ func TestWatchContextAndBreakBoundary(t *testing.T) {
 	if err != nil || len(breaks.Observations) != 1 {
 		t.Fatalf("break lookup: %v", err)
 	}
-	signals, err := w.Replay(ctx, SignalInput{ProductKey: "target", ControlProductKey: "control", MetricKey: "orders_index",
+	signals, err := w.Replay(ctx, SignalInput{ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 		From: "2034-02-20", To: "2034-03-12"})
 	if err != nil || len(signals.Observations) != 3 || signals.Observations[0].Details["reason"] != "collection_break" ||
 		signals.Observations[2].Value == nil || *signals.Observations[2].Value {
@@ -198,7 +198,7 @@ func TestWatchEmbeddedReplay(t *testing.T) {
 	w := Watch{Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
 		func(context.Context) string { return "" }}
 	out, err := w.Replay(context.Background(), SignalInput{
-		ProductKey: "demo_target", ControlProductKey: "demo_control", MetricKey: "orders_index",
+		ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 		From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03", SourcePath: "fixtures/synthetic-watch.json", ContextPath: "fixtures/synthetic-watch-context.json",
 	})
 	if err != nil || len(out.Observations) != 3 {
@@ -215,7 +215,7 @@ func TestWatchEmbeddedReplay(t *testing.T) {
 func TestWatchAfterFixFixture(t *testing.T) {
 	s := Service{read: readEmbeddedFixture,
 		config: func(context.Context) Settings { return Settings{EvidencePath: "fixtures/synthetic-after-fix.json"} }}
-	out, err := s.Compare(context.Background(), Compare{ProductKey: "demo_target", MetricKeys: []string{"orders_index"},
+	out, err := s.Compare(context.Background(), Compare{ProductKey: syntheticWatchProduct, MetricKeys: []string{"orders_index"},
 		BaselineFrom: "2023-01-30", BaselineTo: "2023-02-26", CurrentFrom: "2023-02-27", CurrentTo: "2023-03-26"})
 	if err != nil || out.Status != "ok" || len(out.Observations) != 4 || *out.Observations[1].Value <= *out.Observations[0].Value {
 		t.Fatalf("synthetic follow-up compare: %v", err)
@@ -312,7 +312,7 @@ func TestWatchdogMagnitudeSameAcrossDetectReplayAndCollect(t *testing.T) {
 	w := Watch{Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
 		func(context.Context) string { return "" }}
 	in := SignalInput{
-		ProductKey: "demo_target", ControlProductKey: "demo_control", MetricKey: "orders_index",
+		ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 		From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03",
 		SourcePath: "fixtures/synthetic-watch.json", ContextPath: "fixtures/synthetic-watch-context.json",
 	}

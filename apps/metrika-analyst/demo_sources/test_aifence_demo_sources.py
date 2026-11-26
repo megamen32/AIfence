@@ -1,7 +1,11 @@
 """Offline import regression checks using synthetic worksheet cells."""
+import json
 import unittest
+from urllib.parse import parse_qs
 
 import aifence_demo_sources as src
+import aifence_seed_metrika as seed
+from blind_test.blind_test_generator import PRODUCTS, catalog_reference
 
 
 class DemoSourcesTest(unittest.TestCase):
@@ -27,4 +31,25 @@ class DemoSourcesTest(unittest.TestCase):
         observations = src.sandbox_observations()
         self.assertEqual({o["details"]["scenario_id"] for o in observations}, set(src.SCENARIOS))
         self.assertTrue(all(o["details"]["synthetic"] for o in observations))
+        self.assertGreaterEqual(len({o["product_key"] for o in observations}), 5)
+        for o in observations:
+            for key, value in catalog_reference(o["product_key"]).items():
+                self.assertEqual(o["details"][key], value)
         self.assertTrue(all(set(v) == {"title", "description"} for v in src.SCENARIOS.values()))
+
+    def test_seed_pageviews_keep_catalog_identity(self):
+        _, batches, _ = seed.make_data("catalog", 1800000000)
+        families = set()
+        for batch in batches:
+            for line in batch:
+                params = parse_qs(line).get("params")
+                if not params:
+                    continue
+                event = json.loads(params[0])["aifence_demo"]
+                family = event["product"]
+                self.assertEqual(event["synthetic"], "yes")
+                if family != "lk":
+                    families.add(family)
+                    for key, value in catalog_reference(family).items():
+                        self.assertEqual(event[key], value)
+        self.assertEqual(families, set(PRODUCTS))

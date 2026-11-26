@@ -1,4 +1,5 @@
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -26,7 +27,7 @@ def test_input_does_not_contain_answers_and_has_26_weeks(tmp_path):
     assert len(truth["truth"]) == 28 * len(g.PRODUCTS) * len(g.DEVICES)
     for p in input_dir.glob("*.json"):
         text = p.read_text()
-        assert all(f"S{i}" not in text for i in range(5))
+        assert re.search(r"\bS(?:0|1|2|3|4|6|7|12|13|14)\b", text) is None
     assert (Path(result["answers"]) / "S1.json").exists()
 
 

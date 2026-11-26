@@ -14,9 +14,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from blind_test.blind_test_generator import PRODUCTS, catalog_reference
+
 COUNTER = '114698578'
 BASE = 'https://aifence-demo.example.com'
 ENDPOINT = 'https://mc.yandex.ru/collect'
+
+KSOS = "kaspersky_small_office_security"
+DR_WEB = "dr_web_desktop_security_suite"
+DR_WEB_PATH = "/catalog/" + DR_WEB
 
 
 def make_data(run_id, now):
@@ -31,39 +37,41 @@ def make_data(run_id, now):
         return hit(i, ts, path, 'event', ea=event)
     def ecom(i, ts, path, action, **extra):
         stats['ecom_'+action] += 1
-        return hit(i, ts, path, 'event', pa=action, pr1id='DEMO-ASTRA', pr1nm='DEMO Astra Linux', pr1ca='DEMO / Лицензии ПО', pr1pr=12000, pr1qt=1, cu='RUB', **extra)
-    smoke = [hit(0, now-120, '/catalog/astra?utm_source=aifence_demo&utm_medium=synthetic', dt='DEMO smoke test', params=json.dumps({'aifence_demo':{'synthetic':'yes','test':'smoke'}})), hit(0, now-115, '/catalog/astra', 'event', ea='astra_cfg_open')]
-    products = ['kaspersky']*400 + ['astra']*300 + ['lk']*200
+        return hit(i, ts, path, 'event', pa=action, pr1id=PRODUCTS[DR_WEB]["sku"], pr1nm=PRODUCTS[DR_WEB]["label"], pr1ca='Лицензии ПО', pr1pr=12000, pr1qt=1, cu='RUB', **extra)
+    smoke = [hit(0, now-120, DR_WEB_PATH+'?utm_source=aifence_demo&utm_medium=synthetic', dt=PRODUCTS[DR_WEB]["label"], params=json.dumps({'aifence_demo':{'synthetic':'yes','test':'smoke',**catalog_reference(DR_WEB)}})), hit(0, now-115, DR_WEB_PATH, 'event', ea='dr_web_cfg_open')]
+    products = [KSOS]*400 + [DR_WEB]*300 + ['lk']*200
     rng.shuffle(products)
+    products.extend(family for family in PRODUCTS if family not in (KSOS, DR_WEB) for _ in range(20))
     batches, batch, size = [], [], 0
     for i, product in enumerate(products, 1):
         ts = now-8*3600 + int(i*(8*3600-600)/len(products))
         device = rng.choices(['desktop','mobile'], [.8,.2])[0]
         source = rng.choice(['direct_demo','search_demo','partner_demo'])
         path = '/lk/home' if product=='lk' else '/catalog/'+product
-        params = json.dumps({'aifence_demo':{'synthetic':'yes','product':product,'device':device,'run':run_id}}, ensure_ascii=False, separators=(',',':'))
-        v = [hit(i, ts, path+'?utm_source='+source+'&utm_medium=synthetic&utm_campaign=aifence_demo', dt='DEMO: '+product, params=params, sr='1440x900x24' if device=='desktop' else '390x844x24')]
+        catalog = catalog_reference(product) if product in PRODUCTS else {}
+        params = json.dumps({'aifence_demo':{'synthetic':'yes','product':product,'device':device,'run':run_id,**catalog}}, ensure_ascii=False, separators=(',',':'))
+        v = [hit(i, ts, path+'?utm_source='+source+'&utm_medium=synthetic&utm_campaign=aifence_demo', dt=catalog.get('product_label', 'Личный кабинет'), params=params, sr='1440x900x24' if device=='desktop' else '390x844x24')]
         stats['visits_'+product] += 1
-        if product=='kaspersky':
-            # 144 / 400 selection visits; the source's observed range is 34–39%.
-            if stats['visits_kaspersky'] % 25 in range(1,10):
-                v.append(goal(i,ts+12,path,'kes_cfg_option'))
-            # No KES cart event: source data explicitly lacks reliable tracking.
-        elif product=='astra':
+        if product==KSOS:
+            # This synthetic path records 144 selection events in 400 visits.
+            if stats['visits_'+KSOS] % 25 in range(1,10):
+                v.append(goal(i,ts+12,path,'ksos_cfg_option'))
+            # The synthetic selection path has no cart event.
+        elif product==DR_WEB:
             v.append(ecom(i,ts+4,path,'detail'))
             if rng.random()<.45:
-                v.append(goal(i,ts+10,path,'astra_cfg_open'))
+                v.append(goal(i,ts+10,path,'dr_web_cfg_open'))
                 if rng.random()<.20:
-                    v.append(goal(i,ts+15,path,'astra_cfg_back'))
+                    v.append(goal(i,ts+15,path,'dr_web_cfg_back'))
                 if rng.random()<.65:
-                    v.append(goal(i,ts+32,path,'astra_cfg_complete'))
+                    v.append(goal(i,ts+32,path,'dr_web_cfg_complete'))
                     if rng.random()<.25:
-                        v.append(goal(i,ts+45,path,'astra_cfg_cart'))
+                        v.append(goal(i,ts+45,path,'dr_web_cfg_cart'))
                         v.append(ecom(i,ts+46,path,'add'))
                         if rng.random()<.30:
                             v.append(hit(i,ts+55,'/checkout',dt='DEMO: Checkout'))
                             v.append(ecom(i,ts+60,'/checkout','purchase',ti=f'AIFENCE-DEMO-{run_id}-{i}',tr=12000))
-        else:
+        elif product=='lk':
             if rng.random()<.7:
                 v.append(goal(i,ts+5,path,'lk_reco_status'))
                 if rng.random()<.68:
@@ -104,7 +112,8 @@ def main():
         p.error('run-id must be 1–48 letters, digits, underscores or hyphens')
     smoke,batches,stats=make_data(args.run_id,int(time.time()))
     print('DEMO ONLY | Counter:',COUNTER,'| Run:',args.run_id)
-    print('Plan: 900 synthetic visits + one smoke test; recent 8-hour sample, NOT historical replay')
+    visits = sum(n for label, n in stats.items() if label.startswith('visits_'))
+    print(f'Plan: {visits} synthetic visits + one smoke test; recent 8-hour sample')
     print(json.dumps(stats,ensure_ascii=False,indent=2))
     print('Main hits:',sum(map(len,batches)), '| Batches:',len(batches), '| Smoke hits:',len(smoke))
     if not args.send:

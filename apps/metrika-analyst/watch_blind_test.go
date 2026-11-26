@@ -36,10 +36,10 @@ func TestBlindWatchdogScan(t *testing.T) {
 	steady := []float64{100, 100, 100, 100, 100, 100, 100, 100, 100, 100}
 	fall := []float64{100, 100, 100, 100, 100, 55, 55, 55, 55, 55}
 	spike := []float64{100, 100, 100, 100, 100, 190, 100, 100, 100, 100}
-	campaign := ContextFact{ID: "campaign", Kind: "release", ProductKey: "target", MetricKey: "release_log",
+	campaign := ContextFact{ID: "campaign", Kind: "release", ProductKey: syntheticWatchProduct, MetricKey: "release_log",
 		Unit: "text", Period: Period{"2034-02-07", "2034-02-07"}, Status: "observed",
 		SourceRef: Ref{SourceID: "synthetic", Locator: "events!B2"}, Details: map[string]any{"release_type": "campaign", "synthetic": true}}
-	measurement := ContextFact{ID: "coverage", Kind: "metric", ProductKey: "target", MetricKey: "data_break",
+	measurement := ContextFact{ID: "coverage", Kind: "metric", ProductKey: syntheticWatchProduct, MetricKey: "data_break",
 		Unit: "text", Period: Period{"2034-02-01", "2034-03-15"}, Status: "incomparable",
 		SourceRef: Ref{SourceID: "synthetic", Locator: "coverage!B2"}, Details: map[string]any{"effect": "exclude", "synthetic": true}}
 	for _, tt := range []struct {
@@ -79,7 +79,7 @@ func TestBlindWatchdogScan(t *testing.T) {
 			}
 			if tt.top == "controlled_decline" {
 				c := out.Candidates[0]
-				if c.Control != "control" || c.ProductKey != "target" {
+				if c.Control != syntheticWatchControl || c.ProductKey != syntheticWatchProduct {
 					t.Fatal("wrong target/control by observed behavior")
 				}
 				in := BlindCaseInput{DatasetID: d.id.String(), CandidateID: c.ID}
@@ -134,7 +134,7 @@ func TestBlindDiscoveryAndScanCoverWholeSnapshot(t *testing.T) {
 	first, _ := time.Parse(time.DateOnly, d.series.Observations[0].Period.From)
 	late := first.AddDate(0, 0, 150*7)
 	d.series.AsOf = late.AddDate(0, 0, 14).Format(time.RFC3339)
-	for _, product := range []string{"target", "control"} {
+	for _, product := range []string{syntheticWatchProduct, syntheticWatchControl} {
 		row := d.series.Observations[0]
 		row.ProductKey, row.ID, row.Period = product, product+"/late", week(late)
 		d.series.Observations = append(d.series.Observations, row)
@@ -145,16 +145,16 @@ func TestBlindDiscoveryAndScanCoverWholeSnapshot(t *testing.T) {
 			row.MetricKey = fmt.Sprintf("metric_%02d", i/2)
 			row.ID, row.Period = fmt.Sprintf("%d/%d", i, j), week(late.AddDate(0, 0, (j-27)*7))
 			if i%2 == 0 {
-				row.ProductKey = "comparison_a"
+				row.ProductKey = syntheticWatchProduct
 			} else {
-				row.ProductKey = "comparison_b"
+				row.ProductKey = syntheticWatchControl
 			}
 			d.series.Observations = append(d.series.Observations, row)
 		}
 	}
 	firstPage, err := d.discover(t.Context(), BlindInput{})
 	if err != nil || firstPage.Status != "ok" || firstPage.SeriesCount != 70 || firstPage.NextOffset == nil ||
-		firstPage.ScanStatus != "alert" || len(firstPage.Findings) == 0 || firstPage.Findings[0].ProductKey != "target" {
+		firstPage.ScanStatus != "alert" || len(firstPage.Findings) == 0 || firstPage.Findings[0].ProductKey != syntheticWatchProduct {
 		t.Fatalf("first page lost a finding or full inventory count (err=%v, status=%s, total=%d)", err, firstPage.Status, firstPage.SeriesCount)
 	}
 	if got := firstPage.Findings[0]; len(got.SourceRefs) > 3 || got.SourceRefCount <= len(got.SourceRefs) {
@@ -166,7 +166,7 @@ func TestBlindDiscoveryAndScanCoverWholeSnapshot(t *testing.T) {
 	}
 	found := false
 	for _, m := range tail.Series {
-		found = found || m.ProductKey == "target"
+		found = found || m.ProductKey == syntheticWatchProduct && m.MetricKey == "orders_index"
 	}
 	if !found {
 		t.Fatal("test target must occur after the previous 64-series cutoff")

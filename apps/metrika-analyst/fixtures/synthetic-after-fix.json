@@ -5,9 +5,9 @@
   "status": "ok",
   "observations": [
     {
-      "id": "synthetic-after-fix/demo_target/1",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/1",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 100,
       "unit": "index",
@@ -18,20 +18,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 1",
+        "locator": "kaspersky_small_office_security, week 1",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_target/2",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/2",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 75,
       "unit": "index",
@@ -42,20 +46,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 2",
+        "locator": "kaspersky_small_office_security, week 2",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_target/3",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/3",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 65,
       "unit": "index",
@@ -66,20 +74,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 3",
+        "locator": "kaspersky_small_office_security, week 3",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_target/4",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/4",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 60,
       "unit": "index",
@@ -90,20 +102,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 4",
+        "locator": "kaspersky_small_office_security, week 4",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_target/5",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/5",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 103,
       "unit": "index",
@@ -114,20 +130,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 5",
+        "locator": "kaspersky_small_office_security, week 5",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_target/6",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/6",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 107,
       "unit": "index",
@@ -138,20 +158,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 6",
+        "locator": "kaspersky_small_office_security, week 6",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_target/7",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/7",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 104,
       "unit": "index",
@@ -162,20 +186,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 7",
+        "locator": "kaspersky_small_office_security, week 7",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_target/8",
+      "id": "synthetic-after-fix/kaspersky_small_office_security/8",
       "kind": "metric",
-      "product_key": "demo_target",
+      "product_key": "kaspersky_small_office_security",
       "metric_key": "orders_index",
       "value": 106,
       "unit": "index",
@@ -186,20 +214,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_target, week 8",
+        "locator": "kaspersky_small_office_security, week 8",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Kaspersky Small Office Security",
+        "sku": "KL4141RCEFR",
+        "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/1",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/1",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 91,
       "unit": "index",
@@ -210,20 +242,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 1",
+        "locator": "dr_web_desktop_security_suite, week 1",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/2",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/2",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 90,
       "unit": "index",
@@ -234,20 +270,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 2",
+        "locator": "dr_web_desktop_security_suite, week 2",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/3",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/3",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 90,
       "unit": "index",
@@ -258,20 +298,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 3",
+        "locator": "dr_web_desktop_security_suite, week 3",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/4",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/4",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 89,
       "unit": "index",
@@ -282,20 +326,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 4",
+        "locator": "dr_web_desktop_security_suite, week 4",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/5",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/5",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 90,
       "unit": "index",
@@ -306,20 +354,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 5",
+        "locator": "dr_web_desktop_security_suite, week 5",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/6",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/6",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 90,
       "unit": "index",
@@ -330,20 +382,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 6",
+        "locator": "dr_web_desktop_security_suite, week 6",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/7",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/7",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 91,
       "unit": "index",
@@ -354,20 +410,24 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 7",
+        "locator": "dr_web_desktop_security_suite, week 7",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     },
     {
-      "id": "synthetic-after-fix/demo_control/8",
+      "id": "synthetic-after-fix/dr_web_desktop_security_suite/8",
       "kind": "metric",
-      "product_key": "demo_control",
+      "product_key": "dr_web_desktop_security_suite",
       "metric_key": "orders_index",
       "value": 89,
       "unit": "index",
@@ -378,14 +438,18 @@
       "segment": "self_service",
       "source_ref": {
         "source_id": "synthetic-after-fix",
-        "locator": "demo_control, week 8",
+        "locator": "dr_web_desktop_security_suite, week 8",
         "revision": "fixture:v1"
       },
       "status": "observed",
       "details": {
         "synthetic": true,
         "origin": "synthetic_fixture",
-        "scenario_id": "after_fix"
+        "scenario_id": "after_fix",
+        "product_label": "Dr.Web Desktop Security Suite",
+        "sku": "LBW-BC-12M-100-A3",
+        "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/"
       }
     }
   ],

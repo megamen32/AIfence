@@ -19,6 +19,8 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from blind_test.blind_test_generator import catalog_reference
+
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 COUNTER_ID = 114698578
@@ -40,7 +42,7 @@ def digest(value: object) -> str:
 def ref(source_id: str, locator: str) -> dict:
     out = {"source_id": source_id, "locator": locator}
     if source_id != "softline-workbook-imported":
-        out["revision"] = "fixture:aifence-sandbox-v1"
+        out["revision"] = "fixture:aifence-sandbox-v2"
     return out
 
 
@@ -109,8 +111,10 @@ def sales_index_observations(sheets: dict[str, list[list[str]]]) -> list[dict]:
     return out
 
 
+SANDBOX_TARGET = "kaspersky_small_office_security"
+SANDBOX_CONTROL = "dr_web_desktop_security_suite"
 SCENARIOS = {
-    "kes_regression": {
+    "orders_regression": {
         "title": "Сценарий A: индекс заказов по семействам",
         "description": "Синтетический ряд заказов двух семейств в двух окнах.",
     },
@@ -139,23 +143,24 @@ def sandbox_observations() -> list[dict]:
     def add(scenario: str, product: str, metric: str, value: float | None, unit: str,
             start: str, end: str, segment: str = "all", status: str = "observed", caveats: list[str] | None = None):
         out.append(obs(product, metric, value, unit, start, end, sid, f"scenario:{scenario}", status, segment,
-                       caveats, {"scenario_id": scenario, "synthetic": True}))
+                       caveats, {"scenario_id": scenario, "synthetic": True, "origin": "synthetic_fixture",
+                                 **catalog_reference(product)}))
     # Equal seven-day windows make compare_periods deterministic.
-    add("kes_regression", "kaspersky_endpoint_security", "orders", 150, "count", "2026-09-14", "2026-09-20")
-    add("kes_regression", "kaspersky_endpoint_security", "orders", 100, "count", "2026-10-05", "2026-10-11")
-    add("kes_regression", "astra_control", "orders", 90, "count", "2026-09-14", "2026-09-20")
-    add("kes_regression", "astra_control", "orders", 87, "count", "2026-10-05", "2026-10-11")
-    add("tracking_gap", "kaspersky_endpoint_security", "add_to_cart", None, "count", "2026-10-05", "2026-10-11", status="missing",
+    add("orders_regression", SANDBOX_TARGET, "orders", 150, "count", "2026-09-14", "2026-09-20")
+    add("orders_regression", SANDBOX_TARGET, "orders", 100, "count", "2026-10-05", "2026-10-11")
+    add("orders_regression", SANDBOX_CONTROL, "orders", 90, "count", "2026-09-14", "2026-09-20")
+    add("orders_regression", SANDBOX_CONTROL, "orders", 87, "count", "2026-10-05", "2026-10-11")
+    add("tracking_gap", "astra_linux_special_edition", "add_to_cart", None, "count", "2026-10-05", "2026-10-11", status="missing",
         caveats=["Synthetic scenario: no value recorded for this window."])
-    add("mobile_regression", "store", "checkout_rate", 0.42, "ratio", "2026-10-05", "2026-10-11", "mobile")
-    add("mobile_regression", "store", "checkout_rate", 0.33, "ratio", "2026-10-12", "2026-10-18", "mobile")
-    add("mobile_regression", "store", "checkout_rate", 0.55, "ratio", "2026-10-05", "2026-10-11", "desktop")
-    add("mobile_regression", "store", "checkout_rate", 0.56, "ratio", "2026-10-12", "2026-10-18", "desktop")
-    add("recommendation_ctr", "store", "lk_reco_shown", 1000, "count", "2026-10-05", "2026-10-11")
-    add("recommendation_ctr", "store", "lk_reco_click", 81, "count", "2026-10-05", "2026-10-11")
-    add("recommendation_ctr", "store", "lk_reco_shown", 1250, "count", "2026-10-12", "2026-10-18")
-    add("recommendation_ctr", "store", "lk_reco_click", 40, "count", "2026-10-12", "2026-10-18")
-    add("false_anomaly", "store", "orders", None, "count", "2026-10-26", "2026-10-26", status="missing",
+    add("mobile_regression", "microsoft_365_family", "checkout_rate", 0.42, "ratio", "2026-10-05", "2026-10-11", "mobile")
+    add("mobile_regression", "microsoft_365_family", "checkout_rate", 0.33, "ratio", "2026-10-12", "2026-10-18", "mobile")
+    add("mobile_regression", "microsoft_365_family", "checkout_rate", 0.55, "ratio", "2026-10-05", "2026-10-11", "desktop")
+    add("mobile_regression", "microsoft_365_family", "checkout_rate", 0.56, "ratio", "2026-10-12", "2026-10-18", "desktop")
+    add("recommendation_ctr", "myoffice_private_cloud", "lk_reco_shown", 1000, "count", "2026-10-05", "2026-10-11")
+    add("recommendation_ctr", "myoffice_private_cloud", "lk_reco_click", 81, "count", "2026-10-05", "2026-10-11")
+    add("recommendation_ctr", "myoffice_private_cloud", "lk_reco_shown", 1250, "count", "2026-10-12", "2026-10-18")
+    add("recommendation_ctr", "myoffice_private_cloud", "lk_reco_click", 40, "count", "2026-10-12", "2026-10-18")
+    add("false_anomaly", "vmware_vsphere_starter_kit", "orders", None, "count", "2026-10-26", "2026-10-26", status="missing",
         caveats=["Period is not closed at snapshot time."])
     return out
 
@@ -319,10 +324,7 @@ def build_db(workbook: Path | None = None) -> dict:
         "Imported historical source: preserve as evidence; no live fallback.",
         "Kaspersky cart additions are unknown because T-08 tracking is absent; unknown is not zero.",
     ])
-    sandbox = evidence("sandbox", sandbox_observations(), [
-        "Synthetic problem scenarios only; never customer evidence.",
-        "Live Yandex counter for recent replay/smoke events: " + str(COUNTER_ID) + ".",
-    ])
+    sandbox = sandbox_evidence()
     (DATA / "original-evidence.json").write_text(json.dumps(original, ensure_ascii=False, indent=2) + "\n")
     (DATA / "sandbox-evidence.json").write_text(json.dumps(sandbox, ensure_ascii=False, indent=2) + "\n")
     manifest = {"schema_version": "aifence.sources.v1", "counter_id": COUNTER_ID,
@@ -335,6 +337,10 @@ def build_db(workbook: Path | None = None) -> dict:
             "sandbox_observations": len(sandbox["observations"]), "workbook_rows": workbook_rows, "sheet_counts": sheet_counts}
 
 
+def sandbox_evidence() -> dict:
+    return evidence("sandbox", sandbox_observations(), ["Synthetic observations. Catalog identities are real."])
+
+
 def replay_plan() -> dict:
     """Return a safe Measurement Protocol plan; token is intentionally never stored."""
     events = []
@@ -343,16 +349,22 @@ def replay_plan() -> dict:
             continue
         events.append({"date": item["period"]["to"], "product_key": item["product_key"],
                        "metric_key": item["metric_key"], "value": item["value"],
-                       "scenario_id": item.get("details", {}).get("scenario_id")})
+                       "scenario_id": item["details"]["scenario_id"], "synthetic": True,
+                       **{key: item["details"][key] for key in ("product_label", "sku", "catalog_seller", "catalog_url")}})
     return {"counter_id": COUNTER_ID, "transport": "Yandex Measurement Protocol",
             "token_required": True, "token_storage": "interactive local prompt only",
             "historical_limit": "Yandex MP accepts recent events; original historical aggregates stay in SQLite/evidence-v1.",
-            "events": events, "events_skipped": ["missing observations", "KES add_to_cart tracking gap"]}
+            "events": events, "events_skipped": ["missing observations", "synthetic add_to_cart tracking gap"]}
 
 
 def command(args: argparse.Namespace) -> int:
     if args.command == "build":
         print(json.dumps(build_db(Path(args.workbook) if args.workbook else None), ensure_ascii=False, indent=2))
+    elif args.command == "build-sandbox":
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        with args.out.open("x", encoding="utf-8") as dest:
+            json.dump(sandbox_evidence(), dest, ensure_ascii=False, indent=2)
+            dest.write("\n")
     elif args.command == "replay-plan":
         print(json.dumps(replay_plan(), ensure_ascii=False, indent=2))
     elif args.command == "list-sources":
@@ -370,6 +382,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
     b = sub.add_parser("build"); b.add_argument("--workbook", help="optional local XLSX for complete raw-row ingest")
+    sb = sub.add_parser("build-sandbox")
+    sb.add_argument("--out", required=True, type=Path, help="fresh sandbox JSON path")
     sub.add_parser("replay-plan")
     sub.add_parser("list-sources")
     q = sub.add_parser("query"); q.add_argument("--source", choices=["original", "sandbox"], required=True); q.add_argument("--scenario")

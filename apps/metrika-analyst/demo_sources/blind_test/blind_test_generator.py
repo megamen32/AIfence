@@ -23,12 +23,43 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+# Catalog identities are verified offers; all funnel values below are synthetic.
 PRODUCTS = {
-    "KES": {"label": "Kaspersky Endpoint Security", "visits": 1000, "view_rate": .72, "cart_rate": .21, "checkout_rate": .56, "order_rate": .76, "aov": 14800},
-    "Astra": {"label": "Astra Linux Special Edition", "visits": 920, "view_rate": .70, "cart_rate": .20, "checkout_rate": .58, "order_rate": .76, "aov": 13200},
-    "Office": {"label": "Microsoft 365", "visits": 1280, "view_rate": .73, "cart_rate": .22, "checkout_rate": .60, "order_rate": .78, "aov": 17100},
-    "VMware": {"label": "VMware vSphere", "visits": 720, "view_rate": .68, "cart_rate": .18, "checkout_rate": .55, "order_rate": .74, "aov": 22500},
-    "DrWeb": {"label": "Dr.Web Enterprise", "visits": 610, "view_rate": .69, "cart_rate": .19, "checkout_rate": .57, "order_rate": .75, "aov": 8900},
+    "kaspersky_small_office_security": {
+        "label": "Kaspersky Small Office Security", "sku": "KL4141RCEFR", "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/kaspersky/kl4141rcefr-248971/",
+        "visits": 860, "view_rate": 0.74, "cart_rate": 0.23, "checkout_rate": 0.61, "order_rate": 0.79, "aov": 9600,
+    },
+    "astra_linux_special_edition": {
+        "label": "Astra Linux Special Edition", "sku": "OS2304ELB81BOX000WS01-SO36", "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/pao-gruppa-astra/os2304elb81box000ws01-so36/",
+        "visits": 920, "view_rate": 0.7, "cart_rate": 0.2, "checkout_rate": 0.58, "order_rate": 0.76, "aov": 13200,
+    },
+    "microsoft_365_family": {
+        "label": "Microsoft 365 Family", "sku": "6GQ-00084", "catalog_seller": "Softline",
+        "catalog_url": "https://store.softline.ru/microsoft/6gq-00084-195981/",
+        "visits": 1280, "view_rate": 0.73, "cart_rate": 0.22, "checkout_rate": 0.6, "order_rate": 0.78, "aov": 17100,
+    },
+    "vmware_vsphere_starter_kit": {
+        "label": "VMware vSphere Edition Starter Kit", "sku": "PRGN-0121-105", "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/paragon-software/prgn-0121-105/",
+        "visits": 720, "view_rate": 0.68, "cart_rate": 0.18, "checkout_rate": 0.55, "order_rate": 0.74, "aov": 22500,
+    },
+    "kaspersky_endpoint_security": {
+        "label": "Kaspersky Endpoint Security для бизнеса Расширенный Плюс", "sku": "KL4210RAKDE", "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/laboratoriya-kasperskogo/kl4210rakde/",
+        "visits": 1000, "view_rate": 0.72, "cart_rate": 0.21, "checkout_rate": 0.56, "order_rate": 0.76, "aov": 14800,
+    },
+    "dr_web_desktop_security_suite": {
+        "label": "Dr.Web Desktop Security Suite", "sku": "LBW-BC-12M-100-A3", "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/dr-web/lbw-bc-12m-100-a3/",
+        "visits": 610, "view_rate": 0.69, "cart_rate": 0.19, "checkout_rate": 0.57, "order_rate": 0.75, "aov": 8900,
+    },
+    "myoffice_private_cloud": {
+        "label": "МойОфис Частное облако", "sku": "X2-CLD-NB-3NUNL-A", "catalog_seller": "Softmap",
+        "catalog_url": "https://softmap.ru/myoffice/moyofis/element-moyofis-chastnoe-oblako-licenziya-korporativnaya-na-polzovatelya-dlya-kommercheskih-zakazchikov-bez-ogranicheniya-sroka-deystviya-s-pravom-na-poluchenie-obnovleniy-v-techenie-treh-let/",
+        "visits": 750, "view_rate": 0.7, "cart_rate": 0.19, "checkout_rate": 0.57, "order_rate": 0.75, "aov": 17100,
+    },
 }
 DEVICES = {"desktop": .76, "mobile": .24}
 METRICS = ("visits", "card_views", "cart_additions", "checkouts", "orders", "revenue")
@@ -53,6 +84,12 @@ def parse_week(value: str) -> int:
 
 def product_key(family: str) -> str:
     return family.lower()
+
+
+def catalog_reference(family: str) -> dict:
+    product = PRODUCTS[family]
+    return {"product_label": product["label"], "sku": product["sku"],
+            "catalog_seller": product["catalog_seller"], "catalog_url": product["catalog_url"]}
 
 
 def round_value(metric: str, value: float) -> int | float:
@@ -127,8 +164,8 @@ def truth_rows(seed: int, scenario: str, weeks: int = 28) -> tuple[list[dict], d
                     metadata.update({"bot_share_estimate": bot_share, "traffic_quality": "low",
                                      "traffic_source": "crawler_or_unknown"})
                 if scenario == "S7" and family == choice["family"] and w >= choice["week"]:
-                    metadata.update({"canonical_product_id": f"product-{family.lower()}-001",
-                                     "observed_product_key": f"{family.lower()}_plus",
+                    metadata.update({"canonical_product_id": family,
+                                     "observed_product_key": base["sku"].lower(),
                                      "catalog_migration_week": choice["week"]})
                 if scenario == "S12" and family == choice["family"] and w == choice["week"]:
                     metadata.update({"experiment_id": "checkout-v3", "allocation_status": "unknown",
@@ -141,7 +178,8 @@ def truth_rows(seed: int, scenario: str, weeks: int = 28) -> tuple[list[dict], d
                        "cart_additions": round_value("cart_additions", cart), "checkouts": round_value("checkouts", checkouts),
                        "orders": round_value("orders", orders), "revenue": round_value("revenue", revenue),
                        "unit_price": round_value("revenue", unit_price), "competitor_price": round_value("revenue", competitor_price)}
-                row.update(metadata); rows.append(row)
+                row.update(synthetic=True, **catalog_reference(family), **metadata)
+                rows.append(row)
     return rows, choice
 
 def loss_factor(rng: random.Random, metric: str) -> float:
@@ -164,7 +202,8 @@ def evidence_rows(truth: list[dict], seed: int, scenario: str, choice: dict) -> 
             source = {"source_id": "blind-metrika", "locator": f"week={row['week']};family={row['family']};device={row['device']}", "revision": f"seed:{seed}"}
             status = "observed"; caveats = ["Synthetic measurement with event undercount; aggregate only."]
             value: float | None = float(row[metric]) * loss_factor(rng, metric)
-            details = {"device": row["device"], "synthetic": True}
+            details = {"device": row["device"], "synthetic": True, "origin": "synthetic_fixture",
+                       **catalog_reference(row["family"])}
             for key in ("bot_share_estimate", "traffic_quality", "traffic_source", "canonical_product_id",
                         "observed_product_key", "catalog_migration_week", "experiment_id",
                         "allocation_status", "comparable_evidence", "payment_confirmation_lag_hours",
@@ -172,15 +211,16 @@ def evidence_rows(truth: list[dict], seed: int, scenario: str, choice: dict) -> 
                 if key in row: details[key] = row[key]
             product_observed = row["family"]
             if scenario == "S7" and row["family"] == choice["family"] and row["week"] >= choice["week"]:
-                product_observed = f"{row['family']}_plus"
+                product_observed = row["observed_product_key"]
                 details["canonical_product_key"] = product_key(row["family"])
             if scenario == "S1" and row["family"] == choice["family"] and row["week"] >= choice["week"] and metric == "cart_additions":
                 value = None; status = "missing"; caveats = ["Event collection is incomplete for this period; absence is not zero."]
             if scenario == "S12" and row["family"] == choice["family"] and row["week"] == choice["week"] and metric in ("orders", "revenue"):
                 value = None; status = "missing"; caveats = ["Experiment allocation is unavailable; comparable evidence is insufficient for a causal claim."]
             if scenario == "S13" and row["family"] == choice["family"] and row["week"] in (choice["week"], choice["week"] + 1) and metric in ("orders", "revenue"):
-                value = None; status = "late"; caveats = ["Purchase event is delayed in the collection queue; absence is not zero."]
-                details["replay_available_on"] = week_start(row["week"] + 2).isoformat()
+                value = None; status = "missing"; caveats = ["Purchase event is delayed in the collection queue; absence is not zero."]
+                details["available_on"] = week_start(row["week"] + 2).isoformat()
+                details["availability_status"] = "late"
             if scenario == "S14" and row["family"] == choice["family"] and row["week"] >= choice["week"] and metric == "cart_additions":
                 # Keep total observed loss in the required 10–25% QA band while
                 # retaining a separate masked tracking component in details.
@@ -198,9 +238,8 @@ def evidence_rows(truth: list[dict], seed: int, scenario: str, choice: dict) -> 
                     "source_ref": source, "status": status, "caveats": caveats, "details": details})
     partial = scenario in ("S1", "S12", "S13")
     warnings = ["Blind synthetic dataset; aggregate week × family × device.", "Metrika behaviour events include 10–25% measurement loss."]
-    if scenario == "S12": warnings.append("Insufficient comparable evidence around the experiment; accepted decision is no_alert or insufficient_data.")
+    if scenario == "S12": warnings.append("Experiment allocation is unavailable for part of the period.")
     if scenario == "S13": warnings.append("Purchase events may arrive after the business week; inspect event_available_on before alerting.")
-    if scenario == "S14": warnings.append("Traffic mix and cart undercount mask a checkout regression; inspect funnel ratios.")
     return {"schema_version": "aifence.v1", "source": "metrika",
             "as_of": (week_start(len(set(r['week'] for r in truth)) - 1) + dt.timedelta(days=6)).isoformat() + "T23:59:59Z",
             "status": "partial" if partial else "ok", "observations": observations, "warnings": warnings}, losses
@@ -228,7 +267,7 @@ def releases_and_backlog(seed: int, scenario: str, choice: dict, weeks: int) -> 
     elif scenario == "S7":
         target["description"] = "Миграция названий и ключей каталога"
         target["context_flag"] = "taxonomy_migration"
-        target["alias_from"] = choice["family"]; target["alias_to"] = f"{choice['family']} Plus"
+        target["alias_from"] = choice["family"]; target["alias_to"] = PRODUCTS[choice["family"]]["sku"].lower()
     elif scenario == "S12":
         target["description"] = "Запуск checkout-эксперимента"
         target["context_flag"] = "experiment_allocation_unknown"; target["experiment_id"] = "checkout-v3"
@@ -246,6 +285,10 @@ def releases_and_backlog(seed: int, scenario: str, choice: dict, weeks: int) -> 
                       "priority": rng.choice(["Low", "Medium", "High"]), "created_date": week_start(max(0, i - 3)).isoformat(),
                       "closed_date": week_start(i).isoformat() if i % 3 == 0 else "", "release_id": f"R-{i+1:02d}",
                       "description_short": "Проверить полноту и качество продуктового пути", "linked_metric_ids": rng.choice(["cfg_family_views", "cart_additions", "checkouts", "orders"]), "family": family})
+    for fact in release_rows + tasks:
+        fact.update(synthetic=True, **catalog_reference(fact["family"]))
+        if "our_price_rub" in fact:
+            fact["price_origin"] = "synthetic"
     return release_rows, tasks
 
 
@@ -309,12 +352,13 @@ def write_dataset(output: Path, seed: int, scenario: str, weeks: int) -> dict:
     truth, choice = truth_rows(seed, scenario, weeks)
     evidence, losses = evidence_rows(truth, seed, scenario, choice)
     releases, backlog = releases_and_backlog(seed, scenario, choice, weeks)
-    dataset_id = "set-" + stable_id(seed, scenario)
+    dataset_id = "set-" + stable_id("market-watch-catalog-v1", seed, scenario)
     root = output / dataset_id
+    root.mkdir(parents=True)
     input_dir = root / "input"; answer_dir = root / "answers"
-    input_dir.mkdir(parents=True, exist_ok=True); answer_dir.mkdir(parents=True, exist_ok=True)
+    input_dir.mkdir(); answer_dir.mkdir()
     # Truth stays outside the input tree. It is needed for scoring and loss QA.
-    truth_payload = {"seed": seed, "scenario": scenario, "choice": choice, "truth": truth, "losses": losses}
+    truth_payload = {"synthetic": True, "seed": seed, "scenario": scenario, "choice": choice, "truth": truth, "losses": losses}
     (root / "truth.json").write_text(json.dumps(truth_payload, ensure_ascii=False, indent=2) + "\n")
     answer_payload = {"scenario": scenario,
                       "family": choice["family"] if scenario not in ("S0", "S12") else None,
@@ -328,6 +372,9 @@ def write_dataset(output: Path, seed: int, scenario: str, weeks: int) -> dict:
         answer_payload.update({"accepted_outcomes": choice["expected_decisions"],
                                "expected_decisions": choice["expected_decisions"],
                                "decision_reason": choice["decision_reason"]})
+    if answer_payload["family"] is not None:
+        answer_payload.update(catalog_reference(answer_payload["family"]))
+    answer_payload["synthetic"] = True
     if scenario == "S14":
         answer_payload["secondary_causes"] = choice["secondary_causes"]
     (answer_dir / f"{scenario}.json").write_text(json.dumps(answer_payload, ensure_ascii=False, indent=2) + "\n")
@@ -340,10 +387,10 @@ def write_dataset(output: Path, seed: int, scenario: str, weeks: int) -> dict:
     for r in truth:
         key = (r["family"], r["device"]); rolling.setdefault(key, []).append(r["orders"])
         recent = rolling[key][-4:]
-        sales.append({"week_start": r["week_start"], "product_family": PRODUCTS[r["family"]]["label"], "orders_index": round(r["orders"] / max(base_orders[r["family"]], 1) * 100, 1), "orders_index_4w": round(statistics.mean(recent) / max(base_orders[r["family"]], 1) * 100, 1), "base_period": f"{START.isoformat()} + 4 weeks = 100", "channel": "Самостоятельные заказы клиентов", "comment": "", "device": r["device"], "visits": r["visits"], "card_views": r["card_views"], "cart_additions": r["cart_additions"], "checkouts": r["checkouts"], "orders": r["orders"], "revenue_rub": r["revenue"], "our_price_rub": r["unit_price"], "competitor_price_rub": r["competitor_price"]})
+        sales.append({"week_start": r["week_start"], "product_family": PRODUCTS[r["family"]]["label"], "product_key": r["family"], **catalog_reference(r["family"]), "synthetic": True, "price_origin": "synthetic", "orders_index": round(r["orders"] / max(base_orders[r["family"]], 1) * 100, 1), "orders_index_4w": round(statistics.mean(recent) / max(base_orders[r["family"]], 1) * 100, 1), "base_period": f"{START.isoformat()} + 4 weeks = 100", "channel": "Самостоятельные заказы клиентов", "comment": "", "device": r["device"], "visits": r["visits"], "card_views": r["card_views"], "cart_additions": r["cart_additions"], "checkouts": r["checkouts"], "orders": r["orders"], "revenue_rub": r["revenue"], "our_price_rub": r["unit_price"], "competitor_price_rub": r["competitor_price"]})
     write_xlsx(input_dir / "Продажи.xlsx", {"Продажи": sales, "Релизы": releases, "Бэклог_задачи": backlog})
     # No scenario labels or answer paths in the agent-visible manifest.
-    (input_dir / "manifest.json").write_text(json.dumps({"schema_version": "blind-input.v1", "dataset_id": dataset_id, "seed_hash": stable_id(seed), "weeks": weeks, "families": list(PRODUCTS), "devices": list(DEVICES), "files": ["metrika.json", "Продажи.xlsx", "releases.json", "backlog.json"]}, ensure_ascii=False, indent=2) + "\n")
+    (input_dir / "manifest.json").write_text(json.dumps({"schema_version": "blind-input.v1", "synthetic": True, "dataset_id": dataset_id, "seed_hash": stable_id(seed), "weeks": weeks, "families": list(PRODUCTS), "catalog": {family: catalog_reference(family) for family in PRODUCTS}, "devices": list(DEVICES), "files": ["metrika.json", "Продажи.xlsx", "releases.json", "backlog.json"]}, ensure_ascii=False, indent=2) + "\n")
     return {"dataset_id": dataset_id, "input": str(input_dir), "answers": str(answer_dir), "truth": str(root / "truth.json"), "scenario": scenario, "loss_min": min(losses) if losses else None, "loss_max": max(losses) if losses else None}
 
 
@@ -399,7 +446,14 @@ def build_mp_plan(metrika_path: Path, output_path: Path, seed: int = 0,
         raise ValueError("metrika evidence has no observations")
     latest = max(str(o.get("period", {}).get("from", "")) for o in observations)
     grouped: dict[tuple[str, str], dict[str, float]] = {}
+    catalog_by_key = {}
     for obs in observations:
+        details = obs.get("details", {})
+        if details.get("synthetic") is not True:
+            raise ValueError("MP plan requires synthetic observations")
+        key = obs["product_key"]
+        family = details.get("canonical_product_key", key)
+        catalog_by_key[key] = catalog_reference(family)
         period = obs.get("period", {})
         if period.get("from") != latest or obs.get("status") == "missing":
             continue
@@ -432,9 +486,10 @@ def build_mp_plan(metrika_path: Path, output_path: Path, seed: int = 0,
             cid = str(10**17 + int(hashlib.sha256(f"blind:{seed}:{latest}:{family}:{device}:{i}".encode()).hexdigest()[:15], 16) % (9*10**17))
             path = "/catalog/" + urllib.parse.quote(family, safe="")
             common = {"cid": cid, "dl": "https://aifence-demo.example.com" + path,
-                      "dr": "https://www.example.com/", "dt": "AIfence blind synthetic",
+                      "dr": "https://www.example.com/", "dt": catalog_by_key[family]["product_label"],
                       "et": ts, "params": json.dumps({"aifence_blind": "yes", "family": family,
-                      "device": device, "week": latest}, ensure_ascii=False, separators=(",", ":"))}
+                      "device": device, "week": latest, "synthetic": True, **catalog_by_key[family]},
+                      ensure_ascii=False, separators=(",", ":"))}
             hits.append(urllib.parse.urlencode({"t": "pageview", **common}))
             event_counts["pageview"] += 1
             if rng.random() < card_rate:
@@ -453,6 +508,7 @@ def build_mp_plan(metrika_path: Path, output_path: Path, seed: int = 0,
     plan = {"schema_version": "aifence.metrika-mp-plan.v1", "counter": str(counter),
             "latest_evidence_week": latest, "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "historical_warning": "Re-timed proportional sample; Measurement Protocol does not backfill these historical weeks.",
+            "synthetic": True, "catalog": catalog_by_key,
             "hit_count": len(hits), "event_counts": event_counts, "hits": hits}
     output_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return plan

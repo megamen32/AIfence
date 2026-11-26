@@ -11,7 +11,7 @@ func TestCollectWatchdogCase(t *testing.T) {
 	w := Watch{Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
 		func(context.Context) string { return "" }}
 	input := WatchCaseInput{
-		Series: SignalInput{ProductKey: "demo_target", ControlProductKey: "demo_control", MetricKey: "orders_index",
+		Series: SignalInput{ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 			From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03",
 			SourcePath: "fixtures/synthetic-watch.json", ContextPath: "fixtures/synthetic-watch-context.json"},
 		Keywords: []string{"called"},
@@ -69,7 +69,7 @@ func TestCollectWatchdogCase(t *testing.T) {
 func TestCollectWatchdogCaseSourcePolicy(t *testing.T) {
 	decline := []float64{100, 100, 100, 100, 60, 60, 60, 60}
 	control := []float64{100, 100, 100, 100, 100, 100, 100, 100}
-	in := WatchCaseInput{Series: SignalInput{ProductKey: "target", ControlProductKey: "control",
+	in := WatchCaseInput{Series: SignalInput{ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl,
 		MetricKey: "orders_index", From: "2034-02-20", To: "2034-02-26"}, Keywords: []string{"example"}}
 	t.Run("historical", func(t *testing.T) {
 		w := testWatch(t, decline, control, func(row *Observation) { row.Details["synthetic"] = false })
