@@ -39,6 +39,7 @@ type BlindSeries struct {
 
 type BlindDiscovery struct {
 	Status      string           `json:"status"`
+	Origin      string           `json:"origin,omitempty"`
 	DatasetID   string           `json:"dataset_id,omitempty"`
 	AsOf        string           `json:"as_of,omitempty"`
 	Series      []BlindSeries    `json:"series"`
@@ -51,22 +52,26 @@ type BlindDiscovery struct {
 
 type BlindCandidate struct {
 	BlindDimensions
-	ID             string                `json:"candidate_id"`
-	SignalID       string                `json:"signal_id,omitempty"`
-	Magnitude      *WatchSignalMagnitude `json:"magnitude,omitempty"`
-	Kind           string                `json:"kind"`
-	Period         Period                `json:"period"`
-	Reason         string                `json:"reason"`
-	Control        string                `json:"control_product_key,omitempty"`
-	ChangePct      *float64              `json:"relative_change_pct,omitempty"`
-	ControlPct     *float64              `json:"control_change_pct,omitempty"`
-	Adjusted       *float64              `json:"control_adjusted_change_pct,omitempty"`
-	SourceRefs     []Ref                 `json:"source_refs"`
-	SourceRefCount int                   `json:"source_ref_count"`
+	ID                   string                `json:"candidate_id"`
+	SignalID             string                `json:"signal_id,omitempty"`
+	Magnitude            *WatchSignalMagnitude `json:"magnitude,omitempty"`
+	Kind                 string                `json:"kind"`
+	Period               Period                `json:"period"`
+	Reason               string                `json:"reason"`
+	Control              string                `json:"control_product_key,omitempty"`
+	ChangePct            *float64              `json:"relative_change_pct,omitempty"`
+	ControlPct           *float64              `json:"control_change_pct,omitempty"`
+	Adjusted             *float64              `json:"control_adjusted_change_pct,omitempty"`
+	SourceRefs           []Ref                 `json:"source_refs"`
+	ConfirmedWindows     int                   `json:"confirmed_windows,omitempty"`
+	LastConfirmedWeek    *Period               `json:"last_confirmed_week,omitempty"`
+	LastConfirmationRefs []Ref                 `json:"last_confirmation_refs,omitempty"`
+	SourceRefCount       int                   `json:"source_ref_count"`
 }
 
 type BlindScan struct {
 	Status           string           `json:"status"`
+	Origin           string           `json:"origin,omitempty"`
 	DatasetID        string           `json:"dataset_id,omitempty"`
 	AsOf             string           `json:"as_of,omitempty"`
 	ComparedWindows  int              `json:"compared_windows"`
@@ -291,6 +296,16 @@ func blindPage[T any](items []T, in BlindInput, fallback int) ([]T, *int) {
 	return items[start:end], nil
 }
 
+func (d blindDataset) origin() string {
+	if d.context.Synthetic == nil {
+		return "unknown"
+	}
+	if *d.context.Synthetic {
+		return "synthetic_fixture"
+	}
+	return "imported_historical"
+}
+
 func (d blindDataset) discover(ctx context.Context, in BlindInput) (BlindDiscovery, error) {
 	measures := d.measures()
 	scan, _, err := d.scanMeasures(ctx, measures)
@@ -299,7 +314,7 @@ func (d blindDataset) discover(ctx context.Context, in BlindInput) (BlindDiscove
 	}
 	page, next := blindPage(measures, in, 16)
 	out := BlindDiscovery{
-		Status: "ok", DatasetID: d.id.String(), AsOf: d.series.AsOf,
+		Status: "ok", DatasetID: d.id.String(), AsOf: d.series.AsOf, Origin: d.origin(),
 		Series: make([]BlindSeries, 0, len(page)), SeriesCount: len(measures), NextOffset: next,
 		ScanStatus: scan.Status, Findings: scan.Candidates[:min(4, len(scan.Candidates))], Warnings: scan.Warnings,
 	}

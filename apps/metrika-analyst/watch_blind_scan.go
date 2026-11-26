@@ -14,7 +14,7 @@ func (d blindDataset) scan(ctx context.Context) (BlindScan, map[string]blindHit,
 }
 
 func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure) (BlindScan, map[string]blindHit, error) {
-	out := BlindScan{Status: "incomplete", DatasetID: d.id.String(), AsOf: d.series.AsOf,
+	out := BlindScan{Status: "incomplete", DatasetID: d.id.String(), AsOf: d.series.AsOf, Origin: d.origin(),
 		SeriesCount: len(measures), Candidates: []BlindCandidate{}, Warnings: []string{}}
 	cutoff := blindCutoff(d.series.AsOf)
 	groups := map[blindPeerKey][]*blindMeasure{}
@@ -43,10 +43,7 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 	if registry.Source == "" || registry.Status != "ok" {
 		out.Warnings = append(out.Warnings, "The collection-break registry is absent or incomplete.")
 	}
-	origin := "imported_historical"
-	if d.context.Synthetic != nil && *d.context.Synthetic {
-		origin = "synthetic_fixture"
-	}
+	origin := out.Origin
 	releases := d.context.Batches["release"].Observations
 	unsupported := 0
 	var work int64
@@ -96,7 +93,7 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 		first, _ := time.Parse(time.DateOnly, dates[0])
 		last, _ := time.Parse(time.DateOnly, dates[len(dates)-1])
 		controlledStart := first.AddDate(0, 0, (2*watchWeeks-1)*7)
-		active := false
+		active := -1
 		uncontrolled := false
 		var previous time.Time
 		reportedWindows := 0
@@ -114,11 +111,12 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 			}
 			reportedWindows++
 			if !previous.IsZero() && !at.Equal(previous.AddDate(0, 0, 7)) {
-				active, uncontrolled = false, false
+				active, uncontrolled = -1, false
 			}
 			previous = at
 			control := blindControl(target, groups[target.peer], at, min(p.To, cutoff))
 			if control == nil {
+				active = -1
 				out.UncertainWindows++
 				if change, refs, ok := blindUncontrolled(target, at, min(p.To, cutoff), registry.Observations); ok {
 					if !uncontrolled {
@@ -135,11 +133,16 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 				MetricKey: target.meta.MetricKey, Segment: target.meta.Segment, DropPct: watchDropPct,
 				ControlMaxPct: watchControlMaxPct}, at, cutoff, privateSeries, origin, rowsByGroup[target.peer], registry.Observations)
 			if sig.Value == nil {
+				active = -1
 				out.UncertainWindows++
 				continue
 			}
 			out.ComparedWindows++
-			if *sig.Value && !active {
+			if !*sig.Value {
+				active = -1
+				continue
+			}
+			if active == -1 || hits[active].candidate.Control != control.meta.ProductKey {
 				magnitude := signalMagnitude(sig)
 				add(target, BlindCandidate{
 					Kind: "controlled_decline", Period: p, Control: control.meta.ProductKey,
@@ -148,8 +151,12 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 					ChangePct: &magnitude.RelativeChangePct, ControlPct: blindPct(sig, "control_change_pct"),
 					Adjusted: blindPct(sig, "control_adjusted_change_pct"), SourceRefs: blindSignalRefs(sig),
 				})
+				active = len(hits) - 1
 			}
-			active = *sig.Value
+			candidate := &hits[active].candidate
+			candidate.ConfirmedWindows++
+			candidate.LastConfirmedWeek = &p
+			candidate.LastConfirmationRefs = blindConfirmationRefs(target.weeks[day], control.weeks[day], min(p.To, cutoff))
 		}
 		if controlledStart.After(last) {
 			out.UncertainWindows++
@@ -171,6 +178,9 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 		a, b := hits[i].candidate, hits[j].candidate
 		if blindRank(a.Kind) != blindRank(b.Kind) {
 			return blindRank(a.Kind) < blindRank(b.Kind)
+		}
+		if a.ConfirmedWindows != b.ConfirmedWindows {
+			return a.ConfirmedWindows > b.ConfirmedWindows
 		}
 		if magnitudeA, magnitudeB := blindMagnitude(a), blindMagnitude(b); magnitudeA != magnitudeB {
 			return magnitudeA > magnitudeB
@@ -202,6 +212,19 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 		out.Status = "quiet"
 	}
 	return out, index, nil
+}
+
+func blindConfirmationRefs(target, control []Observation, cutoff string) []Ref {
+	refs := make([]Ref, 0, 2)
+	for _, rows := range [][]Observation{target, control} {
+		for _, row := range rows {
+			if weeklyIssue(row, cutoff) == "" {
+				refs = append(refs, row.SourceRef)
+				break
+			}
+		}
+	}
+	return refs
 }
 
 func blindRank(kind string) int {

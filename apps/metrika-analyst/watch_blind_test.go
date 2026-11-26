@@ -209,3 +209,38 @@ func TestBlindDiscoveryMeasuredSmoke(t *testing.T) {
 	t.Logf("rows=%d dimensions=%d compared=%d, discovery=%d bytes in %s, scan=%d bytes in %s",
 		len(d.series.Observations), discovery.SeriesCount, scan.ComparedWindows, len(out), discoveryTime, len(candidates), scanTime)
 }
+
+func TestBlindRankingPrefersRepeatedControlledWindows(t *testing.T) {
+	series := func(v float64, n int) []float64 {
+		x := make([]float64, n)
+		for i := range x {
+			x[i] = v
+		}
+		return x
+	}
+	isolated := blindTestDataset(t, []float64{100, 100, 100, 100, 35, 35, 35, 35}, series(100, 8))
+	repeated := blindTestDataset(t, []float64{100, 100, 100, 100, 70, 70, 70, 70, 70, 70}, series(100, 10))
+	historical := false
+	isolated.context.Synthetic = &historical
+	for _, row := range repeated.series.Observations {
+		row.MetricKey = "repeat_metric"
+		row.ID = "repeat/" + row.ID
+		isolated.series.Observations = append(isolated.series.Observations, row)
+	}
+	scan, _, err := isolated.scan(t.Context())
+	if err != nil || len(scan.Candidates) != 2 {
+		t.Fatalf("scan: %v", err)
+	}
+	top, second := scan.Candidates[0], scan.Candidates[1]
+	if top.MetricKey != "repeat_metric" || top.ConfirmedWindows != 2 ||
+		top.LastConfirmedWeek == nil || top.LastConfirmedWeek.From != "2034-02-27" ||
+		len(top.LastConfirmationRefs) != 2 || second.ConfirmedWindows != 1 ||
+		blindMagnitude(top) >= blindMagnitude(second) {
+		t.Fatal("repeated, smaller decline must precede larger isolated decline and carry the second week's sources")
+	}
+	discovery, err := isolated.discover(t.Context(), BlindInput{})
+	if err != nil || scan.Origin != "imported_historical" || discovery.Origin != scan.Origin ||
+		discovery.DatasetID != scan.DatasetID || len(discovery.Findings) < 1 || discovery.Findings[0].ID != top.ID {
+		t.Fatalf("discovery and scan must agree on provenance, dataset and leading candidate: %v", err)
+	}
+}
