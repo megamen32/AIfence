@@ -31,14 +31,15 @@ func salesReviewTool(a *agentsdk.Agent, h *handlers.Handler) tool.Tool {
 		if _, ok := caller.User(); err != nil || !ok || caller.Origin().Interface != agentsdk.InterfaceChat || result.Output == "" || len(result.Output) > 24*1024 {
 			return result, err
 		}
-		logical := fmt.Sprintf("%s/%x.txt", chatBriefDirectory, sha256.Sum256([]byte(result.Output)))
+		attachment := reviewAttachment(result.Output)
+		logical := fmt.Sprintf("%s/%x.txt", chatBriefDirectory, sha256.Sum256([]byte(attachment)))
 		path, err := a.ResolveFilePath(ctx, logical, agentsdk.FileOperationWrite)
 		// A trusted write must use the conversation-scoped path from the SDK.
 		if err != nil || !strings.HasPrefix(string(path), chatBriefDirectory+"/conv-") {
 			slog.WarnContext(ctx, "Sales review attachment has no conversation scope")
 			return result, nil
 		}
-		info, err := a.WriteFile(ctx, string(path), strings.NewReader(result.Output), "text/plain")
+		info, err := a.WriteFile(ctx, string(path), strings.NewReader(attachment), "text/plain")
 		if err != nil {
 			slog.WarnContext(ctx, "Could not store the conversation's sales review attachment")
 			return result, nil
@@ -47,4 +48,28 @@ func salesReviewTool(a *agentsdk.Agent, h *handlers.Handler) tool.Tool {
 		return result, nil
 	}
 	return t
+}
+
+// The attachment can be the only evidence a hosted model receives if its JS
+// expression has no return. Keep the source locators with the measured facts.
+func reviewAttachment(output string) string {
+	var review handlers.SalesBrief
+	if err := json.Unmarshal([]byte(output), &review); err != nil || len(review.Readings) == 0 {
+		return output
+	}
+	var b strings.Builder
+	for _, r := range review.Readings {
+		fmt.Fprintf(&b, "%s\nЦены: %s %s\n", r.Product, r.Price, r.PriceTiming)
+		for _, offer := range r.OfferExample {
+			fmt.Fprintf(&b, "%s · %s · %s\n", offer.SKU, offer.Fact, offer.Locator)
+		}
+		c := r.Comparison
+		fmt.Fprintf(&b, "Продажи, два окна по %d недели (%s — %s к %s — %s). Контрольный продукт %s: %.1f%%. Исследуемый продукт %s: %.1f%%. Источник: %s.\n",
+			c.WeeksPerWindow, c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.Control.Name, c.Control.Percent, c.Target.Name, c.Target.Percent, r.Source)
+		fmt.Fprintf(&b, "Потери в рублях за неделю: %s\n", r.Weekly)
+	}
+	if review.NextOffset != nil {
+		fmt.Fprintf(&b, "Следующая страница: %d.\n", *review.NextOffset)
+	}
+	return b.String()
 }
