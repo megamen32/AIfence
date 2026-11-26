@@ -27,6 +27,7 @@ templ Screen(p Page) {
 			<title>{ sectionTitle(p.Tab) } · Market Watch</title>
 			<link rel="stylesheet" href={ "./static/" + AppCSSName }/>
 			<script src={ agentsdk.Assets.HTMX } defer></script>
+			<script src={ "./static/" + PriceHistoryJSName } defer></script>
 			@agentsdk.WebUI(agentsdk.WebUIOptions{})
 		</head>
 		<body>
@@ -40,20 +41,32 @@ templ Screen(p Page) {
 					</div>
 				</header>
 				<nav class="section-nav" aria-label="Разделы Market Watch">
-					@navItem(p.CatalogURL, "Каталог", "layers", p.Tab == "catalog")
+					if p.BaserowURL != "" {
+						@navItem(p.BaserowURL, "Каталог в Baserow", "layers", p.Tab == "catalog")
+					} else {
+						@navItem(p.CatalogURL, "Каталог", "layers", p.Tab == "catalog")
+					}
 					@navItem(p.CompareURL, "Сравнение", "scale", p.Tab == "compare")
 					@navItem(p.ChangesURL, "История цен", "clock-3", p.Tab == "changes")
 					@navItem(p.SourcesURL, "Источники", "database", p.Tab == "sources")
 				</nav>
 				<main>
-					<div class="section-heading">
-						<h1>{ sectionTitle(p.Tab) }</h1>
-						<a href="./catalog.csv" class="btn btn-outline export-link" download>
-							@lucide.Icon("arrow-down-to-line", "size-4")
-							<span>Весь каталог в CSV</span>
-						</a>
-					</div>
-					if p.Tab != "sources" {
+					if p.Tab != "compare" {
+						<div class="section-heading">
+							<h1>{ sectionTitle(p.Tab) }</h1>
+							if p.BaserowURL != "" && p.Tab == "catalog" {
+								<a href={ p.BaserowURL } class="btn btn-primary">Открыть таблицу в Baserow</a>
+							}
+							<details class="catalog-export">
+								<summary>Экспорт</summary>
+								<a href="./catalog.csv" class="btn btn-outline export-link" download>
+									@lucide.Icon("arrow-down-to-line", "size-4")
+									<span>Весь каталог в CSV</span>
+								</a>
+							</details>
+						</div>
+					}
+					if p.Tab != "sources" && p.Tab != "compare" {
 						@filters(p)
 					}
 					@Results(p)
@@ -143,28 +156,7 @@ templ Results(p Page) {
 				case "sources":
 					@sources(p)
 				case "compare":
-					if len(p.Groups) > 0 {
-						for _, g := range p.Groups {
-							<article class="result-panel">
-								<div class="panel-head">
-									<div>
-										<h2>{ g.Label }</h2>
-										if g.Note != "" {
-											<p class="muted">{ g.Note }</p>
-										}
-									</div>
-									if g.Lowest != "" {
-										<p class="lowest"><span>Минимальная цена</span><strong>{ g.Lowest }</strong></p>
-									}
-								</div>
-								@offers(g.Rows, "compare")
-							</article>
-						}
-					} else if p.Query == "" {
-						@emptyState("scale", "Введите точный артикул", "Скопируйте артикул производителя или откройте сравнение из каталога.")
-					} else {
-						@emptyState("scale", "Предложений для сравнения нет", "Проверьте артикул. В каталог попадают предложения с зафиксированной публичной ценой.")
-					}
+					@comparison(p)
 				default:
 					if len(p.Rows) > 0 {
 						<article class="result-panel">

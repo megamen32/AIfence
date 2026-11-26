@@ -22,9 +22,13 @@ type Catalog interface {
 	CompareSKU(context.Context, market.CompareInput) (market.Comparison, error)
 	Coverage(context.Context, struct{}) (market.CatalogStatus, error)
 	CrawlCoverage(context.Context, struct{}) (market.CrawlReport, error)
+	PriceHistory(context.Context, market.ChangesInput) (market.PriceHistory, error)
 }
 
-type Pages struct{ Market Catalog }
+type Pages struct {
+	Market      Catalog
+	CatalogLink func(context.Context) string
+}
 
 var licenses = []views.Option{
 	{Value: "new", Label: "Новая лицензия"},
@@ -123,6 +127,7 @@ func tableRow(o market.Observation) views.Row {
 	d := o.Details
 	sku := strings.TrimSpace(o.ProductKey)
 	r := views.Row{SKU: sku, Name: d.Name, Store: storeName(d.Seller), Price: rubles(o.Value), At: dateTime(d.CapturedAt), URL: o.SourceRef.URL, Basis: basisName(d.PriceBasis), Quantity: quantity(d)}
+	r.SourceID = d.Seller
 	if sku != "" {
 		r.CompareURL = link("compare", sku)
 	}
@@ -162,6 +167,9 @@ func (h Pages) Home(w http.ResponseWriter, r *http.Request) error {
 	q := r.URL.Query()
 	now := time.Now().UTC()
 	p := views.Page{Tab: q.Get("tab"), Query: strings.TrimSpace(q.Get("q")), Source: q.Get("source"), License: q.Get("license"), From: q.Get("from"), To: q.Get("to"), Licenses: licenses, CatalogURL: link("catalog", ""), CompareURL: link("compare", ""), ChangesURL: link("changes", ""), SourcesURL: link("sources", "")}
+	if h.CatalogLink != nil {
+		p.BaserowURL = h.CatalogLink(r.Context())
+	}
 	if p.Tab == "" {
 		p.Tab = "catalog"
 	}
@@ -195,7 +203,7 @@ func (h Pages) Home(w http.ResponseWriter, r *http.Request) error {
 	case "catalog":
 		err = h.catalog(r.Context(), &p, q.Get("page"))
 	case "compare":
-		err = h.compare(r.Context(), &p)
+		err = h.compare(r.Context(), &p, q.Get("qty"))
 	case "changes":
 		err = h.changes(r.Context(), &p)
 	case "sources":
@@ -262,41 +270,6 @@ func (h Pages) catalog(ctx context.Context, p *views.Page, page string) error {
 	}
 	if n > 1 {
 		p.PrevURL = pageLink(*p, n-1)
-	}
-	return nil
-}
-
-func (h Pages) compare(ctx context.Context, p *views.Page) error {
-	if p.Query == "" {
-		return nil
-	}
-	if len(p.Query) > 300 {
-		p.Error = "Артикул слишком длинный."
-		return nil
-	}
-	res, err := h.Market.CompareSKU(ctx, market.CompareInput{SKU: p.Query})
-	if err != nil {
-		return err
-	}
-	for _, g := range res.Groups {
-		block := views.Group{Note: g.Reason}
-		for _, o := range g.Rows {
-			block.Rows = append(block.Rows, tableRow(o))
-		}
-		if len(block.Rows) == 0 {
-			continue
-		}
-		block.Label = g.Label
-		if block.Label == "" {
-			block.Label = block.Rows[0].Basis + " · " + block.Rows[0].Quantity
-		}
-		if g.Comparable && !res.Truncated && g.LowestPrice != nil {
-			block.Lowest = rubles(*g.LowestPrice)
-		}
-		p.Groups = append(p.Groups, block)
-	}
-	if res.Truncated {
-		p.Notice = "Показана часть предложений по артикулу. Общий минимум не рассчитан."
 	}
 	return nil
 }

@@ -1,0 +1,153 @@
+package views
+
+import "github.com/airlockrun/agentsdk/lucide"
+
+templ comparison(p Page) {
+	<section class="comparison">
+		<div class="cmp-top">
+			<h1>Сравнение лицензий</h1>
+			<details class="cmp-search" open?={ p.Query == "" }>
+				<summary>Найти артикул</summary>
+				<form action="./" method="get">
+					<input type="hidden" name="tab" value="compare"/>
+					<input class="input" type="search" name="q" value={ p.Query } aria-label="Точный артикул" placeholder="Артикул производителя" required/>
+					<button class="btn btn-sm" type="submit">Найти</button>
+				</form>
+			</details>
+		</div>
+		if p.Query == "" {
+			<p class="cmp-empty">Введите артикул производителя или выберите лицензию в каталоге.</p>
+		} else {
+			<div class="cmp-product">
+				<h2>{ p.Query }</h2>
+				if p.ProductName != "" {
+					<p title={ p.ProductName }>{ p.ProductName }</p>
+				}
+			</div>
+			if p.HasQuantity {
+				<form class="cmp-quantity" method="get" action="./" hx-get="./" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">
+					<input type="hidden" name="tab" value="compare"/>
+					<input type="hidden" name="q" value={ p.Query }/>
+					<input type="hidden" name="from" value={ p.From }/>
+					<input type="hidden" name="to" value={ p.To }/>
+					<label>Количество <input type="number" name="qty" min="1" max="1000000" step="1" value={ p.Quantity } required/></label>
+					<button type="submit">Пересчитать</button>
+				</form>
+			}
+			if len(p.Groups) == 0 {
+				<p class="cmp-empty">Для выбранных условий сопоставимых предложений нет.</p>
+			} else {
+				<div class="compare-sheet">
+					<table class="price-matrix">
+						<caption class="sr-only">Опубликованные цены и разница в одинаковых условиях</caption>
+						<thead><tr><th scope="col">Магазин</th><th scope="col">Цена</th><th scope="col">К минимуму</th></tr></thead>
+						for _, g := range p.Groups {
+							<tbody>
+								if g.Label != "" && g.Comparable {
+									<tr class="cmp-group"><th scope="rowgroup" colspan="3">{ g.Label }</th></tr>
+								}
+								for _, row := range g.Rows {
+									<tr class="cmp-row">
+										<th scope="row">
+											<span class="mw-store-tag" data-store={ row.SourceID }></span>
+											<span>{ row.Store }</span>
+										</th>
+										<td class="matrix-price">
+											<a href={ row.URL } target="_blank" rel="noopener noreferrer" title={ row.Name + " · " + row.Basis + " · " + row.Quantity + " · " + row.At }>{ row.Price }</a>
+										</td>
+										<td class="matrix-delta">
+											if row.Best {
+												<span class="matrix-best">Минимум</span>
+											} else if row.Difference != "" {
+												<span>{ row.Difference }</span>
+											} else {
+												<span class="matrix-unknown" title={ g.Note }>{ row.ShortCondition }</span>
+											}
+										</td>
+									</tr>
+								}
+							</tbody>
+						}
+					</table>
+				</div>
+				if len(p.Tiers)>0 {
+					<details class="cmp-secondary tier-list">
+						<summary>Ценовые ступени по количеству</summary>
+						for _, schedule:=range p.Tiers {
+							<div class="tier-schedule">
+								<h3 title={ schedule.Title }>{ schedule.Seller } · цена за единицу</h3>
+								<svg viewBox="0 0 300 42" role="img" aria-label="Цена за единицу по опубликованным ступеням тиража" preserveAspectRatio="none">
+									<path d={ schedule.Path } fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+								</svg>
+								<div class="tier-options">
+									for _, step:=range schedule.Steps {
+										<a
+											href={ step.URL }
+											hx-get={ step.URL }
+											hx-target="#results"
+											hx-swap="outerHTML"
+											hx-push-url="true"
+											if step.Active {
+												aria-current="true"
+											}
+										><span>{ step.Range }</span><strong>{ step.Amount }</strong></a>
+									}
+								</div>
+							</div>
+						}
+					</details>
+				}
+				<div class="history-head">
+					<h2>История опубликованных цен</h2>
+					<div class="history-period" aria-label="Период">
+						for _, o := range p.Periods {
+							<a
+								href={ o.Value }
+								hx-get={ o.Value }
+								hx-target="#results"
+								hx-swap="outerHTML"
+								hx-push-url="true"
+								if o.Active {
+									aria-current="true"
+								}
+							>{ o.Label }</a>
+						}
+					</div>
+				</div>
+				if p.HistoryNotice != "" {
+					<p class="cmp-empty">{ p.HistoryNotice }</p>
+				}
+				for _, ch := range p.Charts {
+					if ch.Separate {
+						<details class="cmp-secondary">
+							<summary>{ ch.Label }</summary>
+							<market-price-history data-series={ ch.Series }></market-price-history>
+						</details>
+					} else {
+						<div class="cmp-chart">
+							if ch.Label != "" {
+								<h3>{ ch.Label }</h3>
+							}
+							<market-price-history data-series={ ch.Series }></market-price-history>
+						</div>
+					}
+				}
+				<details class="cmp-provenance">
+					<summary>Условия и источники</summary>
+					for _, g := range p.Groups {
+						for _, row := range g.Rows {
+							<div>
+								<a href={ row.URL } target="_blank" rel="noopener noreferrer">
+									<span>{ row.Store }</span>
+									@lucide.Icon("external-link", "size-3")
+								</a>
+								<span>{ row.Basis } · { row.Quantity }</span>
+								<time>{ row.At }</time>
+							</div>
+						}
+					}
+				</details>
+			}
+		}
+	</section>
+}

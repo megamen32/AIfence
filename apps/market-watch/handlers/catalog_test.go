@@ -22,6 +22,9 @@ func (f *fixture) Browse(_ context.Context, in market.ListInput) (market.Evidenc
 	o := market.Observation{ProductKey: "AA&1", Details: d, Value: 1234.51, SourceRef: market.SourceRef{URL: "https://store.softline.ru/vendor/license/"}}
 	return market.Evidence{Observations: []market.Observation{o}}, true, nil
 }
+func (f *fixture) PriceHistory(context.Context, market.ChangesInput) (market.PriceHistory, error) {
+	return market.PriceHistory{}, nil
+}
 func (f *fixture) Changes(context.Context, market.ChangesInput) (market.Evidence, error) {
 	return market.Evidence{}, nil
 }
