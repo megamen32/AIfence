@@ -2,6 +2,7 @@
 """Publish Market Watch's seven-day matrix to the current Airlock user's Baserow database."""
 import argparse
 import csv
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
 import fcntl
@@ -11,6 +12,7 @@ import json
 import re
 from pathlib import Path
 import subprocess
+import tempfile
 from urllib.parse import urlencode, urlsplit
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -62,12 +64,13 @@ NAMES = {key:name for key,name,_,_ in COLUMNS}
 DIRECT_URL = "http://localhost:42080"
 
 
-def request(app, method, path, payload=None):
+def request(app, method, path, payload=None, sink=None):
     args = [str(SDK), "request", method, path, "--agent", app,
             "--remote", "default", "--target", "production", "--url", DIRECT_URL, "--timeout", "2m"]
     if payload is not None:
         args.extend(["--header", "Content-Type: application/json", "--data", json.dumps(payload,ensure_ascii=False,separators=(",",":"))])
-    proc = subprocess.run(args, cwd=ROOT/"apps"/app, capture_output=True, timeout=135)
+    proc = subprocess.run(args, cwd=ROOT/"apps"/app, stdout=sink if sink is not None else subprocess.PIPE,
+                          stderr=subprocess.PIPE, timeout=135)
     if proc.returncode:
         raise RuntimeError(f"{app} {method} {path.split('?')[0]} failed ({proc.returncode}): {proc.stderr.decode(errors='replace')[-450:]}")
     return proc.stdout
@@ -218,44 +221,100 @@ def mapped(row, store_count=None):
     return {name:normal(kind,data[key]) for key,name,kind,_ in COLUMNS}
 
 
-def source():
-    cursor=""
-    seen=set()
+def market_stamp():
+    args = [str(SDK), "tools", "invoke", "catalog_status", "--json", "--agent", "market-watch",
+            "--remote", "default", "--target", "production", "--url", DIRECT_URL, "--timeout", "60s"]
+    proc = subprocess.run(args, cwd=ROOT/"apps/market-watch", capture_output=True, timeout=70, check=True)
+    status = json.loads(json.loads(proc.stdout)["data"]["result"]["output"])
+    return {row["source"]: (row["observed_offers"], row.get("last_observation")) for row in status["sources"]}
+
+
+def matrix_groups(stream):
+    reader = csv.DictReader(stream, delimiter=";", strict=True)
+    derived = {"active", "leader", "status", "store_count"}
+    required = (set(NAMES) - derived) | {"leader_changed", "cursor", "comparable"}
+    missing = required - set(reader.fieldnames or ())
+    if missing:
+        raise ValueError(f"Market Watch matrix is missing columns: {sorted(missing)}")
+    for cursor, group in groupby(reader, key=lambda row:row["cursor"]):
+        items = list(group)
+        if not cursor or any(None in row or None in row.values() for row in items):
+            raise ValueError("Truncated Market Watch matrix")
+        sellers = {seller for row in items for seller in ("softline", "softmap", "softmagazin") if row[seller]}
+        count = len(sellers) if cursor.startswith("sku:") and len(sellers) >= 2 else None
+        yield cursor, [(row["key"], mapped(row, count)) for row in items]
+
+
+def matrix_page(cursor, limit):
+    query = urlencode({"days":7, "limit":limit, "after":cursor})
+    raw = request("market-watch","GET","/matrix.csv?"+query).decode("utf-8-sig")
+    return list(matrix_groups(io.StringIO(raw)))
+
+
+def add_group(rows, items):
+    for key, value in items:
+        if not key or key in rows:
+            raise ValueError("Duplicate or empty Market Watch key")
+        rows[key] = value
+
+
+def bulk_matrix():
+    rows = {}
+    previous = ""
+    last = ""
+    last_keys = set()
+    with tempfile.TemporaryFile(mode="w+b") as raw:
+        request("market-watch", "GET", "/matrix.csv?days=7", sink=raw)
+        raw.seek(0)
+        with io.TextIOWrapper(raw, encoding="utf-8-sig", newline="") as stream:
+            for cursor, group in matrix_groups(stream):
+                add_group(rows, group)
+                previous, last = last, cursor
+                last_keys = {key for key, _ in group}
+    # A streaming response can terminate after its response headers were sent.
+    # Verify both the last complete SKU and exhaustion of the canonical cursor.
+    tail = matrix_page(previous, 1)
+    if last and (not tail or tail[0][0] != last or {key for key, _ in tail[0][1]} != last_keys):
+        raise ValueError("Incomplete final Market Watch SKU")
+    if matrix_page(last, 1):
+        raise ValueError("Incomplete Market Watch matrix")
+    return rows
+
+
+def paged_matrix():
+    rows = {}
+    cursor = ""
     while True:
-        query=urlencode({"days":7,"limit":400,"after":cursor})
-        raw=request("market-watch","GET","/matrix.csv?"+query).decode("utf-8-sig")
-        reader=csv.DictReader(io.StringIO(raw),delimiter=";")
-        required={k for k in NAMES if k not in ("active","leader","status","store_count")}|{"leader_changed","cursor","comparable"}
-        if not required.issubset(reader.fieldnames or ()):
-            raise ValueError("Missing columns in Market Watch matrix: "+str(required-set(reader.fieldnames or ())))
-        page=list(reader)
+        page = matrix_page(cursor, 500)
         if not page:
-            return
-        # Market Watch paginates full SKU groups. Keep the canonical cursor so
-        # title similarity and unknown SKUs can never merge unrelated offers.
-        for group_key, group in groupby(page, key=lambda row: row["cursor"]):
-            group_rows = list(group)
-            sellers = {seller for row in group_rows for seller in ("softline", "softmap", "softmagazin")
-                       if row[seller] != ""}
-            store_count = len(sellers) if group_key.startswith("sku:") and len(sellers) >= 2 else None
-            for row in group_rows:
-                key = row["key"]
-                if not key or key in seen:
-                    raise ValueError("Duplicate or empty matrix key")
-                seen.add(key)
-                yield key, mapped(row, store_count)
-        nxt=page[-1]["cursor"]
-        if not nxt or nxt==cursor:
-            raise ValueError("Invalid matrix continuation")
-        cursor=nxt
+            return rows
+        for key, items in page:
+            add_group(rows, items)
+        next_cursor = page[-1][0]
+        if next_cursor == cursor:
+            raise ValueError("Repeated Market Watch cursor")
+        cursor = next_cursor
 
 
-def batches(items, size=100):
+def source():
+    for _ in range(3):
+        start = market_stamp()
+        try:
+            rows = bulk_matrix()
+        except (csv.Error, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            # Some deployments cap a single route response. Keep cursor paging available.
+            rows = paged_matrix()
+        if market_stamp() == start:
+            return rows.items()
+    raise RuntimeError("Market Watch changed during export; keeping the previous published matrix")
+
+
+def batches(items, size=200):
     batch=[]
     length=0
     for item in items:
         length_item=len(json.dumps(item,ensure_ascii=False).encode())
-        if batch and (len(batch)>=size or length+length_item>90000):
+        if batch and (len(batch)>=size or length+length_item>180000):
             yield batch
             batch=[]
             length=0
@@ -268,20 +327,30 @@ def batches(items, size=100):
 def sync(tid, ids):
     # Refresh from native rows on every run. A crash after a server commit can always resume.
     base=f"database/rows/table/{tid}/"
-    old={}
-    page=1
-    while True:
-        resp=api("GET",base+f"?user_field_names=true&size=200&page={page}")
-        for row in resp["results"]:
-            key=row.get(NAMES["key"])
-            if not key:
-                continue  # user-created rows are outside the projection
-            if key in old:
-                raise ValueError("Duplicate managed key in Baserow")
-            old[key]=row
-        if not resp["next"]:
-            break
-        page+=1
+    old = {}
+    # Fetch only fields maintained by this projection. In particular no personal
+    # annotations or computed link text are needed to decide which rows changed.
+    field_ids = {"field_"+str(ids[key]):name for key,name,_,_ in COLUMNS}
+    params = urlencode({"include":",".join(field_ids), "size":200})
+    def fetch_page(page):
+        return api("GET", base + "?" + params + "&page=" + str(page))
+    first = fetch_page(1)
+    total = first["count"]
+    def index_page(page):
+        if page["count"] != total:
+            raise ValueError("Native table changed while scanning; retry the projection")
+        for item in page["results"]:
+            row = {name:item.get(fid) for fid,name in field_ids.items()}
+            key = row[NAMES["key"]]
+            if key:
+                if key in old:
+                    raise ValueError("Duplicate managed key in Baserow")
+                old[key] = {"id":item["id"], **row}
+    index_page(first)
+    # Writes remain serialized. Three local reads bound the cost of large native catalogs.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        for page in pool.map(fetch_page, range(2, (total + 199)//200 + 1)):
+            index_page(page)
     rows=dict(source()) # fetch a complete export before modifying native state
     if not rows and old:
         raise ValueError("Empty matrix unexpectedly replacing an existing snapshot")

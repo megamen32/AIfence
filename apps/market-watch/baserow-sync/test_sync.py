@@ -14,6 +14,13 @@ def source_row():
     return row
 
 
+IDS = {key:i for i,(key,_,_,_) in enumerate(sync.COLUMNS, start=1)}
+
+
+def native(row):
+    return {"id":row["id"],**{"field_"+str(IDS[key]):row.get(name) for key,name,_,_ in sync.COLUMNS}}
+
+
 class MatrixProjectionTests(unittest.TestCase):
     def test_nullable_and_noncomparable_prices(self):
         row = sync.mapped(source_row())
@@ -43,11 +50,28 @@ class MatrixProjectionTests(unittest.TestCase):
             writer.writeheader()
             writer.writerows(rows)
             return out.getvalue().encode("utf-8-sig")
-        with patch.object(sync, "request", side_effect=[page([source, another, unique, only_url]), page([])]):
-            rows = dict(sync.source())
+        stream = io.StringIO(page([source, another, unique, only_url]).decode("utf-8-sig"))
+        rows = {key:row for _, group in sync.matrix_groups(stream) for key, row in group}
         self.assertEqual([rows[k]["Магазинов по артикулу"] for k in ("first","other","single","missing")],
                          ["2","2",None,None])
         self.assertTrue(all(row["Разница"] is None for row in rows.values()))
+
+    def test_discards_changing_snapshot_before_publishing(self):
+        with patch.object(sync, "market_stamp", side_effect=[1, 2, 2, 2]), \
+             patch.object(sync, "bulk_matrix", side_effect=[{"old":1}, {"stable":2}]):
+            self.assertEqual(dict(sync.source()), {"stable":2})
+
+    def test_unstable_source_never_retires_existing_rows(self):
+        with patch.object(sync, "market_stamp", side_effect=range(6)), \
+             patch.object(sync, "bulk_matrix", return_value={"incomplete":1}):
+            with self.assertRaises(RuntimeError):
+                sync.source()
+
+    def test_capped_export_uses_verified_cursor_fallback(self):
+        with patch.object(sync, "market_stamp", return_value={"store":(10, "date")}), \
+             patch.object(sync, "bulk_matrix", side_effect=ValueError("incomplete")), \
+             patch.object(sync, "paged_matrix", return_value={"complete":1}):
+            self.assertEqual(dict(sync.source()), {"complete":1})
 
     def test_refuses_untrusted_drilldown(self):
         row = source_row()
@@ -64,9 +88,9 @@ class MatrixProjectionTests(unittest.TestCase):
             calls.append(method)
             if "filter__" in path:
                 return {"count":1}
-            return {"results":[previous,mine],"next":None}
+            return {"count":2,"results":[native(previous),native(mine)],"next":None}
         with patch.object(sync,"source",lambda:iter([("sample",active)])), patch.object(sync,"api",api):
-            result = sync.sync(42, {"active":13})
+            result = sync.sync(42, IDS)
         self.assertEqual(result, {"count":1,"created":0,"updated":0,"retired":0,"multi_store_skus":0,"multi_store_rows":0})
         self.assertEqual(calls, ["GET","GET"])
 
@@ -78,10 +102,10 @@ class MatrixProjectionTests(unittest.TestCase):
         calls = []
         def api(method, path, body=None):
             calls.append(method)
-            return {"results":[{"id":10,**active}],"next":None}
+            return {"count":1,"results":[native({"id":10,**active})],"next":None}
         with patch.object(sync,"source",broken), patch.object(sync,"api",api):
             with self.assertRaises(OSError):
-                sync.sync(42,{"active":13})
+                sync.sync(42,IDS)
         self.assertEqual(calls,["GET"])
 
 
