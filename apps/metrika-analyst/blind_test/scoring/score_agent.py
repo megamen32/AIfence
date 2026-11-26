@@ -78,6 +78,8 @@ def _outcome_values(data: dict[str, Any]) -> list[str]:
         raw = data.get(key)
         if raw not in (None, ""):
             values.extend(raw if isinstance(raw, list) else [raw])
+    if "alert" in data and isinstance(data.get("alert"), bool):
+        values.append("no_alert" if data["alert"] is False else "alert")
     result = []
     for value in values:
         normalized = outcome_norm(value)

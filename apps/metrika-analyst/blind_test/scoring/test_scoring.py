@@ -89,6 +89,10 @@ class BlindScoreTests(unittest.TestCase):
             self.assertTrue(row1["outcome_correct"])
             self.assertEqual(row2["status"], "correct_insufficient_data")
             self.assertTrue(row2["outcome_correct"])
+            no_alert_flag=root/"no-alert-flag.json"
+            no_alert_flag.write_text(json.dumps({"alert":False}))
+            row3=scorer.score_one(answer,no_alert_flag)
+            self.assertEqual(row3["status"], "correct_no_alert")
 
     def test_s12_alert_is_false_alarm(self):
         scorer = load("scorer", "score_agent.py")
