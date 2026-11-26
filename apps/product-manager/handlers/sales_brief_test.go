@@ -32,13 +32,29 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 		}
 	}
 	summary := salesBrief([]monitorObservation{quote, other, alert}, nil, BriefQuery{Summary: true})
-	if len(summary.Readings) != 1 || !strings.Contains(summary.Readings[0].Price, "0 из 1") || len(summary.Readings[0].OfferExample) != 2 || !strings.Contains(summary.Readings[0].Weekly, "₽") {
+	if len(summary.Readings) != 1 || summary.Readings[0].PriceEvidenceStatus != "insufficient_comparable_quotes" || !strings.Contains(summary.Readings[0].Price, "0 из 1") || len(summary.Readings[0].OfferExample) != 2 || !strings.Contains(summary.Readings[0].PriceTiming, "10.02.2026") || !strings.Contains(summary.Readings[0].Weekly, "₽") {
 		t.Fatal(summary)
+	}
+	got := summary.Readings[0]
+	if got.CheckedSKUs != 1 || got.ComparableSKUs != 0 || got.EstimatedWeeklyRUB != nil || got.Comparison.Control.Percent != 1.4 || got.Comparison.Target.Percent != -37.5 || got.Comparison.Current.To != "2026-01-18" {
+		t.Fatal(got)
+	}
+	during := quote
+	during.Period.To = "2026-01-14"
+	overlap := salesBrief([]monitorObservation{during, alert}, nil, BriefQuery{Summary: true})
+	if overlap.Readings[0].PriceTiming != "" {
+		t.Fatal("an in-window quote was labeled post-period")
 	}
 	separate := ProductReading{Product: "Kaspersky Small Office Security"}
 	addPriceContext(&separate, map[string]PriceComparison{"KL4210RAKDS": result.Comparisons[0]}, result.Facts)
 	if len(separate.OfferExample) != 0 || !strings.Contains(separate.Price, "нет данных") {
 		t.Fatal(separate)
+	}
+	eligible := PriceComparison{Product: "Kaspersky Endpoint Security", SKU: "KL4210RAKDS", ComparableGroups: 1}
+	paired := ProductReading{Product: eligible.Product}
+	addPriceContext(&paired, map[string]PriceComparison{eligible.SKU: eligible}, nil)
+	if paired.PriceEvidenceStatus != "comparable_quotes_available" || strings.Contains(paired.Price, "Оснований менять цену") {
+		t.Fatal(paired)
 	}
 	closed := alert
 	closed.Value = "false"

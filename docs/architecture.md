@@ -16,9 +16,9 @@ Airlock provides authentication, the assistant loop, model slots, storage, sched
 
 ## Data flow
 
-1. In the hosted Airlock conversation, [`workflows/collect-evidence.js`](../workflows/collect-evidence.js) runs as a saved `run_js` under the current user’s grants. It collects read-only observations from the Market Watch and Metrika Analyst source modules and includes selected authorized evidence files.
+1. In the hosted Airlock conversation, [`workflows/collect-evidence.js`](../workflows/collect-evidence.js) runs as a JavaScript body in ordinary `run_js` under the current user’s grants. It collects read-only observations from the Market Watch and Metrika Analyst source modules and includes selected authorized evidence files.
 2. The workflow writes and reads back a versioned snapshot in the shared Airlock file catalog. It returns the file ID and content version.
-3. The hosted conversation reads the snapshot from that catalog and passes its JSON to `Product Manager.import_evidence`. Product Manager also accepts authorized snapshots prepared offline.
+3. The hosted conversation reads the snapshot from that catalog and passes its JSON to `Product Manager.import_evidence`. Product Manager also accepts authorized snapshots prepared offline. The stand recorded a catalog file version and a matching import receipt for a partial collection. [Server workflow verification](qa/watchdog-chat.md).
 4. Product Manager links source IDs to the hypothesis. After approval it records one tagged backlog task. It evaluates the release against the agreed criterion when comparable post-release observations are available.
 
 Missing data is explicit null with a reason. Source references include file, row or page, or a public URL and version. Keep source originals unchanged and keep held-out answer sheets outside the analysis inputs.

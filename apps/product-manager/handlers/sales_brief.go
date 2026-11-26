@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
+	"time"
 
 	"agent/internal/decision"
 	"agent/internal/evidence"
@@ -17,11 +19,12 @@ type BriefQuery struct {
 }
 
 type BriefFact struct {
-	SKU     string `json:"sku,omitempty"`
-	Product string `json:"product"`
-	Fact    string `json:"observation"`
-	Source  string `json:"source"`
-	Locator string `json:"locator"`
+	observed time.Time
+	SKU      string `json:"sku,omitempty"`
+	Product  string `json:"product"`
+	Fact     string `json:"observation"`
+	Source   string `json:"source"`
+	Locator  string `json:"locator"`
 }
 
 type PriceComparison struct {
@@ -32,13 +35,33 @@ type PriceComparison struct {
 	Finding          string   `json:"price_evidence"`
 }
 
+type SeriesChange struct {
+	Name    string  `json:"name"`
+	Percent float64 `json:"change_pct"`
+}
+
+type SalesComparison struct {
+	Control        SeriesChange    `json:"control_product"`
+	Target         SeriesChange    `json:"measured_product"`
+	Baseline       evidence.Period `json:"baseline"`
+	Current        evidence.Period `json:"current"`
+	WeeksPerWindow int             `json:"weeks_in_each_window"`
+}
+
 type ProductReading struct {
-	Product      string      `json:"product"`
-	Price        string      `json:"price_comparison"`
-	OfferExample []BriefFact `json:"example_offers_for_one_sku,omitempty"`
-	Sales        string      `json:"measured_sales"`
-	Weekly       string      `json:"weekly_financial_impact"`
-	Source       string      `json:"sales_source"`
+	Comparison          SalesComparison `json:"paired_sales_comparison"`
+	CheckedSKUs         int             `json:"checked_sku_count"`
+	ComparableSKUs      int             `json:"comparable_sku_count"`
+	EstimatedWeeklyRUB  *float64        `json:"estimated_weekly_potential_rub"`
+	windowEnd           string
+	Product             string      `json:"product"`
+	PriceEvidenceStatus string      `json:"price_evidence_status"`
+	Price               string      `json:"price_comparison"`
+	PriceTiming         string      `json:"timing_of_price_evidence,omitempty"`
+	OfferExample        []BriefFact `json:"example_offers_for_one_sku,omitempty"`
+	Sales               string      `json:"measured_sales"`
+	Weekly              string      `json:"weekly_financial_impact"`
+	Source              string      `json:"sales_source"`
 }
 
 type SalesBrief struct {
@@ -78,7 +101,8 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 			continue
 		}
 		m := signalMagnitude(w)
-		control := signalPercent((w.ControlCurrentMean/w.ControlBaselineMean - 1) * 100)
+		controlPct := (w.ControlCurrentMean/w.ControlBaselineMean - 1) * 100
+		control := signalPercent(controlPct)
 		metric := label(metricTitles, r.details.Metric)
 		if r.details.Metric == "orders_index" {
 			metric = "Индекс заказов"
@@ -87,11 +111,17 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 			}
 		}
 		fact := fmt.Sprintf("%s, два окна по %d недели. С %s по сравнению с %s изменение составило %s. Изменение контроля (%s) за те же окна %s.", metric, w.WindowWeeks, m.Current, m.Baseline, m.Change, productName(r.details.Control), control)
-		reading := ProductReading{Product: observedProductName(r.Product, r)}
+		reading := ProductReading{Product: observedProductName(r.Product, r), windowEnd: w.Current.To}
 		reading.Sales = fmt.Sprintf("%s, %s–%s к %s–%s (по %d недели): %s %s, %s %s.",
 			metric, date(w.Current.From), date(w.Current.To), date(w.Baseline.From), date(w.Baseline.To),
 			w.WindowWeeks, reading.Product, m.Change, productName(r.details.Control), control)
-		weekly, basis, _ := signalPlanning(records, r)
+		reading.Comparison = SalesComparison{
+			Control:  SeriesChange{productName(r.details.Control), math.RoundToEven(controlPct*10) / 10},
+			Target:   SeriesChange{reading.Product, math.RoundToEven(w.RelativeChangePct*10) / 10},
+			Baseline: w.Baseline, Current: w.Current, WeeksPerWindow: w.WindowWeeks,
+		}
+		weekly, basis, amount := signalPlanning(records, r)
+		reading.EstimatedWeeklyRUB = amount
 		if weekly != "" {
 			reading.Weekly = weekly + " (" + basis + ")."
 		} else {
@@ -156,7 +186,8 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 				if loc == "" {
 					loc = prices.SnapshotURL
 				}
-				facts = append(facts, BriefFact{SKU: k.sku, Product: title.Name, Fact: fact, Source: offer.Seller, Locator: loc})
+				stamp, _ := time.Parse("02.01.2006", offer.Date) // validated by currentPrices
+				facts = append(facts, BriefFact{observed: stamp, SKU: k.sku, Product: title.Name, Fact: fact, Source: offer.Seller, Locator: loc})
 			}
 		}
 		if summary.ComparableGroups == 0 {
@@ -205,6 +236,7 @@ func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, 
 		}
 	}
 	if len(skus) == 0 {
+		r.PriceEvidenceStatus = "no_matching_offers"
 		r.Price = "В импортированных предложениях этого семейства нет данных для сравнения."
 		return
 	}
@@ -220,12 +252,25 @@ func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, 
 		}
 	}
 	r.Price = fmt.Sprintf("В снимках проверено артикулов: %d. Одинаковые условия лицензии у двух или более магазинов подтверждены для %d из %d.", len(skus), n, len(skus))
+	r.CheckedSKUs, r.ComparableSKUs = len(skus), n
+	r.PriceEvidenceStatus = "comparable_quotes_available"
 	if n == 0 {
-		r.Price += " Оснований менять цену по этим предложениям нет. Для решения нужны цены на один артикул при одинаковом количестве и базисе."
+		r.PriceEvidenceStatus = "insufficient_comparable_quotes"
+		r.Price += " Эти предложения не дают оснований снижать цену. Проверьте цены за одинаковое количество лицензий одного артикула на один срок."
 	}
+	var earliest time.Time
 	for _, q := range quotes {
+		if _, matches := slices.BinarySearch(skus, q.SKU); !matches {
+			continue
+		}
+		if !q.observed.IsZero() && (earliest.IsZero() || q.observed.Before(earliest)) {
+			earliest = q.observed
+		}
 		if q.SKU == example && len(r.OfferExample) < 4 {
 			r.OfferExample = append(r.OfferExample, q)
 		}
+	}
+	if !earliest.IsZero() && r.windowEnd != "" && earliest.Format(time.DateOnly) > r.windowEnd {
+		r.PriceTiming = fmt.Sprintf("Даже самая ранняя из проверенных цен датирована %s, после окончания периода продаж %s. Эти цены не объясняют историческое падение.", earliest.Format("02.01.2006"), date(r.windowEnd))
 	}
 }
