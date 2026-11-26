@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/airlockrun/agentsdk"
 )
 
 type Service struct {
@@ -47,7 +49,7 @@ func (s Service) Save(ctx context.Context, in decision.SaveInput) (decision.Reco
 	if err == nil && in.ExpectedVersion == 0 {
 		s.Notifications.publish(ctx, record, rows)
 	}
-	return record, err
+	return withCardURL(ctx, record), err
 }
 
 func checkEvidenceLevel(h decision.Hypothesis, rows []evidence.Row) error {
@@ -207,8 +209,18 @@ func (s Service) Get(ctx context.Context, in decision.GetInput) (decision.Record
 	if err := s.Evidence.Access(ctx, r.EvidenceSnapshotID); err != nil {
 		return decision.Record{}, err
 	}
-	return r, nil
+	return withCardURL(ctx, r), nil
 }
+func withCardURL(ctx context.Context, r decision.Record) decision.Record {
+	if r.Hypothesis.ID == "" {
+		return r
+	}
+	if base, err := agentsdk.AgentURLFromContext(ctx); err == nil {
+		r.CardURL, _ = signalCardURL(base, r.Hypothesis.ID)
+	}
+	return r
+}
+
 func (s Service) List(ctx context.Context, _ evidence.Empty) (decision.ListResult, error) {
 	r, err := s.Decisions.List(ctx, struct{}{})
 	if err != nil {

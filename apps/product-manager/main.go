@@ -22,7 +22,7 @@ func newAgent() *agentsdk.Agent {
 	alerts := a.RegisterTopic(&agentsdk.Topic{Slug: "product_signals", Description: "Новые продуктовые сигналы владельца", Access: agentsdk.AccessUser, Enrollment: agentsdk.TopicEnrollmentDefaultOff, PerUser: true})
 	smtp := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "signal_smtp", Description: "Закрытая JSON-настройка внутреннего SMTP relay для одного владельца. Пустое значение отключает отправку.", Secret: true})
 	p := product.Service{Decisions: d, Evidence: e, Notifications: &product.SignalNotifications{Enabled: bridge, Topic: alerts, DB: a.DB()}, Mail: &product.SignalMail{Config: smtp, DB: a.DB()}}
-	h := handlers.New(p)
+	h := handlers.New(p, a)
 	registerPathCheck(a)
 	a.RegisterTool(tool.Typed[evidence.Empty, evidence.Index]("list_evidence").Description("List immutable evidence snapshots imported by this user, newest first.").Execute(e.List).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[evidence.Query, evidence.Result]("read_evidence").Description("Read observations with source locators. Filter by source, IDs or page with offset and limit; total_matched includes all matching rows.").Execute(e.Read).Build(), agentsdk.AccessUser)
@@ -50,13 +50,16 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterStaticAsset(&agentsdk.StaticAsset{Name: views.AppCSSName, ContentType: "text/css; charset=utf-8", Data: views.AppCSS})
 	a.AddInstruction(&agentsdk.Instruction{Text: `Отвечай на языке пользователя.
 
+В hosted-чате вызывай внешнюю функцию run_js с полями code и description. platform.inspectApp и apps.<alias>.tools.<name> вызывай внутри code как JavaScript-методы с await и return. Используй только доступные объявления. Пример discovery:
+{"code":"await platform.inspectApp({app:'metrika-analyst'}); return await apps.metrika_analyst.tools.discover_watchdog_series({});","description":"Посмотреть доступные ряды"}
+
 При туманном вопросе о продажах сам разберись, что доступно. Через hosted run_js и platform.inspectApp открой metrika-analyst. Начни с discover_watchdog_series({}) и scan_watchdog_series({}). Выбери из ответа измеряемый продукт, метрику, окно и сопоставимый контроль. Если в запросе назван продукт, сначала привяжи его к однозначному ключу из данных. Сигнал, разрыв учёта, временный всплеск и кампания требуют разных выводов. Даты и ключи бери из наблюдений. Если данные отсутствуют или недоступны, назови ограничение и предложи ближайшую доступную проверку.
 
 Для выбранного кандидата controlled_decline вызови collect_selected_watchdog_case с dataset_id и candidate_id из scan_watchdog_series. Используй inline run_js. Передай document из alert напрямую в import_evidence, сохранив source_policy. Вызови investigate_orders с полученным snapshot_id, продуктом кандидата и first_alert_week.from. При отсутствии тревоги не создавай карточку. Для уже импортированных данных используй list_evidence и read_evidence с пагинацией и проверяй период и источники. Не подменяй текущий источник другими демонстрационными данными. Для упомянутого или выбранного продукта без карточки используй set_product_focus после однозначного определения ключа. Сохранённое расследование выставляет фокус автоматически.
 
 Для проверки пути в браузере и анализа скриншотов получи соответствующую просьбу пользователя. Используй check_purchase_path для поддерживаемого продукта и platform.analyzeImage для screenshot_path. По просьбе добавь browser batch в проверяемый снимок, сохрани screenshot_path и результат vision в строке, а дату проверки покажи отдельно от исторического периода. Описывай только видимый этап. Текущие цены сравнивай через compare_offers по точному SKU и выводи отдельно от истории с датой и ссылкой. При неоднозначном совпадении предложи уточнить вариант.
 
-Сначала покажи сохранённую карточку, предлагаемую задачу и способ проверки. Затем попроси подтверждение отдельной репликой. Исходный запрос и выбор подсказки согласия не дают. После явного ответа направь пользователя на текущую карточку с кнопкой подтверждения в панели PM. Чат может прочитать квитанцию после подтверждения в панели. Не передавай confirmed от имени пользователя и не автоматизируй POST подтверждения.
+Покажи сохранённую карточку, предлагаемую задачу и способ проверки. Сразу дай ссылку card_url на карточку и укажи единственное действие «Создать эту задачу» в панели PM. Не проси ответить «да» в чате. Если пользователь сам подтвердил текстом, покажи то же действие на карточке: приложение не может удостоверить чат-согласие. После клика можно прочитать квитанцию. Не передавай confirmed от имени пользователя и не автоматизируй POST подтверждения.
 
 Приводи период и источники для сравнений, включая контроль. Показывай ограничения и альтернативы. Индекс заказов не выражает количество или прибыль. Разделяй исходное падение и критерий улучшения после релиза. При вопросе о достижении критерия используй evaluate_hypothesis и укажи, какого релиза или наблюдения не хватает.`})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Что требует внимания?", Prompt: "Что сейчас требует внимания в продажах?"})

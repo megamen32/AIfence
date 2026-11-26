@@ -47,11 +47,14 @@ func TestAgentComposition(t *testing.T) {
 		}
 	}
 	if !slices.ContainsFunc(manifest.Instructions, func(instruction wire.InstructionDef) bool {
-		return strings.Contains(instruction.Text, "scan_watchdog_series({})") &&
-			strings.Contains(instruction.Text, "отдельной репликой") &&
+		return strings.Contains(instruction.Text, "run_js с полями code и description") &&
+			strings.Contains(instruction.Text, "return await apps.metrika_analyst.tools.discover_watchdog_series({});") &&
+			strings.Contains(instruction.Text, "scan_watchdog_series({})") &&
+			strings.Contains(instruction.Text, "«Создать эту задачу»") &&
+			strings.Contains(instruction.Text, "Не проси ответить «да»") &&
 			!strings.Contains(instruction.Text, "demo_target") && !strings.Contains(instruction.Text, "synthetic-watch")
 	}) {
-		t.Fatal("watchdog must discover the available series and require separate confirmation")
+		t.Fatal("watchdog must discover the available series and require one confirmation on the card")
 	}
 
 	if !slices.ContainsFunc(manifest.Topics, func(topic wire.TopicDef) bool {

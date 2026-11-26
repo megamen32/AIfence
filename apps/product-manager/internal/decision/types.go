@@ -105,6 +105,7 @@ type Assessment struct {
 	Measurement        *Measurement `json:"measurement,omitempty"`
 }
 type Record struct {
+	CardURL            string      `json:"card_url,omitempty"`
 	ContextIDs         []string    `json:"context_ids,omitempty"`
 	Hypothesis         Hypothesis  `json:"hypothesis"`
 	Version            int64       `json:"version"`
