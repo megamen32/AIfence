@@ -1,6 +1,7 @@
 package market
 
 import (
+	"agent/internal/db"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/airlockrun/agentsdk"
@@ -35,8 +35,8 @@ type CrawlSource struct {
 	Pending       int    `json:"pending"`
 }
 
-const crawlDir = "catalog/crawl-reports"
-const crawlFileTime = "20060102T150405.000000000Z"
+// Snapshot-only services without an app DB use the same local test store as other read models.
+const crawlSnapshot = "catalog/crawl-coverage.json"
 
 func (r CrawlReport) Validate(now time.Time) error {
 	at, err := time.Parse(time.RFC3339Nano, r.AsOf)
@@ -82,33 +82,49 @@ func (r CrawlReport) Validate(now time.Time) error {
 	return nil
 }
 
-// Each capture has its own path. Reading the greatest time also prevents
-// overlapping workers on different instances from rolling the feed back.
 func (s *Service) CrawlCoverage(ctx context.Context, _ struct{}) (CrawlReport, error) {
-	files, err := s.store.ListDir(ctx, crawlDir, agentsdk.ListOpts{})
-	if errors.Is(err, agentsdk.ErrNotFound) {
-		return CrawlReport{}, nil
-	}
-	if err != nil {
-		return CrawlReport{}, err
-	}
-	latest := ""
-	for _, f := range files {
-		stamp, ok := strings.CutSuffix(f.Filename, ".json")
-		if _, err := time.Parse(crawlFileTime, stamp); ok && err == nil && stamp > latest {
-			latest = stamp
+	report, _, err := s.readCrawlReport(ctx)
+	return report, err
+}
+
+func (s *Service) readCrawlReport(ctx context.Context) (CrawlReport, int64, error) {
+	var raw []byte
+	var version int64
+	if s.queries != nil {
+		row, err := s.queries.CurrentCrawlCoverage(ctx)
+		if err != nil {
+			return CrawlReport{}, 0, err
 		}
-	}
-	if latest == "" {
-		return CrawlReport{}, nil
-	}
-	data, err := s.store.ReadFile(ctx, crawlDir+"/"+latest+".json")
-	if err != nil {
-		return CrawlReport{}, err
+		version, raw = row.Version, row.Report
+	} else {
+		b, err := s.store.ReadFile(ctx, crawlSnapshot)
+		if errors.Is(err, agentsdk.ErrNotFound) {
+			return CrawlReport{}, 0, nil
+		}
+		if err != nil {
+			return CrawlReport{}, 0, err
+		}
+		raw = b
 	}
 	var report CrawlReport
-	err = json.Unmarshal(data, &report)
-	return report, err
+	err := json.Unmarshal(raw, &report)
+	return report, version, err
+}
+
+// Compare-and-swap protects the singleton against writers on separate app instances.
+func (s *Service) saveCrawlReport(ctx context.Context, data []byte, version int64) error {
+	if s.queries == nil {
+		_, err := s.store.WriteFile(ctx, crawlSnapshot, bytes.NewReader(data), "application/json")
+		return err
+	}
+	changed, err := s.queries.ReplaceCrawlCoverage(ctx, db.ReplaceCrawlCoverageParams{NewReport: data, ExpectedVersion: version})
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return agentsdk.NewHTTPError(409, "A concurrent coverage import changed the report", nil)
+	}
+	return nil
 }
 
 func (s *Service) ImportCoverage(w http.ResponseWriter, r *http.Request) error {
@@ -125,7 +141,7 @@ func (s *Service) ImportCoverage(w http.ResponseWriter, r *http.Request) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	current, err := s.CrawlCoverage(r.Context(), struct{}{})
+	current, version, err := s.readCrawlReport(r.Context())
 	if err != nil {
 		return err
 	}
@@ -156,8 +172,7 @@ func (s *Service) ImportCoverage(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	path := crawlDir + "/" + stamp.UTC().Format(crawlFileTime) + ".json"
-	if _, err = s.store.WriteFile(r.Context(), path, bytes.NewReader(data), "application/json"); err != nil {
+	if err = s.saveCrawlReport(r.Context(), data, version); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
