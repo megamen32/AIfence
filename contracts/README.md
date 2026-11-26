@@ -25,3 +25,9 @@ Canonical product_key: vendor/family/edition/license model/term/seats or SKU; da
 Hypothesis links actual IDs, competing explanation, next cheapest distinguishing test, acceptance rule. Economic effect status unknown unless data support calculation; scenario assumptions explicit. Exact backlog tag: `сгенерирована ИИ-помощником`. Idempotency key stable per hypothesis/action and scoped to current workspace; same repeated command returns same task.
 
 Contract changes: integration owner updates schema+synthetic fixtures and all tracks agree before editing. JSON fixture is synthetic, not partner data.
+
+## Weekly signals and browser checks
+
+`detect_signal` returns the decision for the week containing the end date. `replay_signals` returns a series of the same decisions. Both use the sales evidence envelope constrained by `signal-v1.schema.json`. An observed Boolean records whether the threshold was crossed. A null decision includes the reason the week could not be evaluated. Each decision identifies the target, control, windows and underlying source rows.
+
+Use `source=browser`, `kind=path_check` for a dated device-specific check. The hypothesis may link these rows in `browser_evidence_ids`, name alternatives in `competing_explanations`, record a `forecast`, and set `evidence_level` to `signal_only`, `correlation` or `path_verified`. A current browser observation can establish today's behavior. Attributing a historical drop or measuring recovery requires evidence for its own period.

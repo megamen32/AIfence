@@ -24,7 +24,8 @@
         "research",
         "backlog",
         "release",
-        "economics"
+        "economics",
+        "browser"
       ]
     },
     "as_of": {
@@ -78,7 +79,8 @@
             "research",
             "task",
             "release",
-            "cost"
+            "cost",
+            "path_check"
           ]
         },
         "product_key": {

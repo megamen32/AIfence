@@ -165,6 +165,57 @@
     },
     "decision_reason": {
       "type": "string"
+    },
+    "evidence_level": {
+      "enum": [
+        "signal_only",
+        "correlation",
+        "path_verified"
+      ],
+      "description": "path_verified describes a present-day path observation. Historical causality requires separate outcome evidence."
+    },
+    "forecast": {
+      "type": "string",
+      "minLength": 1
+    },
+    "competing_explanations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "browser_evidence_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "evidence_level"
+        ],
+        "properties": {
+          "evidence_level": {
+            "const": "path_verified"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "browser_evidence_ids"
+        ],
+        "properties": {
+          "browser_evidence_ids": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }
