@@ -16,7 +16,7 @@ For another authorized machine, set AIRLOCK_UPSTREAM_URL before the first run. T
 
 ## Architecture
 
-Product Manager is the only application orchestrating investigations. Market Watch and Metrika Analyst supply evidence as source modules. The saved [`workflows/collect-evidence.js`](workflows/collect-evidence.js) runs in the hosted user context and writes a versioned snapshot to the shared Airlock file catalog. The conversation reads that snapshot and passes its JSON to `Product Manager.import_evidence`. Product Manager can also work with authorized imported snapshots.
+Product Manager is the only application orchestrating investigations. Market Watch and Metrika Analyst supply evidence as source modules. The collection workflow writes a versioned snapshot to the shared Airlock file catalog in the hosted user context. The pinned stand rejects the saved-file executor’s structured arguments. See the [workflow invocation and import instructions](workflows/README.md). The conversation reads that snapshot and passes its JSON to `Product Manager.import_evidence`. Product Manager can also work with authorized imported snapshots.
 
 - `platform/airlock.lock.json`: exact upstream pin; authorized private checkout is in ignored .runtime/airlock. Do not modify platform code.
 - `apps/market-watch/`: standalone market research/monitoring.
