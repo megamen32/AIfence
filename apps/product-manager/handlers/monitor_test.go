@@ -6,6 +6,7 @@ import (
 	"agent/internal/product"
 	"agent/views"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -147,6 +148,30 @@ func TestMonitorOpensSavedAlertAlongsideNewerIncompleteWindow(t *testing.T) {
 	if v.Selected == nil || v.Selected.Chart.Target == "" || v.Selected.Chart.Control == "" ||
 		v.Selected.FirstDetected != "Впервые обнаружено 19.01.2026, 06:00 UTC" || v.Selected.AlertID != alert.ID {
 		t.Fatalf("wrong opened investigation: %+v", v.Selected)
+	}
+}
+
+func TestMonitorReadsAllSnapshotsAndEvidencePages(t *testing.T) {
+	snapshots := make([]evidence.Summary, 9)
+	for i := range snapshots {
+		snapshots[i].SnapshotID = fmt.Sprintf("snapshot-%d", i)
+	}
+	ids := monitorSnapshotIDs(snapshots, "snapshot-old")
+	if len(ids) != 10 || ids[0] != "snapshot-old" || ids[len(ids)-1] != "snapshot-8" {
+		t.Fatalf("monitor snapshot selection was truncated: %+v", ids)
+	}
+	for _, tc := range []struct {
+		offset, rows, total int
+		done                bool
+	}{
+		{offset: 0, rows: 100, total: 201, done: false},
+		{offset: 100, rows: 100, total: 201, done: false},
+		{offset: 200, rows: 1, total: 201, done: true},
+		{offset: 200, rows: 0, total: 201, done: true},
+	} {
+		if got := monitorPageComplete(tc.offset, tc.rows, tc.total); got != tc.done {
+			t.Fatalf("page completion at %+v: got %v", tc, got)
+		}
 	}
 }
 

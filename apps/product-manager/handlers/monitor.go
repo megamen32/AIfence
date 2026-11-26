@@ -116,29 +116,53 @@ func monitorCell(o monitorObservation) (column int, cell views.MonitorCell) {
 }
 
 func (h *Handler) monitor(ctx context.Context, snapshots []evidence.Summary, records []decision.Record, selected, pinned, alert string, autoOpen, demo bool) (*views.Monitor, error) {
-	// Look at recent owner snapshots; a pinned older source is still reachable.
+	ids := monitorSnapshotIDs(snapshots, pinned)
+	var rows []monitorObservation
+	for _, id := range ids {
+		data, err := h.readMonitorSnapshot(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, data...)
+	}
+	return monitorView(separateMonitorRows(rows, demo), records, selected, pinned, alert, autoOpen), nil
+}
+
+func monitorSnapshotIDs(snapshots []evidence.Summary, pinned string) []string {
 	ids := []string{}
 	if pinned != "" {
 		ids = append(ids, pinned)
 	}
-	for _, s := range snapshots[:min(8, len(snapshots))] {
+	for _, s := range snapshots {
 		if !slices.Contains(ids, s.SnapshotID) {
 			ids = append(ids, s.SnapshotID)
 		}
 	}
+	return ids
+}
+
+func (h *Handler) readMonitorSnapshot(ctx context.Context, snapshotID string) ([]monitorObservation, error) {
+	const pageSize = 100
 	var rows []monitorObservation
-	for _, id := range ids {
-		data, err := h.svc.Evidence.Read(ctx, evidence.Query{SnapshotID: id, Limit: 100})
+	for offset := 0; ; {
+		data, err := h.svc.Evidence.Read(ctx, evidence.Query{SnapshotID: snapshotID, Offset: offset, Limit: pageSize})
 		if err != nil {
 			return nil, err
 		}
 		for _, row := range data.Rows {
-			o := monitorObservation{Row: row, snapshot: id, received: data.ImportedAt}
+			o := monitorObservation{Row: row, snapshot: snapshotID, received: data.ImportedAt}
 			_ = json.Unmarshal([]byte(row.Details), &o.details)
 			rows = append(rows, o)
 		}
+		if monitorPageComplete(offset, len(data.Rows), data.Total) {
+			return rows, nil
+		}
+		offset += len(data.Rows)
 	}
-	return monitorView(separateMonitorRows(rows, demo), records, selected, pinned, alert, autoOpen), nil
+}
+
+func monitorPageComplete(offset, rows, total int) bool {
+	return rows == 0 || offset+rows >= total
 }
 
 func monitorView(rows []monitorObservation, records []decision.Record, selected, pinned, alert string, autoOpen bool) *views.Monitor {

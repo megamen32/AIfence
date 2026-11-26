@@ -16,10 +16,10 @@ import (
 )
 
 type mapGroup struct {
-	name, tone, signal, link string
-	other                    bool
-	count                    int64
-	revenue                  float64
+	name, tone, signal, signalTitle, link string
+	other                                 bool
+	count                                 int64
+	revenue                               float64
 }
 
 type mapBox struct{ x, y, w, h float64 }
@@ -117,15 +117,18 @@ func markVendors(groups []mapGroup, alerts []views.PulseItem) {
 	for _, alert := range alerts {
 		if i := matchVendor(groups, alert.ControlVendor, productName(alert.ControlKey)); i >= 0 && groups[i].tone == "" {
 			groups[i].tone = "control-context"
-			groups[i].signal = "Контроль для " + alert.Product
+			groups[i].signalTitle = "Контроль для " + alert.Product
 		}
 		if i := matchVendor(groups, alert.Vendor, alert.Product); i >= 0 && groups[i].link == "" {
 			p := &groups[i]
 			p.link = alert.URL
-			p.signal = "Сигнал у товара вендора: " + alert.Product
+			p.signal = alert.Change
+			p.signalTitle = "Сигнал у товара вендора: " + alert.Product
+			if alert.Change != "" && alert.Comparison != "" {
+				p.signalTitle += " · " + alert.Change + " " + alert.Comparison
+			}
 			p.tone = "signal-associated"
 			if alert.Delta != nil {
-				p.signal += " · к контролю " + signalPercent(*alert.Delta)
 				switch {
 				case *alert.Delta <= -30:
 					p.tone += " delta-down-high"
@@ -295,6 +298,7 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 			if revenue {
 				label = num(g.revenue) + " " + currency
 			}
+			value := label
 			link := ""
 			if g.link != "" {
 				link = g.link
@@ -302,10 +306,14 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 				link = href("tab", "overview", "mode", mode, "q", g.name)
 			}
 			if g.signal != "" {
-				label += " · " + g.signal
+				value += " · " + g.signal
+			}
+			aria := g.name + " · " + value
+			if g.signalTitle != "" {
+				aria += " · " + g.signalTitle
 			}
 			tiles = append(tiles, views.CatalogTile{
-				Name: g.name, Label: g.name + " · " + label, Value: label, Tone: g.tone, URL: link,
+				Name: g.name, Label: aria, Value: value, Tone: g.tone, URL: link,
 				X: f(tile.x), Y: f(tile.y), W: f(tile.w), H: f(tile.h), LX: f(tile.x + 8), LY: f(tile.y + 17),
 				ShowLabel: tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26,
 			})
