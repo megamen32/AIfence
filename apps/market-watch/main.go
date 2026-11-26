@@ -14,6 +14,7 @@ import (
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
 	a := agentsdk.New(agentsdk.Config{Description: "Market Watch - live public prices and catalog snapshots", Icon: "📊"})
+	a.RegisterDirectory("tmp/attachments", agentsdk.DirectoryOpts{Read: agentsdk.AccessUser, Write: agentsdk.AccessUser, List: agentsdk.AccessUser, Scope: agentsdk.ScopeUser, RetentionHours: 24, Description: "Caller-scoped temporary price evidence for hosted chats"})
 	a.RegisterDirectory("catalog", agentsdk.DirectoryOpts{Read: agentsdk.AccessUser, List: agentsdk.AccessUser, Write: agentsdk.AccessInternal, Description: "Featured-page refresh history"})
 	s := market.NewWithCatalog(a, a.DB())
 	configuredCatalog := a.RegisterEnvVar(&agentsdk.EnvVar{
@@ -27,11 +28,11 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterTool(tool.Typed[market.ChangesInput, market.PriceHistory]("price_history").Description("Read actual dated observations for the selected SKU and period. Distinguish a single observation or a gap from a trend.").Execute(s.PriceHistory).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[market.QuoteInput, market.OrderQuote]("quote_quantity").Description("Compare the requested order quantity using only published compatible tiers.").Execute(s.OrderQuote).Build(), agentsdk.AccessUser)
 	a.RegisterStaticAsset(&agentsdk.StaticAsset{Name: views.AppCSSName, ContentType: "text/css; charset=utf-8", Data: views.AppCSS})
-	a.RegisterTool(tool.Typed[market.CompareInput, market.Comparison]("compare_offers").Description("Compare observed public prices for one exact SKU. Only comparable groups can have a lowest displayed price. Includes a link to the matching web view.").Execute(s.CompareSKU).Build(), agentsdk.AccessUser)
+	a.RegisterTool(withMarketEvidence(tool.Typed[market.CompareInput, market.Comparison]("compare_offers").Description("Compare observed public prices for one exact SKU. Only comparable groups can have a lowest displayed price. Includes a link to the matching web view.").Execute(s.CompareSKU).Build()), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[struct{}, market.CrawlReport]("crawl_coverage").Description("Latest imported dated reconciliation of distinct sitemap license URLs, including unknown denominators and missing prices.").Execute(s.CrawlCoverage).Build(), agentsdk.AccessUser)
 	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/coverage/import", Handler: s.ImportCoverage, Access: agentsdk.AccessAdmin, Description: "Import a dated sitemap reconciliation"})
 
-	a.RegisterTool(tool.Typed[market.ListInput, market.Evidence]("list_offers").Description("Search the entire indexed catalog by title, URL or SKU, seller and license words from the title. Use offset/limit to continue.").Execute(s.List).Build(), agentsdk.AccessUser)
+	a.RegisterTool(withMarketEvidence(tool.Typed[market.ListInput, market.Evidence]("list_offers").Description("Search the entire indexed catalog by title, URL or SKU, seller and license words from the title. Use offset/limit to continue.").Execute(s.List).Build()), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[market.AddCompetitorsInput, market.CompetitorResult]("add_competitors").Description("Enable vetted competitor sources (allsoft, syssoft) persistently and run the first bounded public-page collection. This is a real activation, not a draft; no complete catalog coverage is claimed. Idempotent.").Execute(s.AddCompetitors).Build(), agentsdk.AccessAdmin)
 	a.RegisterTool(tool.Typed[struct{}, market.CompetitorResult]("list_competitors").Description("Show activation, actual indexed observations, seed URLs and explicit sample-only coverage for supported competitor profiles.").Execute(s.Competitors).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[market.RefreshInput, market.Evidence]("refresh_market").Description("Fetch real public prices from configured and enabled competitor pages. Includes URLs, timestamps and quantities.").Execute(s.Refresh).Build(), agentsdk.AccessUser)

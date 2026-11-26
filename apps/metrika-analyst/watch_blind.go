@@ -120,6 +120,7 @@ const maxBlindScanWork = 1_000_000
 var errBlindSelection = errors.New("select a snapshot for blind analysis on the closed /watchdog page")
 
 func (s *privateWatch) registerBlindTools(a *agentsdk.Agent) {
+	a.RegisterDirectory("tmp/attachments", agentsdk.DirectoryOpts{Read: agentsdk.AccessUser, Write: agentsdk.AccessUser, List: agentsdk.AccessUser, Scope: agentsdk.ScopeUser, RetentionHours: 24, Description: "Caller-scoped temporary sales observations for hosted chats"})
 	approval := a.RegisterEnvVar(&agentsdk.EnvVar{
 		Slug: "watchdog_blind_model_route", Default: "off", Pattern: "^(off|approved)$",
 		Description: "Enable imported historical snapshots in blind chat tools only after approval of the closed model route",
@@ -128,7 +129,7 @@ func (s *privateWatch) registerBlindTools(a *agentsdk.Agent) {
 		approved, _ := approval.Get(ctx)
 		return s.loadBlind(ctx, approved == "approved")
 	}
-	a.RegisterTool(tool.Typed[BlindInput, BlindDiscovery]("discover_watchdog_series").
+	a.RegisterTool(withWatchFindings(tool.Typed[BlindInput, BlindDiscovery]("discover_watchdog_series").
 		Description("Investigate the selected snapshot in the current chat. Start with {} for measured dimensions and top findings from the full scan; optional offset and limit page through dimensions.").
 		Execute(func(ctx context.Context, in BlindInput) (BlindDiscovery, error) {
 			if err := in.validate(); err != nil {
@@ -142,8 +143,8 @@ func (s *privateWatch) registerBlindTools(a *agentsdk.Agent) {
 				return BlindDiscovery{}, err
 			}
 			return dataset.discover(ctx, in)
-		}).Build(), agentsdk.AccessUser)
-	a.RegisterTool(tool.Typed[BlindInput, BlindScan]("scan_watchdog_series").
+		}).Build()), agentsdk.AccessUser)
+	a.RegisterTool(withWatchFindings(tool.Typed[BlindInput, BlindScan]("scan_watchdog_series").
 		Description("Find comparable declines, measurement breaks and campaign or spike effects over the whole selected snapshot. Start with {}; offset and limit page the findings.").
 		Execute(func(ctx context.Context, in BlindInput) (BlindScan, error) {
 			if err := in.validate(); err != nil {
@@ -161,7 +162,7 @@ func (s *privateWatch) registerBlindTools(a *agentsdk.Agent) {
 				result.Candidates, result.NextOffset = blindPage(result.Candidates, in, 12)
 			}
 			return result, err
-		}).Build(), agentsdk.AccessUser)
+		}).Build()), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[BlindCaseInput, WatchCaseResult]("collect_selected_watchdog_case").
 		Description("Collect a controlled-decline case from scan_watchdog_series using its dataset_id and candidate_id. Pass document directly to Product Manager.").
 		Execute(func(ctx context.Context, in BlindCaseInput) (WatchCaseResult, error) {
