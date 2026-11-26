@@ -14,7 +14,7 @@ import (
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: `Product Manager помогает решить, что делать с продажами и ценами. Для обычного вопроса прочти факты со своей панели через run_js: console.log((await apps.product_manager.tools.review_sales_and_prices({})).observations). Для чтения опусти request_confirmation. Ответь директору сразу по полученным наблюдениям. Начни с решения; укажи период и источник. Оцени сопоставимость магазинов. Если оценка ущерба в рублях недоступна, скажи почему.`, Icon: "🧭"})
+	a := agentsdk.New(agentsdk.Config{Description: `Для вопроса о продажах и ценах прочти всю сводку: console.log(await apps.product_manager.tools.review_sales_and_prices({})). Для чтения опусти request_confirmation. Если imported_price_observations равно нулю, проверь предложение по названию продукта через Market Watch, прежде чем ответить про цены. Дай директору три короткие строки. Первым предложением прямо ответь, стоит ли менять цену, на основании сопоставимости цен. Назови магазины и даты сравнения продаж, контроль по имени. Источник можно указать в скобках. Оценка потерь в рублях — отдельный вопрос.`, Icon: "🧭"})
 	topic := a.RegisterUIChangeTopic("product-decisions")
 	policy := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "private_model_route", Description: "Доступ закрытых снимков из чата с разрешенным локальным маршрутом модели. Значение задает владелец стенда после проверки конфигурации.", Default: "off", Pattern: "^(off|approved)$"})
 	e := evidence.New(a.DB(), topic, policy)

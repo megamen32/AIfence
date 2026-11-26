@@ -24,6 +24,7 @@ type BriefFact struct {
 
 type SalesBrief struct {
 	Facts      []BriefFact `json:"observations"`
+	PriceCount int         `json:"imported_price_observations"`
 	Total      int         `json:"total"`
 	NextOffset *int        `json:"next_offset,omitempty"`
 }
@@ -82,6 +83,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 		facts = append(facts, BriefFact{observedProductName(r.Product, r), fact, source.SourceID, source.Locator})
 	}
 
+	salesCount := len(facts)
 	type key struct{ sku, snapshot string }
 	groups := map[key][]monitorObservation{}
 	var order []key
@@ -129,7 +131,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, offset int
 	}
 	start := min(max(0, offset), len(facts))
 	end := min(start+12, len(facts))
-	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Total: len(facts)}
+	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Total: len(facts), PriceCount: len(facts) - salesCount}
 	if end < len(facts) {
 		result.NextOffset = &end
 	}
