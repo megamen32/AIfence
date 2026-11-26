@@ -52,11 +52,20 @@ type InterviewFilter struct {
 }
 
 type Watch struct {
+	datasetID   string
+	record      watchRecorder
 	series      Service
 	contextPath func(context.Context) string
 }
 
 func registerWatch(a *agentsdk.Agent, w Watch) {
+	w.record = func(ctx context.Context, dataset string, ids []string) (map[string]watchDetection, error) {
+		owner, err := watchOwner(ctx, agentsdk.ExecutionRequest)
+		if err != nil {
+			return nil, err
+		}
+		return firstSeenInDB(a.DB(), owner)(ctx, dataset, ids)
+	}
 	a.RegisterTool(tool.Typed[ContextWindow, ContextBatch]("releases_in_window").
 		Description("Read release records overlapping an inclusive window, with original source locators.").
 		Execute(w.Releases).Build(), agentsdk.AccessUser)

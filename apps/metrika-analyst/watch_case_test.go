@@ -8,8 +8,8 @@ import (
 )
 
 func TestCollectWatchdogCase(t *testing.T) {
-	w := Watch{Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
-		func(context.Context) string { return "" }}
+	w := Watch{series: Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
+		contextPath: func(context.Context) string { return "" }}
 	input := WatchCaseInput{
 		Series: SignalInput{ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 			From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03",

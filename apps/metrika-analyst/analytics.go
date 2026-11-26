@@ -143,6 +143,9 @@ func missing(q Query, k string, ref Ref, reason string) Observation {
 	return Observation{ID: hash([]any{q, k, ref}), Kind: "metric", ProductKey: q.ProductKey, MetricKey: k, Unit: "unknown", Period: Period{q.From, q.To}, Segment: q.Segment, SourceRef: ref, Status: "missing", Caveats: []string{reason}}
 }
 func (s Service) historical(ctx context.Context, p string) (Batch, error) {
+	return s.historicalWithDigest(ctx, p, nil)
+}
+func (s Service) historicalWithDigest(ctx context.Context, p string, digest *string) (Batch, error) {
 	if !strings.HasSuffix(strings.ToLower(p), ".json") || strings.Contains(p, "..") {
 		return Batch{}, fmt.Errorf("select an authorized evidence-v1 JSON file")
 	}
@@ -178,6 +181,9 @@ func (s Service) historical(ctx context.Context, p string) (Batch, error) {
 			o.Details = map[string]any{}
 		}
 		o.Details["evidence_file"] = p
+	}
+	if digest != nil {
+		*digest = fmt.Sprintf("sha256:%x", sha256.Sum256(b))
 	}
 	return x, nil
 }

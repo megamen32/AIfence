@@ -51,6 +51,7 @@ type BlindDiscovery struct {
 }
 
 type BlindCandidate struct {
+	watchDetection
 	BlindDimensions
 	ID                   string                `json:"candidate_id"`
 	SignalID             string                `json:"signal_id,omitempty"`
@@ -90,6 +91,7 @@ type BlindCaseInput struct {
 }
 
 type blindDataset struct {
+	record  watchRecorder
 	id      uuid.UUID
 	series  Batch
 	context WatchContext
@@ -179,7 +181,7 @@ func (s *privateWatch) loadBlind(ctx context.Context, approved bool) (blindDatas
 	if err != nil {
 		return blindDataset{}, err
 	}
-	out := blindDataset{}
+	out := blindDataset{record: firstSeenInDB(s.db, owner)}
 	err = s.db.Transaction(ctx, nil, func(tx agentsdk.DBTX) error {
 		if err := tx.QueryRowContext(ctx, `SELECT snapshot_id FROM watchdog_owners
 		    WHERE owner_id=$1 AND blind_selected FOR SHARE`, owner).Scan(&out.id); err != nil {
@@ -350,7 +352,7 @@ func (d blindDataset) collect(ctx context.Context, in BlindCaseInput) (WatchCase
 	if err != nil {
 		return WatchCaseResult{}, err
 	}
-	w := Watch{series: Service{read: func(_ context.Context, name string) ([]byte, error) {
+	w := Watch{datasetID: d.id.String(), record: d.record, series: Service{read: func(_ context.Context, name string) ([]byte, error) {
 		switch name {
 		case privateSeries:
 			return series, nil

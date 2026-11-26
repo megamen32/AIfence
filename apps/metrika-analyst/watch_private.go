@@ -199,6 +199,7 @@ func (s *privateWatch) submit(w http.ResponseWriter, r *http.Request) error {
 				return err
 			}
 			w := s.snapshotWatch(owner, snapshot)
+			w.datasetID, w.record = snapshot.String(), firstSeenIn(tx, owner)
 			var err error
 			batch, err = w.Replay(ctx, input)
 			return err

@@ -31,7 +31,9 @@ func watchdogCaller(ctx context.Context, human bool, surface, execution string) 
 }
 
 func TestWatchdogScheduledCanary(t *testing.T) {
-	s := privateWatch{canary: func(context.Context) bool { return true }}
+	register := testFirstSeen(t)
+	s := privateWatch{canary: func(context.Context) bool { return true }, canaryRecord: register}
+	var first watchdogDecision
 	for _, human := range []bool{false, true} {
 		surface := "schedule"
 		if human {
@@ -43,6 +45,15 @@ func TestWatchdogScheduledCanary(t *testing.T) {
 			got.Decisions[1].Alert == nil || !*got.Decisions[1].Alert || got.Decisions[2].Alert != nil || got.NextJobID != "" {
 			t.Fatalf("unexpected canary result: %v", err)
 		}
+		alert := got.Decisions[1]
+		if alert.SignalID == "" || alert.DetectedAt == "" || alert.DetectedSource != "agent_observed" ||
+			alert.Magnitude == nil || got.Decisions[0].DetectedAt != "" || got.Decisions[2].DetectedAt != "" {
+			t.Fatal("only confirmed alerts get a persisted detection")
+		}
+		if human && (first.watchDetection != alert.watchDetection || first.SignalID != alert.SignalID) {
+			t.Fatal("manual and scheduled canary changed the first detection")
+		}
+		first = alert
 	}
 	app := watchdogCaller(t.Context(), false, "schedule", "job")
 	if _, err := s.runJob(app, agentsdk.JobContext{}, watchdogInput{Mode: "owner"}); err == nil {

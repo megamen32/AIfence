@@ -147,9 +147,9 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 				add(target, BlindCandidate{
 					Kind: "controlled_decline", Period: p, Control: control.meta.ProductKey,
 					SignalID: sig.ID, Magnitude: magnitude,
-					Reason:    "decline_with_stable_control_ranked_on_baseline",
-					ChangePct: &magnitude.RelativeChangePct, ControlPct: blindPct(sig, "control_change_pct"),
-					Adjusted: blindPct(sig, "control_adjusted_change_pct"), SourceRefs: blindSignalRefs(sig),
+					Reason:     "decline_with_stable_control_ranked_on_baseline",
+					ControlPct: blindPct(sig, "control_change_pct"),
+					Adjusted:   blindPct(sig, "control_adjusted_change_pct"), SourceRefs: blindSignalRefs(sig),
 				})
 				active = len(hits) - 1
 			}
@@ -197,6 +197,24 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 		}
 		index[hit.candidate.ID] = hit
 		out.Candidates = append(out.Candidates, hit.candidate)
+	}
+	if d.record != nil {
+		var ids []string
+		for _, candidate := range out.Candidates {
+			if candidate.SignalID != "" {
+				ids = append(ids, candidate.SignalID)
+			}
+		}
+		if len(ids) > 0 {
+			found, err := d.record(ctx, out.DatasetID, ids)
+			if err != nil {
+				return out, nil, err
+			}
+			for i := range out.Candidates {
+				candidate := &out.Candidates[i]
+				candidate.watchDetection = found[candidate.SignalID]
+			}
+		}
 	}
 	out.CandidateCount = len(out.Candidates)
 	if len(out.Candidates) > 0 {

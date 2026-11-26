@@ -50,8 +50,8 @@ func testWatch(t *testing.T, target, control []float64, mutate func(*Observation
 			return nil, errors.New("not found")
 		}
 	}
-	return Watch{Service{read: read, config: func(context.Context) Settings { return Settings{EvidencePath: "series.json"} }},
-		func(context.Context) string { return "context.json" }}
+	return Watch{series: Service{read: read, config: func(context.Context) Settings { return Settings{EvidencePath: "series.json"} }},
+		contextPath: func(context.Context) string { return "context.json" }}
 }
 
 func TestWatchdogScenarios(t *testing.T) {
@@ -195,8 +195,8 @@ func readEmbeddedFixture(_ context.Context, path string) ([]byte, error) {
 }
 
 func TestWatchEmbeddedReplay(t *testing.T) {
-	w := Watch{Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
-		func(context.Context) string { return "" }}
+	w := Watch{series: Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
+		contextPath: func(context.Context) string { return "" }}
 	out, err := w.Replay(context.Background(), SignalInput{
 		ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 		From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03", SourcePath: "fixtures/synthetic-watch.json", ContextPath: "fixtures/synthetic-watch-context.json",
@@ -242,9 +242,9 @@ func TestWatchAuthorizedCase(t *testing.T) {
 	if err != nil || json.Unmarshal(raw, &spec) != nil {
 		t.Fatal("cannot read private oracles")
 	}
-	w := Watch{Service{read: func(_ context.Context, p string) ([]byte, error) { return os.ReadFile(filepath.Join(root, p)) },
+	w := Watch{series: Service{read: func(_ context.Context, p string) ([]byte, error) { return os.ReadFile(filepath.Join(root, p)) },
 		config: func(context.Context) Settings { return Settings{EvidencePath: "watch-series.json"} }},
-		func(context.Context) string { return "watch-context.json" }}
+		contextPath: func(context.Context) string { return "watch-context.json" }}
 	ctx := context.Background()
 	result, err := w.Replay(ctx, spec.Signal)
 	if err != nil {
@@ -309,8 +309,8 @@ func TestWatchAuthorizedCase(t *testing.T) {
 }
 
 func TestWatchdogMagnitudeSameAcrossDetectReplayAndCollect(t *testing.T) {
-	w := Watch{Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
-		func(context.Context) string { return "" }}
+	w := Watch{series: Service{read: readEmbeddedFixture, config: func(context.Context) Settings { return Settings{} }},
+		contextPath: func(context.Context) string { return "" }}
 	in := SignalInput{
 		ProductKey: syntheticWatchProduct, ControlProductKey: syntheticWatchControl, MetricKey: "orders_index",
 		From: "2023-02-13", To: "2023-03-05", AsOf: "2023-03-03",

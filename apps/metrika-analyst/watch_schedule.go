@@ -25,9 +25,12 @@ type watchdogInput struct {
 }
 
 type watchdogDecision struct {
-	WeekFrom string `json:"week_from"`
-	Alert    *bool  `json:"alert"`
-	Reason   string `json:"reason"`
+	watchDetection
+	SignalID  string                `json:"signal_id,omitempty"`
+	Magnitude *WatchSignalMagnitude `json:"magnitude,omitempty"`
+	WeekFrom  string                `json:"week_from"`
+	Alert     *bool                 `json:"alert"`
+	Reason    string                `json:"reason"`
 }
 
 type watchdogResult struct {
@@ -37,12 +40,13 @@ type watchdogResult struct {
 }
 
 type privateWatch struct {
-	agent       *agentsdk.Agent
-	db          *agentsdk.AgentDB
-	job         *agentsdk.JobHandle[watchdogInput, watchdogResult]
-	origin      func(context.Context) string
-	canary      func(context.Context) bool
-	privateHTTP chan struct{}
+	agent        *agentsdk.Agent
+	db           *agentsdk.AgentDB
+	job          *agentsdk.JobHandle[watchdogInput, watchdogResult]
+	origin       func(context.Context) string
+	canary       func(context.Context) bool
+	canaryRecord watchRecorder
+	privateHTTP  chan struct{}
 }
 
 func registerWatchSchedule(a *agentsdk.Agent) {
@@ -53,7 +57,7 @@ func registerWatchSchedule(a *agentsdk.Agent) {
 		Slug: "watchdog_canary_enabled", Description: "Run the native cron against embedded synthetic evidence", Default: "false", Pattern: "^(true|false)$",
 	})
 	s := &privateWatch{
-		agent: a, db: a.DB(), privateHTTP: make(chan struct{}, 1),
+		agent: a, db: a.DB(), canaryRecord: firstSeenInDB(a.DB(), uuid.Nil), privateHTTP: make(chan struct{}, 1),
 		origin: func(ctx context.Context) string { v, _ := origin.Get(ctx); return v },
 		canary: func(ctx context.Context) bool { v, _ := canary.Get(ctx); return v == "true" },
 	}
@@ -77,7 +81,12 @@ func watchSummary(batch SignalBatch) watchdogResult {
 	out := watchdogResult{Status: batch.Status, Decisions: []watchdogDecision{}}
 	for _, item := range batch.Observations {
 		reason, _ := item.Details["reason"].(string)
-		out.Decisions = append(out.Decisions, watchdogDecision{WeekFrom: item.Period.From, Alert: item.Value, Reason: reason})
+		decision := watchdogDecision{WeekFrom: item.Period.From, Alert: item.Value, Reason: reason}
+		if item.Value != nil && *item.Value {
+			decision.SignalID, decision.Magnitude = item.ID, signalMagnitude(item)
+			decision.watchDetection = signalDetection(item)
+		}
+		out.Decisions = append(out.Decisions, decision)
 	}
 	return out
 }
@@ -95,6 +104,7 @@ func (s *privateWatch) runJob(ctx context.Context, job agentsdk.JobContext, inpu
 			return watchdogResult{Status: "disabled", Decisions: []watchdogDecision{}}, nil
 		}
 		w := Watch{
+			record: s.canaryRecord,
 			series: Service{
 				read: func(_ context.Context, path string) ([]byte, error) {
 					if b, ok := embeddedEvidence(path); ok {
@@ -198,6 +208,9 @@ func (s *privateWatch) runOwner(ctx context.Context, job agentsdk.JobContext, ow
 		if runErr != nil {
 			out.Status = "source_unavailable"
 		} else {
+			if err := attachSignalDetections(ctx, firstSeenIn(tx, owner), snapshot.String(), batch); err != nil {
+				return err
+			}
 			out = watchSummary(batch)
 		}
 		jobID, err := uuid.Parse(job.ID)

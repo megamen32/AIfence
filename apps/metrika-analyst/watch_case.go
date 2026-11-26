@@ -13,6 +13,7 @@ type WatchCaseInput struct {
 }
 
 type WatchCaseResult struct {
+	watchDetection
 	Status              string                `json:"status"`
 	FirstAlertWeek      *Period               `json:"first_alert_week"`
 	FirstAlertSignalID  string                `json:"first_alert_signal_id,omitempty"`
@@ -186,5 +187,6 @@ func (w Watch) CollectCase(ctx context.Context, in WatchCaseInput) (WatchCaseRes
 	}
 	result.Status, result.FirstAlertWeek, result.Document = "alert", &alarm.Period, &doc
 	result.FirstAlertSignalID, result.FirstAlertMagnitude = alarm.ID, signalMagnitude(*alarm)
+	result.watchDetection = signalDetection(*alarm)
 	return result, nil
 }

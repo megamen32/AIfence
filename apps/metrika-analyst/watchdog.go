@@ -91,7 +91,12 @@ func (w Watch) run(ctx context.Context, in SignalInput, replay bool) (SignalBatc
 		out.Warnings = append(out.Warnings, "Configure evidence_path or select an authorized historical weekly file.")
 		return out, nil
 	}
-	src, err := w.series.historical(ctx, path)
+	datasetID := w.datasetID
+	var digest *string
+	if w.record != nil && datasetID == "" {
+		digest = &datasetID
+	}
+	src, err := w.series.historicalWithDigest(ctx, path, digest)
 	if err != nil {
 		return out, err
 	}
@@ -166,6 +171,9 @@ func (w Watch) run(ctx context.Context, in SignalInput, replay bool) (SignalBatc
 		if signal.Value == nil {
 			out.Status = "partial"
 		}
+	}
+	if err := attachSignalDetections(ctx, w.record, datasetID, out); err != nil {
+		return out, err
 	}
 	return out, nil
 }
