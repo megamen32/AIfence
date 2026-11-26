@@ -1,4 +1,4 @@
-// Airlock run_js_file async function body. Uses only native app and file capabilities.
+// Airlock saved run_js async function body. Uses only native app and file capabilities.
 const version = "aifence.workflow.evidence.v1";
 const home = "/home/Documents";
 const isObject = x => x !== null && typeof x === "object" && !Array.isArray(x);

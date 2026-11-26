@@ -5,7 +5,7 @@ One native Airlock saved async JavaScript body, not a new app or service. For a 
 ## Install
 
 1. In the target Airlock, use the normal Files interface to create/upload `/home/Documents/AIfence-collect-evidence.js` from `collect-evidence.js`. The directory must exist and the current user must have write permission. If updating an existing file, use its current contentId; never silently replace another script.
-2. In a hosted Product Manager conversation, inspect the actual app tool schemas. Invoke top-level `run_js_file` with the following path, description and args. The query objects are passed directly to the native tool calls; the example illustrates the intended AIfence contract, not the separate personal Metrika Analyst API. Adjust them to the inspected schemas of the deployed apps.
+2. In a hosted Product Manager conversation, inspect the actual app tool schemas. Invoke the single `run_js` tool in its saved-file form (path, description and args, without code). The query objects are passed directly to the native tool calls; the example illustrates the intended AIfence contract, not the separate personal Metrika Analyst API. Adjust them to the inspected schemas of the deployed apps.
 
 ```json
 {
@@ -30,11 +30,11 @@ Read the returned snapshot by ID. Use source references and observed/missing/inc
 
 ## Scheduling
 
-A hosted `run_js_file` runs under the current user's file and app grants. An SDK app job runs under its own scoped app context and cannot assume the human's home identity. Reuse native Product Manager job/schedule for post-release follow-up, with app-local state, approved source references and authorized connections. Do not build a second orchestration loop or copy personal credentials into a job. Scheduled cross-app execution is a separate live integration check; this script does not claim to implement it.
+A hosted saved-file `run_js` runs under the current user's file and app grants. An SDK app job runs under its own scoped app context and cannot assume the human's home identity. Reuse native Product Manager job/schedule for post-release follow-up, with app-local state, approved source references and authorized connections. Do not build a second orchestration loop or copy personal credentials into a job. Scheduled cross-app execution is a separate live integration check; this script does not claim to implement it.
 
 ## Test
 
-`node --test workflows/collect-evidence.test.mjs` from the repository root. Tests use mocked native capability contracts and synthetic inputs; they are not a live Airlock integration test. For live acceptance verify actual deployed tool schemas and one hosted `run_js_file` invocation, read the returned file via the user's catalog, and repeat the identical request to confirm idempotency.
+`node --test workflows/collect-evidence.test.mjs` from the repository root. Tests use mocked native capability contracts and synthetic inputs; they are not a live Airlock integration test. For live acceptance verify actual deployed tool schemas and one hosted saved-file `run_js` invocation, read the returned file via the user's catalog, and repeat the identical request to confirm idempotency.
 
 
 Для сторожа используются типизированные инструменты Metrika Analyst и Product Manager. Сохранённый файл выше относится к отдельной операции сбора свидетельств. Проверенное поведение установленного исполнителя описано в [журнале интеграции](../docs/qa/watchdog-chat.md).
