@@ -13,7 +13,7 @@ import (
 func TestAgentComposition(t *testing.T) {
 	manifest := newAgent().Manifest()
 	// The app description is visible before the model has inspected the detailed instructions.
-	for _, contract := range []string{"return (await", "discover_watchdog_series", "product_key", "Опусти request_confirmation"} {
+	for _, contract := range []string{"console.log((await", "discover_watchdog_series", "product_key", "опусти request_confirmation"} {
 		if !strings.Contains(manifest.Description, contract) {
 			t.Fatalf("visible description omits %q", contract)
 		}
