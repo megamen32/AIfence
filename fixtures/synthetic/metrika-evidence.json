@@ -1,0 +1,53 @@
+{
+  "schema_version": "aifence.v1",
+  "source": "metrika",
+  "as_of": "2026-01-31T00:00:00Z",
+  "status": "partial",
+  "observations": [
+    {
+      "id": "fixture-m1",
+      "kind": "metric",
+      "product_key": "synthetic:product-a",
+      "metric_key": "checkout_rate",
+      "value": 0.4,
+      "unit": "ratio",
+      "period": {
+        "from": "2026-01-01",
+        "to": "2026-01-07"
+      },
+      "segment": "all",
+      "sample_size": 100,
+      "numerator": 40,
+      "denominator": 100,
+      "source_ref": {
+        "source_id": "synthetic-fixture",
+        "locator": "row 1"
+      },
+      "status": "observed",
+      "caveats": []
+    },
+    {
+      "id": "fixture-m2",
+      "kind": "metric",
+      "product_key": "synthetic:product-a",
+      "metric_key": "add_to_cart",
+      "value": null,
+      "unit": "count",
+      "period": {
+        "from": "2026-01-08",
+        "to": "2026-01-14"
+      },
+      "source_ref": {
+        "source_id": "synthetic-fixture",
+        "locator": "row 2"
+      },
+      "status": "missing",
+      "caveats": [
+        "No event instrumentation in this synthetic period"
+      ]
+    }
+  ],
+  "warnings": [
+    "Synthetic data only; not customer evidence"
+  ]
+}

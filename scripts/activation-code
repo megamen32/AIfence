@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="/opt/homebrew/bin:$PATH"
+if [[ "$(uname -s)" == Darwin ]] && command -v colima >/dev/null; then unset DOCKER_CONTEXT; export DOCKER_HOST="unix://$HOME/.colima/aifence/docker.sock"; fi
+cd "$ROOT/.runtime/airlock"
+docker compose exec -T airlock cat /var/lib/airlock/activation_code.txt

@@ -1,0 +1,4 @@
+# Metrika Analyst (P0)
+Owner path: apps/metrika-analyst. User asks "what changed in the funnel?"; independent from PM.
+Build one interface for authorized read-only Yandex Metrika Reports API and historical import. Real/test counter query separate from imported evidence. No token in Git or logs; use SDK connections or secure environment. Use date windows, segment, configured metric/goal, threshold, denominator, data breaks and complete-week filtering. Code calculates numbers; label missing values and sample size. Expose query_metrics/compare_periods/check_metrika.
+Acceptance: permitted API response or precise access blocker (not faked), correct deterministic comparisons on synthetic and provided dataset, report missing event without zero, independent UI/graph and tool contract. No new BI engine.

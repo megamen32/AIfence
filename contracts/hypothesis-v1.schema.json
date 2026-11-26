@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Product Manager hypothesis v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "product_key",
+    "signal_ids",
+    "support_ids",
+    "counter_ids",
+    "unknowns",
+    "proposed_action",
+    "success_criterion",
+    "status",
+    "economic_effect"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aifence.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "product_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signal_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "support_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "counter_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "proposed_action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "economic_effect": {
+      "type": "object",
+      "required": [
+        "status",
+        "assumptions"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "unknown",
+            "scenario",
+            "measured"
+          ]
+        },
+        "amount": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "currency": {
+          "type": "string"
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "success_criterion": {
+      "type": "object",
+      "required": [
+        "metric_key",
+        "baseline_from",
+        "baseline_to",
+        "observation_days",
+        "rule"
+      ],
+      "properties": {
+        "metric_key": {
+          "type": "string"
+        },
+        "baseline_from": {
+          "type": "string",
+          "format": "date"
+        },
+        "baseline_to": {
+          "type": "string",
+          "format": "date"
+        },
+        "observation_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rule": {
+          "type": "string"
+        },
+        "control_product_key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "approved",
+        "in_backlog",
+        "awaiting_release",
+        "awaiting_measurement",
+        "supported",
+        "rejected",
+        "insufficient_data"
+      ]
+    },
+    "backlog_ref": {
+      "type": "object",
+      "required": [
+        "id",
+        "url",
+        "tag"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "tag": {
+          "const": "сгенерирована ИИ-помощником"
+        }
+      },
+      "additionalProperties": false
+    },
+    "release_id": {
+      "type": "string"
+    },
+    "decision_reason": {
+      "type": "string"
+    }
+  }
+}

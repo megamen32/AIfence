@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aifence.example/contracts/evidence-v1.json",
+  "title": "AIfence evidence batch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "as_of",
+    "status",
+    "observations",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aifence.v1"
+    },
+    "source": {
+      "enum": [
+        "market",
+        "metrika",
+        "sales",
+        "research",
+        "backlog",
+        "release",
+        "economics"
+      ]
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "partial",
+        "unavailable"
+      ]
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "product_key",
+        "metric_key",
+        "value",
+        "unit",
+        "period",
+        "source_ref",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "metric",
+            "offer",
+            "research",
+            "task",
+            "release",
+            "cost"
+          ]
+        },
+        "product_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        },
+        "period": {
+          "type": "object",
+          "required": [
+            "from",
+            "to"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "to": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "additionalProperties": false
+        },
+        "segment": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "tax_basis": {
+          "enum": [
+            "included",
+            "excluded",
+            "unknown",
+            "not_applicable"
+          ]
+        },
+        "sample_size": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "numerator": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "denominator": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "source_ref": {
+          "type": "object",
+          "required": [
+            "source_id",
+            "locator"
+          ],
+          "properties": {
+            "source_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "locator": {
+              "type": "string",
+              "minLength": 1
+            },
+            "url": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "status": {
+          "enum": [
+            "observed",
+            "missing",
+            "incomparable",
+            "estimated"
+          ]
+        },
+        "caveats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "comparison_key": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "missing"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

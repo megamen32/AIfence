@@ -1,0 +1,9 @@
+{
+  "release": "v0.8.15",
+  "revision": "be0f9ee03be31ee15dacd5f6ebcc0f28acea6468",
+  "sdk": "v0.11.0",
+  "goai": "v0.3.4",
+  "go": "1.26.11",
+  "edition": "enterprise",
+  "source": "authorized private upstream; supply AIRLOCK_UPSTREAM_URL on a fresh machine"
+}

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin:$PATH"
+slug="${1:-}"
+case "$slug" in market-watch|metrika-analyst|product-manager);; *) echo "usage: $0 market-watch|metrika-analyst|product-manager" >&2; exit 2;; esac
+target="$ROOT/apps/$slug"
+test ! -e "$target/go.mod" || { echo "Already initialized: $target"; exit 0; }
+# The launcher and scaffold are pinned to the platform SDK version.
+mkdir -p "$ROOT/.runtime/bin"
+export GOBIN="$ROOT/.runtime/bin"
+if [[ ! -x "$GOBIN/airlock" ]]; then go install github.com/airlockrun/agentsdk/cmd/airlock@v0.11.0; fi
+temp="$(mktemp -d)"
+trap 'rm -rf "$temp"' EXIT
+"$GOBIN/airlock" init "$temp/$slug" --url http://localhost:42080
+# Do not import another Git repository, credentials, or overwrite track files.
+python3 - "$temp/$slug" "$target" <<'PY'
+from pathlib import Path
+import shutil,sys
+src,dst=map(Path,sys.argv[1:])
+for f in src.iterdir():
+ if f.name in {".git",".airlock","README.md"}: continue
+ if (dst/f.name).exists(): raise SystemExit(f"Refusing overwrite: {dst/f.name}")
+for f in src.iterdir():
+ if f.name in {".git",".airlock","README.md"}: continue
+ if f.is_dir(): shutil.copytree(f,dst/f.name)
+ else: shutil.copy2(f,dst/f.name)
+PY
+# Recreate SDK-local configuration via official tool if needed; keep config untracked.
+if [[ -d "$temp/$slug/.airlock" && ! -e "$target/.airlock" ]]; then cp -R "$temp/$slug/.airlock" "$target/.airlock"; fi
+echo "Scaffold created: $target. Read generated AGENTS.md and install toolchain before implementation."

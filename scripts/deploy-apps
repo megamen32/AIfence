@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Deploy the completed apps, after one-time normal Airlock activation/login.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin:$PATH"
+slugs=(market-watch metrika-analyst product-manager)
+for slug in "${slugs[@]}"; do
+  test -f "$ROOT/apps/$slug/go.mod" && test -f "$ROOT/apps/$slug/.aifence-ready" || { echo "Not ready: $slug. Implement and test before setting .aifence-ready." >&2; exit 1; }
+done
+# First deployment binds the local app to this instance. Later deploys use saved binding.
+# CLI authentication is intentionally normal and interactive; do not extract tokens.
+for slug in "${slugs[@]}"; do
+  (cd "$ROOT/apps/$slug"
+    go tool air toolchain install
+    go tool air build
+    go tool air login http://localhost:42080
+    if [[ ! -f "$ROOT/.runtime/deployed-$slug" ]]; then
+      go tool air deploy --create --name "$slug" --slug "$slug" -m "AIfence $slug"
+      mkdir -p "$ROOT/.runtime"; touch "$ROOT/.runtime/deployed-$slug"
+    else
+      go tool air deploy -m "Update AIfence $slug"
+    fi)
+done
+echo "Check build readiness and actual cross-app run before declaring acceptance."

@@ -1,0 +1,4 @@
+# Market Watch (P0)
+Owner path: apps/market-watch. SDK v0.11.0, standalone Airlock app. User asks "compare product and tell me what changed"; app useful without PM.
+Implement: configured competitor sources, fetch public pages/structured data with safe timeouts and rate limits, normalize exact offer identifiers and prices, dated snapshots and diff, own native UI. Use sample from approved sources, 2–3 sites max initially. Avoid scraped entire catalog. Search only public permitted sources, no access bypass. Return evidence contract via list_offers/refresh_market/market_changes. Source URLs and match caveats mandatory; no unverified matching across license terms.
+Acceptance: two actual sites/offer variants with observed URLs and timestamps, same product identity or explicit uncertain match, second run produces diff or explicit no change; fixture tests run without network. Source unavailable => partial/unavailable. Reuse SDK scheduler only after basic read works.

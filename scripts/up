@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# AIfence: exact private Airlock source, isolated runtime, no credentials in Git.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="/opt/homebrew/bin:/usr/local/go/bin:$PATH"
+RUNTIME="$ROOT/.runtime"; SRC="$RUNTIME/airlock"
+mkdir -p "$RUNTIME"; chmod 700 "$RUNTIME"
+REV="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["revision"])' "$ROOT/platform/airlock.lock.json")"
+TAG="${REV:0:12}"
+if [[ ! -d "$SRC/.git" ]]; then
+  REMOTE="${AIRLOCK_UPSTREAM_URL:-}"
+  if [[ -z "$REMOTE" && -f "$RUNTIME/upstream-url" ]]; then REMOTE="$(cat "$RUNTIME/upstream-url")"; fi
+  [[ -n "$REMOTE" ]] || { echo 'Set AIRLOCK_UPSTREAM_URL to the authorized private upstream URL; use normal Git authentication.' >&2; exit 2; }
+  git clone --no-checkout --depth 1 "$REMOTE" "$SRC"
+fi
+if ! git -C "$SRC" cat-file -e "$REV^{commit}" 2>/dev/null; then git -C "$SRC" fetch --depth 1 origin "$REV"; fi
+[[ -z "$(git -C "$SRC" status --porcelain --untracked-files=no)" ]] || { echo "Upstream source has tracked local modifications; refusing to overwrite" >&2; exit 1; }
+git -C "$SRC" checkout --quiet --detach "$REV"
+if [[ "$(uname -s)" == Darwin ]] && command -v colima >/dev/null; then
+  if ! colima status aifence >/dev/null 2>&1; then
+    colima start aifence --activate=false --cpu "${AIFENCE_CPUS:-6}" --memory "${AIFENCE_RAM_GB:-12}" --disk "${AIFENCE_DISK_GB:-80}" --vm-type vz
+  fi
+  unset DOCKER_CONTEXT
+  export DOCKER_HOST="unix://$HOME/.colima/aifence/docker.sock"
+fi
+docker info >/dev/null
+docker compose version >/dev/null
+# Upstream builder toolchain currently has Linux amd64-specific assets.
+# Explicitly build and run application images for amd64 on Apple Silicon.
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+export COMPOSE_PARALLEL_LIMIT=2
+export DOCKER_SOCKET_PATH=/var/run/docker.sock
+export AIRLOCK_IMAGE="aifence-airlock:$TAG"
+export FRONTEND_IMAGE="aifence-frontend:$TAG"
+export AGENT_BUILDER_IMAGE="aifence-agent-builder:$TAG"
+export AGENT_BASE_IMAGE="aifence-agent-base:$TAG"
+export JS_EXECUTOR_IMAGE="aifence-js-executor:$TAG"
+CORE="aifence-airlock-core:$TAG"
+cd "$SRC"
+if [[ ! -f .env ]]; then
+  # Reuse the upstream local installer only for configuration generation.
+  # Its registry-pull step does not apply to unpublished private source.
+  bash -c 'set -e; source ./install.sh; INSTANCE_ID=aifence; TLS_MODE=local; DOMAIN=localhost; INFRA_DB=bundled; INFRA_S3=bundled; BUILDKIT_HOST_VAL=""; BUILD_CADDY=0; assemble_profiles; render_env'
+fi
+grep -qx 'COMPOSE_PROJECT_NAME=aifence' .env || { echo 'Refusing foreign .env'; exit 1; }
+grep -qx 'TLS_MODE=local' .env || { echo 'Refusing non-local environment'; exit 1; }
+# Preserve upstream Compose; override only the local target architecture.
+cat > "$RUNTIME/compose.local.yml" <<'YAML'
+services:
+  airlock:
+    platform: linux/amd64
+  frontend:
+    platform: linux/amd64
+  agent-builder-image:
+    platform: linux/amd64
+  agent-base-image:
+    platform: linux/amd64
+  js-executor-image:
+    platform: linux/amd64
+YAML
+compose=(docker compose -f docker-compose.yml -f "$RUNTIME/compose.local.yml")
+build_if_missing() {
+  local img="$1" file="$2"; shift 2
+  if ! docker image inspect "$img" >/dev/null 2>&1; then
+    echo "Building $img from $REV"
+    docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$REV" -f "$file" -t "$img" "$@" .
+  fi
+}
+# Start the exact upstream dependency images, no platform code patches.
+build_if_missing "$AGENT_BASE_IMAGE" Dockerfile.agent-base
+build_if_missing "$AGENT_BUILDER_IMAGE" Dockerfile.agent-builder
+build_if_missing "$JS_EXECUTOR_IMAGE" Dockerfile.js-executor
+build_if_missing "$CORE" Dockerfile.airlock
+build_if_missing "$AIRLOCK_IMAGE" enterprise/Dockerfile --build-arg "AIRLOCK_RUNTIME=$CORE"
+build_if_missing "$FRONTEND_IMAGE" enterprise/Dockerfile.frontend
+"${compose[@]}" up -d --no-build --pull missing
+for ((i=0;i<120;i++)); do
+  if "${compose[@]}" exec -T airlock wget -qO- http://localhost:8080/health >/dev/null 2>&1 && curl --noproxy '*' -fsS --max-time 4 http://localhost:42080/health >/dev/null 2>&1; then
+    echo 'Airlock ready: http://localhost:42080'
+    echo 'First run: activate administrator in local UI; retrieve code locally using ./scripts/activation-code.'
+    if [[ "${1:-}" == "--apps" ]]; then exec "$ROOT/scripts/deploy-apps"; fi
+    exit 0
+  fi
+  sleep 2
+done
+"${compose[@]}" ps >&2
+echo 'Airlock did not pass health checks' >&2; exit 1

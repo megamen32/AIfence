@@ -1,3 +1,0 @@
-[submodule "platform/airlock"]
-	path = platform/airlock
-	url = https://github.com/airlockrun/airlock.git
