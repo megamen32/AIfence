@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -27,21 +28,15 @@ type monitorObservation struct {
 }
 
 type monitorDetails struct {
-	Origin         string          `json:"origin"`
-	Synthetic      bool            `json:"synthetic"`
-	Detected       string          `json:"detected_at"`
-	Metric         string          `json:"metric_key"`
-	Scenario       string          `json:"scenario_id"`
-	Control        string          `json:"control_product_key"`
-	TargetCurrent  *float64        `json:"current_mean"`
-	ControlCurrent *float64        `json:"control_current_mean"`
-	TargetBase     *float64        `json:"baseline_mean"`
-	ControlBase    *float64        `json:"control_baseline_mean"`
-	Baseline       evidence.Period `json:"baseline_period"`
-	Change         *float64        `json:"relative_change_pct"`
-	Stage          string          `json:"stage"`
-	Reason         string          `json:"reason"`
-	Screenshot     string          `json:"screenshot_path"`
+	Origin     string `json:"origin"`
+	Synthetic  bool   `json:"synthetic"`
+	Detected   string `json:"detected_at"`
+	Metric     string `json:"metric_key"`
+	Scenario   string `json:"scenario_id"`
+	Control    string `json:"control_product_key"`
+	Stage      string `json:"stage"`
+	Reason     string `json:"reason"`
+	Screenshot string `json:"screenshot_path"`
 }
 
 func productName(key string) string {
@@ -189,9 +184,10 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 	}
 	for _, row := range active {
 		p := &m.Products[products[row.Product]]
-		change := ""
-		if row.details.Change != nil {
-			change = num(*row.details.Change) + " %"
+		magnitude := signalMagnitude(evidence.WatchdogWindow(row.Row))
+		change, comparison := "", ""
+		if magnitude != nil {
+			change, comparison = magnitude.Change, magnitude.Caption
 		}
 		link := href("monitor", row.Product, "snapshot", row.snapshot, "alert", row.ID)
 		if p.AlertWeek == "" {
@@ -204,13 +200,12 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		m.Pulse = append(m.Pulse, views.PulseItem{
 			Product: p.Name, URL: link,
 			Week: span(row.Period.From, row.Period.To), Detected: signalTime(row.details.Detected, row.received),
-			Change: change, Origin: originText(row.details),
+			Change: change, Comparison: comparison, Origin: originText(row.details),
 		})
 	}
 	for _, row := range rows {
 		key := row.details.Control
-		if row.Metric == watchdogMetric && row.Status == "observed" && row.details.ControlCurrent != nil &&
-			key != "" {
+		if row.Metric == watchdogMetric && key != "" && evidence.WatchdogWindow(row.Row) != nil {
 			if _, ok := products[key]; ok {
 				continue
 			}
@@ -227,6 +222,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 			m.Selected = investigation(selected, focusRows, records)
 		}
 		m.Selected.ProductKey, m.Selected.SnapshotID, m.Selected.AlertID = selected, pinned, alert
+		m.Selected.Prices = currentPrices(selected, pinned, focusRows, records)
 	}
 	return m
 }
@@ -318,6 +314,7 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 			v.Control = productName(signal.details.Control)
 		}
 		v.SnapshotURL = href("snapshot", signal.snapshot, "obs", signal.ID)
+		v.Magnitude = signalMagnitude(evidence.WatchdogWindow(signal.Row))
 	}
 	for _, row := range rows {
 		if row.Product != key || signal != nil && row.snapshot != signal.snapshot {
@@ -391,31 +388,55 @@ var browserStages = map[string]string{
 	"open_cart": "Открытие корзины", "cart_item": "Товар в корзине",
 }
 
+func signalPercent(v float64) string {
+	return strings.Replace(num(v), "-", "−", 1) + " %"
+}
+
+func signalMagnitude(d *evidence.WindowContrast) *views.SignalMagnitude {
+	if d == nil {
+		return nil
+	}
+	mean := func(n float64) string { return strings.TrimSuffix(num(n), ",0") }
+	return &views.SignalMagnitude{
+		Change: signalPercent(d.RelativeChangePct), Caption: fmt.Sprintf("К предыдущему окну из %d нед.", d.WindowWeeks),
+		Baseline: span(d.Baseline.From, d.Baseline.To), Current: span(d.Current.From, d.Current.To),
+		Before: mean(d.BaselineMean), After: mean(d.CurrentMean),
+	}
+}
+
 type reading struct {
 	date    time.Time
 	target  float64
 	control *float64
+	period  string
 }
 
 func plot(signal *monitorObservation, rows []monitorObservation, release string) views.Chart {
+	contrast := evidence.WatchdogWindow(signal.Row)
+	if contrast == nil {
+		return views.Chart{}
+	}
 	var data []reading
 	seen := map[time.Time]bool{}
-	add := func(day string, target, control *float64) {
-		t, err := time.Parse(time.DateOnly, day)
-		if err != nil || target == nil || control == nil || seen[t] {
+	add := func(period evidence.Period, target, control float64) {
+		t, err := time.Parse(time.DateOnly, period.To)
+		if err != nil || seen[t] {
 			return
 		}
 		seen[t] = true
-		data = append(data, reading{t, *target, control})
+		data = append(data, reading{date: t, target: target, control: &control, period: span(period.From, period.To)})
 	}
+	add(contrast.Baseline, contrast.BaselineMean, contrast.ControlBaselineMean)
+	add(contrast.Current, contrast.CurrentMean, contrast.ControlCurrentMean)
 	for _, row := range rows {
-		if row.snapshot == signal.snapshot && row.Product == signal.Product && row.Metric == watchdogMetric && row.Status == "observed" &&
-			row.Segment == signal.Segment && row.details.Control == signal.details.Control {
-			add(row.Period.To, row.details.TargetCurrent, row.details.ControlCurrent)
+		if row.snapshot != signal.snapshot || row.Metric != watchdogMetric || seriesOf(row) != seriesOf(*signal) {
+			continue
+		}
+		if d := evidence.WatchdogWindow(row.Row); d != nil {
+			add(d.Current, d.CurrentMean, d.ControlCurrentMean)
 		}
 	}
-	add(signal.details.Baseline.To, signal.details.TargetBase, signal.details.ControlBase)
-	return drawTrend(data, release, "Средние по наблюдаемым окнам")
+	return drawTrend(data, release, "Каждая точка — среднее своего окна")
 }
 
 type legacyWindows struct {
@@ -503,7 +524,11 @@ func drawTrend(data []reading, release, caption string) views.Chart {
 	var target, control []string
 	for _, d := range data {
 		p, t := x(d.date), y(d.target)
-		dot := views.ChartDot{X: p, TargetY: t, Label: d.date.Format("02.01.2006") + " | " + num(d.target)}
+		period := d.period
+		if period == "" {
+			period = d.date.Format("02.01.2006")
+		}
+		dot := views.ChartDot{X: p, TargetY: t, Label: period + " | " + num(d.target)}
 		target = append(target, p+","+t)
 		if d.control != nil {
 			dot.ControlY = y(*d.control)

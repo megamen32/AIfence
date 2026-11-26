@@ -49,10 +49,12 @@ type MonitorProduct struct {
 type MonitorCell struct{ Label, Tone string }
 
 type PulseItem struct {
-	Product, URL, Week, Detected, Change, Origin string
+	Product, URL, Week, Detected, Change, Comparison, Origin string
 }
 
 type Investigation struct {
+	Magnitude                                                                     *SignalMagnitude
+	Prices                                                                        *MarketPrices
 	Product, BackURL, Origin, Detected, Week, Control, Scale, Cost, SnapshotURL   string
 	Chart                                                                         Chart
 	Release, ReleaseDate, ReleaseURL                                              string
@@ -70,3 +72,18 @@ type Chart struct {
 }
 
 type ChartDot struct{ X, TargetY, ControlY, Label string }
+
+type MarketPrices struct {
+	SKU, TaskStatus, TaskURL, SnapshotURL string
+	Comparable, Separate                  []PriceGroup
+}
+
+type PriceGroup struct {
+	Title, Reason string
+	Comparable    bool
+	Offers        []PriceOffer
+}
+
+type PriceOffer struct{ Seller, Price, Date, URL string }
+
+type SignalMagnitude struct{ Change, Caption, Before, After, Baseline, Current string }

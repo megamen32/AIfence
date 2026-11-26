@@ -181,7 +181,6 @@ func watchdogRow(v *views.EvidenceRow, r evidence.Row) {
 	var d struct {
 		Reason     string   `json:"reason"`
 		Control    string   `json:"control_product_key"`
-		Change     *float64 `json:"relative_change_pct"`
 		Compared   *float64 `json:"control_change_pct"`
 		Adjusted   *float64 `json:"control_adjusted_change_pct"`
 		Origin     string   `json:"origin"`
@@ -200,11 +199,15 @@ func watchdogRow(v *views.EvidenceRow, r evidence.Row) {
 		}
 	}
 	v.Summary = label(watchdogReasons, d.Reason)
-	if d.Change != nil && d.Compared != nil {
-		v.Summary += fmt.Sprintf(" · %s %% · контроль %s %s %%", num(*d.Change), d.Control, num(*d.Compared))
-	}
-	if d.Adjusted != nil {
-		v.Summary += fmt.Sprintf(" · с поправкой на контроль %s %%", num(*d.Adjusted))
+	if magnitude := signalMagnitude(evidence.WatchdogWindow(r)); magnitude != nil {
+		v.Summary += fmt.Sprintf(" · %s (%s) · база %s, текущее окно %s",
+			magnitude.Change, magnitude.Caption, magnitude.Baseline, magnitude.Current)
+		if d.Compared != nil {
+			v.Summary += fmt.Sprintf(" · изменение контроля %s: %s", d.Control, signalPercent(*d.Compared))
+		}
+		if d.Adjusted != nil {
+			v.Summary += " · с поправкой на контроль " + signalPercent(*d.Adjusted)
+		}
 	}
 	if d.Origin != "" {
 		v.Summary += " · " + d.Origin

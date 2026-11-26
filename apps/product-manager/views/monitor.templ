@@ -4,6 +4,9 @@ import "github.com/airlockrun/agentsdk/lucide"
 
 templ MonitorPanel(m *Monitor) {
 	<section class="pm-monitor" aria-label="Продуктовый мониторинг">
+		if m.Selected != nil && m.Selected.Prices != nil {
+			@pricePanel(m.Selected.Prices)
+		}
 		<div class="monitor-title">
 			<div>
 				<h2>Пульс продаж</h2>
@@ -50,7 +53,7 @@ templ MonitorPanel(m *Monitor) {
 				</table>
 			</div>
 		}
-		if m.Selected != nil {
+		if m.Selected != nil && (m.Selected.Prices == nil || m.Selected.Chart.Target != "") {
 			@investigationPanel(m.Selected)
 		}
 		<section class="monitor-pulse" aria-label="Открытые тревоги">
@@ -69,7 +72,7 @@ templ MonitorPanel(m *Monitor) {
 							<small>{ p.Detected }</small>
 						</span>
 						if p.Change != "" {
-							<strong class="pulse-change">{ p.Change }</strong>
+							<span class="pulse-change"><strong>{ p.Change }</strong><small>{ p.Comparison }</small></span>
 						}
 					</a>
 				}
@@ -103,6 +106,9 @@ templ investigationPanel(v *Investigation) {
 		</div>
 		if v.CardID != "" {
 			<a class="text-link monitor-card-actions" href="#hypothesis-actions">К гипотезе и действиям</a>
+		}
+		if v.Magnitude != nil {
+			@signalHeadline(v.Magnitude)
 		}
 		if v.Chart.Target != "" {
 			@trend(v.Chart, v.Control)
@@ -235,4 +241,16 @@ templ trend(c Chart, control string) {
 			}
 		</div>
 	</figure>
+}
+
+templ signalHeadline(m *SignalMagnitude) {
+	<div class="signal-headline" aria-label="Размер сигнала">
+		<div><strong class="signal-magnitude">{ m.Change }</strong><p>{ m.Caption }</p></div>
+		if m.Before != "" && m.After != "" && m.Baseline != "" && m.Current != "" {
+			<dl>
+				<div><dt>База { m.Baseline }</dt><dd>{ m.Before }</dd></div>
+				<div><dt>Текущее окно { m.Current }</dt><dd>{ m.After }</dd></div>
+			</dl>
+		}
+	</div>
 }

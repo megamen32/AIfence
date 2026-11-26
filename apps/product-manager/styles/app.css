@@ -221,3 +221,30 @@ h3{font-size:1.03rem;font-weight:650;letter-spacing:-.015em;margin-bottom:.6rem}
 .pm-monitor > .monitor-investigation:only-child {margin-top:0}
 .monitor-alert-date,.monitor-freshness {display:block;font-size:.67rem;line-height:1.3;margin:.2rem .1rem 0;color:var(--muted)}
 .monitor-alert-date {color:var(--coral);font-weight:650}
+
+.market-prices {border-bottom:1px solid var(--rule);padding-bottom:1.15rem;margin-bottom:1.15rem}
+.market-prices-head {display:flex;justify-content:space-between;align-items:start;gap:.8rem;margin-bottom:.8rem}
+.market-prices-head h2 {font-size:clamp(1.4rem,4vw,2rem);font-weight:730;letter-spacing:-.045em;line-height:1.1}
+.market-prices-head p,.market-task small,.market-price-reason {color:var(--muted);font-size:.75rem}
+.market-task {display:grid;gap:.15rem;font-size:.76rem;background:color-mix(in srgb,var(--blue) 8%,var(--paper));padding:.35rem .55rem;border-radius:.3rem}
+.market-task a,.market-price-group li a {color:var(--blue);text-decoration:underline;text-underline-offset:.16em}
+.market-prices h3 {font-size:.95rem;margin:.9rem 0 .35rem}
+.market-price-group {border-top:1px solid var(--rule);padding:.4rem 0}
+.market-price-group h4 {font-size:.78rem;margin:0}
+.market-price-group ul {margin:.25rem 0 0}
+.market-price-group li {display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:.5rem;padding:.25rem 0;font-size:.82rem}
+.market-price-group li strong,.market-price-group .market-price-date {font-variant-numeric:tabular-nums;white-space:nowrap}
+.market-price-group .market-price-date {font-size:.7rem;color:var(--muted)}
+.market-prices>.text-link {margin-top:.55rem}
+
+.signal-headline {display:flex;gap:.65rem 1.5rem;align-items:baseline;flex-wrap:wrap;padding:.65rem 0 .85rem}
+.signal-magnitude {color:var(--coral);font-size:clamp(1.45rem,5vw,2rem);font-weight:730;letter-spacing:-.04em}
+.signal-headline p,.signal-headline dt {font-size:.7rem;color:var(--muted)}
+.signal-headline dl {display:flex;flex-wrap:wrap;gap:.45rem 1rem}
+.signal-headline dd {font-size:1rem;font-weight:680}
+.signal-magnitude,.signal-headline dd {font-variant-numeric:tabular-nums}
+.pulse-change small {max-width:8rem}
+
+.market-price-extra {margin:.55rem 0;font-size:.82rem}
+.market-price-extra summary {color:var(--muted);cursor:pointer}
+.market-price-extra[open] summary {margin-bottom:.35rem}

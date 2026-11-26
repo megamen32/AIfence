@@ -5,6 +5,7 @@ import (
 	"agent/internal/evidence"
 	"agent/internal/product"
 	"agent/views"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,14 +13,12 @@ import (
 )
 
 func TestMonitorUsesObservedValuesAndActualDetection(t *testing.T) {
-	point := func(v float64) *float64 { return &v }
 	p := monitorObservation{
 		Row: evidence.Row{ID: "synthetic-1", Product: "demo_target", Metric: watchdogMetric,
-			Status: "observed", Value: "true", Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"}},
+			Source: "sales", Status: "observed", Value: "true", Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"},
+			Details: windowJSON(100, 70, 100, 100)},
 		snapshot: "demo",
-		details: monitorDetails{Origin: "synthetic_fixture", Control: "demo_control",
-			TargetCurrent: point(70), ControlCurrent: point(100), TargetBase: point(100), ControlBase: point(100),
-			Baseline: evidence.Period{To: "2026-01-04"}},
+		details:  monitorDetails{Origin: "synthetic_fixture", Control: "demo_control"},
 	}
 	_, cell := monitorCell(p)
 	if cell.Tone != "alarm" {
@@ -30,7 +29,7 @@ func TestMonitorUsesObservedValuesAndActualDetection(t *testing.T) {
 		len(v.Chart.Dots) != 2 || v.Chart.Target == v.Chart.Control {
 		t.Fatalf("unexpected monitor state: %+v", v)
 	}
-	if chart := plot(&p, []monitorObservation{p}, "2026-01-11"); chart.ReleaseX != "300.0" {
+	if chart := plot(&p, []monitorObservation{p}, "2026-01-04"); chart.ReleaseX != "300.0" {
 		t.Fatalf("release mark %q", chart.ReleaseX)
 	}
 	p.Status = "missing"
@@ -128,14 +127,12 @@ func TestNormalCardAndChatFocusChooseSameCardView(t *testing.T) {
 }
 
 func TestMonitorOpensSavedAlertAlongsideNewerIncompleteWindow(t *testing.T) {
-	num := func(v float64) *float64 { return &v }
 	alert := monitorObservation{
 		Row: evidence.Row{ID: "saved-alert", Product: "target", Metric: watchdogMetric,
-			Status: "observed", Value: "true", Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"}},
+			Source: "sales", Status: "observed", Value: "true", Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"},
+			Details: windowJSON(20, 10, 15, 15)},
 		snapshot: "owner-snapshot",
-		details: monitorDetails{Origin: "imported_historical", Control: "control",
-			TargetBase: num(20), TargetCurrent: num(10), ControlBase: num(15), ControlCurrent: num(15),
-			Baseline: evidence.Period{To: "2026-01-04"}},
+		details:  monitorDetails{Origin: "imported_historical", Control: "control"},
 	}
 	incomplete := alert
 	incomplete.ID, incomplete.Period.To, incomplete.Status, incomplete.Value = "recent-window", "2026-01-25", "missing", "null"
@@ -162,5 +159,39 @@ func TestAlarmTimeSeparatesDetectionAndFirstRegistration(t *testing.T) {
 	}
 	if got := signalTime("", nil); got != "Время обнаружения неизвестно" {
 		t.Fatal(got)
+	}
+}
+
+func windowJSON(before, after, controlBefore, controlAfter float64) string {
+	d := evidence.WindowContrast{
+		Baseline:    evidence.Period{From: "2025-11-24", To: "2025-12-21"},
+		Current:     evidence.Period{From: "2025-12-22", To: "2026-01-18"},
+		WindowWeeks: 4, BaselineMean: before, CurrentMean: after,
+		ControlBaselineMean: controlBefore, ControlCurrentMean: controlAfter,
+		RelativeChangePct: (after/before - 1) * 100,
+	}
+	b, _ := json.Marshal(d)
+	return string(b)
+}
+
+func TestWatchdogEvidenceUsesTheSameValidatedWindowAsPanel(t *testing.T) {
+	row := evidence.Row{
+		Source: "sales", Metric: watchdogMetric, Status: "observed", Value: "true",
+		Period: evidence.Period{From: "2026-01-12", To: "2026-01-18"},
+		Details: strings.TrimSuffix(windowJSON(80, 50, 70, 71), "}") +
+			`,"drop_pct":20,"control_adjusted_change_pct":-39.12,"raw_week_comparison":{"relative_change_pct":-8}}`,
+	}
+	view := rowView("snapshot", row)
+	for _, text := range []string{"−37,5 %", "окну из 4 нед.", "24.11.2025 / 21.12.2025", "22.12.2025 / 18.01.2026", "с поправкой на контроль −39,1 %"} {
+		if !strings.Contains(view.Summary, text) {
+			t.Fatalf("missing %q from %q", text, view.Summary)
+		}
+	}
+	if strings.Contains(view.Summary, "−20") || strings.Contains(view.Summary, "−8") {
+		t.Fatal(view.Summary)
+	}
+	row.Details = strings.ReplaceAll(row.Details, "2025-12-22", "2025-12-29")
+	if view := rowView("snapshot", row); strings.Contains(view.Summary, "%") {
+		t.Fatalf("invalid window exposes competing percentages: %q", view.Summary)
 	}
 }

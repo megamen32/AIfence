@@ -1,0 +1,56 @@
+package views
+
+templ pricePanel(p *MarketPrices) {
+	<section class="market-prices" aria-label="Текущие цены SKU">
+		<header class="market-prices-head">
+			<div><h2>Текущие цены</h2><p>SKU { p.SKU }</p></div>
+			<div class="market-task">
+				<small>Статус задачи</small>
+				if p.TaskURL != "" {
+					<a href={ p.TaskURL }>{ p.TaskStatus }</a>
+				} else {
+					<span>{ p.TaskStatus }</span>
+				}
+			</div>
+		</header>
+		if len(p.Comparable) != 0 {
+			<h3>Сопоставимые предложения</h3>
+			for _, group := range p.Comparable {
+				@priceGroup(group)
+			}
+		} else {
+			<p class="market-price-reason">Сопоставимых предложений в снимке нет.</p>
+		}
+		if len(p.Separate) != 0 {
+			<details class="market-price-extra">
+				<summary>Несопоставимые предложения</summary>
+				for _, group := range p.Separate {
+					@priceGroup(group)
+				}
+			</details>
+		}
+		<a href={ p.SnapshotURL } class="text-link">Снимок Market Watch</a>
+	</section>
+}
+
+templ priceGroup(g PriceGroup) {
+	<div class="market-price-group">
+		<h4>{ g.Title }</h4>
+		if g.Reason != "" {
+			<p class="market-price-reason">{ g.Reason }</p>
+		}
+		<ul>
+			for _, o := range g.Offers {
+				<li>
+					if o.URL != "" {
+						<a href={ o.URL } target="_blank" rel="noopener">{ o.Seller }</a>
+					} else {
+						<span>{ o.Seller }</span>
+					}
+					<strong>{ o.Price }</strong>
+					<span class="market-price-date" aria-label={ "Дата наблюдения " + o.Date }>{ o.Date }</span>
+				</li>
+			}
+		</ul>
+	</div>
+}
