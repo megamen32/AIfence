@@ -100,7 +100,8 @@ func TestSalesBriefTurnsImportedWatchdogAlertIntoReading(t *testing.T) {
 	if dir == "" {
 		t.Skip("SOURCEWATCH_PM_CASE_DIR not set; this is the explicit file-based run")
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "..", "case-01", "receipts-qa-42082", "metrika-qa-case-read.json"))
+	// Read the watchdog receipt of this case only, never a neighbour's.
+	raw, err := os.ReadFile(filepath.Join(dir, "receipts-qa-42082", "metrika-qa-case-read.json"))
 	if err != nil {
 		t.Skipf("watchdog case receipt not available: %v", err)
 	}
