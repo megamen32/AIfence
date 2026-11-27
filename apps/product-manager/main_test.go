@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"agent/internal/sourcewatch"
 	"github.com/airlockrun/agentsdk/wire"
 )
 
@@ -84,14 +85,17 @@ func TestSourceWatchComposition(t *testing.T) {
 	if !slices.ContainsFunc(m.JobHandlers, func(h wire.JobHandlerDef) bool { return h.Name == "check_source_watch" && h.Version == 1 }) {
 		t.Fatal("missing source watch job")
 	}
-	for _, name := range []string{"start_source_watch", "stop_source_watch", "list_source_watches"} {
+	for _, name := range []string{"start_source_watch", "stop_source_watch", "list_source_watches", "review_source_watch", "approve_source_signal"} {
 		if !slices.ContainsFunc(m.Tools, func(t wire.ToolDef) bool { return t.Name == name && t.Access == wire.AccessUser }) {
 			t.Errorf("missing user tool %s", name)
 		}
 	}
 	if !slices.ContainsFunc(m.AgentDefinitions, func(d wire.AgentDefinition) bool {
-		return d.Slug == "review_source_signal" && d.ModelSlot == "source_watch_analysis" && d.Capabilities != nil && len(d.Capabilities.Allow) == 0 && len(d.Tools) == 0
+		return d.Slug == "review_source_signal" && d.ModelSlot == "source_watch_analysis" && d.Capabilities != nil && len(d.Capabilities.Allow) == 0 && len(d.Tools) == 0 && len(d.InputSchema) > 0 && len(d.OutputSchema) > 0
 	}) {
 		t.Fatal("signal agent must be restricted to supplied evidence")
+	}
+	if sourcewatch.HostSupportsAppRead {
+		t.Fatal("pinned SDK v0.11.0 must report owner-scoped job reads as unsupported")
 	}
 }
