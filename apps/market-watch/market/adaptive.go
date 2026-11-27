@@ -2,10 +2,12 @@ package market
 
 import (
 	catalog "agent/collector"
+	"agent/internal/db"
 	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -66,7 +68,20 @@ type AdapterTask struct {
 	RuleVersion string    `json:"rule_version,omitempty"`
 	Template    string    `json:"template,omitempty"`
 }
+type AdaptiveStudy struct {
+	Key       string               `json:"key"`
+	Round     int                  `json:"round"`
+	Candidate *catalog.AdapterSpec `json:"candidate,omitempty"`
+	Current   *catalog.AdapterSpec `json:"current,omitempty"`
+	Feedback  []string             `json:"feedback,omitempty"`
+	Phase     string               `json:"phase"`
+}
 type AdaptiveStore struct {
+	Study         *AdaptiveStudy `json:"study,omitempty"`
+	ReplayPending bool           `json:"replay_pending,omitempty"`
+	Revision      int64          `json:"-"`
+	savedTasks    map[string]string
+	savedReceipts map[string]bool
 	ID            string                   `json:"id"`
 	Host          string                   `json:"host"`
 	Root          string                   `json:"root"`
@@ -82,6 +97,10 @@ type AdaptiveStore struct {
 	PauseUntil    time.Time                `json:"pause_until"`
 }
 type AdaptiveStoreView struct {
+	Storage        string                   `json:"storage"`
+	StudyPhase     string                   `json:"study_phase,omitempty"`
+	StudyRound     int                      `json:"study_round,omitempty"`
+	ReplayPending  bool                     `json:"replay_pending,omitempty"`
 	ID             string                   `json:"id"`
 	URL            string                   `json:"url"`
 	Status         string                   `json:"status"`
@@ -112,6 +131,15 @@ func (a AdaptiveStore) view() AdaptiveStoreView {
 			v.Queued++
 		}
 	}
+	v.Storage = "legacy_files"
+	if a.Revision > 0 {
+		v.Storage = "postgresql"
+	}
+	if a.Study != nil {
+		v.StudyPhase = a.Study.Phase
+		v.StudyRound = a.Study.Round
+	}
+	v.ReplayPending = a.ReplayPending
 	return v
 }
 func (s *Service) SetAdapterProposer(p AdapterProposer) { s.adapterProposer = p }
@@ -140,7 +168,7 @@ func adapterPath(id string) string { return adaptiveRoot + "/" + id }
 func (s *Service) readAdaptiveIDs(ctx context.Context) ([]string, error) {
 	raw, e := s.store.ReadFile(ctx, adaptiveIndex)
 	if errors.Is(e, agentsdk.ErrNotFound) {
-		return nil, nil
+		return s.pgIDs(ctx, nil)
 	}
 	if e != nil {
 		return nil, e
@@ -154,7 +182,7 @@ func (s *Service) readAdaptiveIDs(ctx context.Context) ([]string, error) {
 			return nil, fmt.Errorf("invalid persisted adapter ID")
 		}
 	}
-	return ids, nil
+	return s.pgIDs(ctx, ids)
 }
 func (s *Service) writeJSON(ctx context.Context, path string, v any) error {
 	b, e := json.Marshal(v)
@@ -169,12 +197,21 @@ func (s *Service) readAdaptive(ctx context.Context, id string) (AdaptiveStore, e
 	if !validAdapterID(id) {
 		return a, fmt.Errorf("invalid adapter ID")
 	}
-	b, e := s.store.ReadFile(ctx, adapterPath(id)+"/state.json")
-	if e != nil {
-		return a, e
+	var e error
+	if s.conn != nil {
+		a, e = s.readAdaptivePG(ctx, id)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return a, e
+		}
 	}
-	if e = json.Unmarshal(b, &a); e != nil {
-		return a, e
+	if s.conn == nil || errors.Is(e, sql.ErrNoRows) {
+		b, err := s.store.ReadFile(ctx, adapterPath(id)+"/state.json")
+		if err != nil {
+			return a, err
+		}
+		if e = json.Unmarshal(b, &a); e != nil {
+			return a, e
+		}
 	}
 	if a.ID != id || adapterID(a.Host) != id || catalog.PublicStoreURL(a.Root) != nil {
 		return a, fmt.Errorf("invalid persisted adapter state")
@@ -189,6 +226,9 @@ func (s *Service) readAdaptive(ctx context.Context, id string) (AdaptiveStore, e
 	return a, nil
 }
 func (s *Service) saveAdaptive(ctx context.Context, a *AdaptiveStore) error {
+	if s.conn != nil {
+		return s.saveAdaptivePG(ctx, a)
+	}
 	return s.writeJSON(ctx, adapterPath(a.ID)+"/state.json", a)
 }
 func (s *Service) version(ctx context.Context, a AdaptiveStore, id string) (AdapterVersionRecord, error) {
@@ -196,9 +236,19 @@ func (s *Service) version(ctx context.Context, a AdaptiveStore, id string) (Adap
 	if !validHash(id) {
 		return r, fmt.Errorf("invalid version")
 	}
-	b, e := s.store.ReadFile(ctx, adapterPath(a.ID)+"/versions/"+id+".json")
-	if e != nil {
-		return r, e
+	var b []byte
+	var e error
+	if s.conn != nil {
+		b, e = s.queries.GetAdaptiveVersion(ctx, db.GetAdaptiveVersionParams{StoreID: a.ID, Version: id})
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return r, e
+		}
+	}
+	if s.conn == nil || errors.Is(e, sql.ErrNoRows) {
+		b, e = s.store.ReadFile(ctx, adapterPath(a.ID)+"/versions/"+id+".json")
+		if e != nil {
+			return r, e
+		}
 	}
 	if e = json.Unmarshal(b, &r); e != nil {
 		return r, e
@@ -412,24 +462,63 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 	if len(training.Pages) == 0 {
 		return false, fmt.Errorf("no training pages")
 	}
+	var keys []string
+	for _, r := range corpus {
+		keys = append(keys, r.URL+"|"+r.Hash)
+	}
+	sort.Strings(keys)
+	key := sampleHash([]byte(a.ActiveVersion + "|" + strings.Join(keys, ";")))
+	if a.Study == nil || a.Study.Key != key || a.Study.Round >= maxLearningRounds {
+		a.Study = &AdaptiveStudy{Key: key, Phase: "propose"}
+	}
+	checkpoint := a.Study
+	training.Feedback = checkpoint.Feedback
+	if checkpoint.Current != nil {
+		training.Current = checkpoint.Current
+	}
 	a.LastStudy = s.now().UTC()
 	a.LastStudyKey = studyKey(*a)
 	if e = s.saveAdaptive(ctx, a); e != nil {
 		return false, e
 	}
-	for round := 0; round < maxLearningRounds; round++ {
+	for round := checkpoint.Round; round < maxLearningRounds; round++ {
 		if e = ctx.Err(); e != nil {
 			return false, e
 		}
-		spec, e := s.adapterProposer(ctx, training)
+		var spec catalog.AdapterSpec
+		if checkpoint.Candidate != nil {
+			spec = *checkpoint.Candidate
+		} else {
+			checkpoint.Phase = "propose"
+			if e = s.saveAdaptive(ctx, a); e != nil {
+				return false, e
+			}
+			if e = adaptiveProgress(ctx, "propose", fmt.Sprintf("Candidate round %d of %d", round+1, maxLearningRounds), int64(round), int64(maxLearningRounds)); e != nil {
+				return false, e
+			}
+			spec, e = s.adapterProposer(ctx, training)
+		}
 		if e != nil {
 			var invalid *InvalidAdapterProposal
 			if errors.As(e, &invalid) {
 				training.Feedback = []string{"invalid proposal JSON: " + invalid.Reason}
+				checkpoint.Feedback = training.Feedback
+				checkpoint.Round = round + 1
+				if e = s.saveAdaptive(ctx, a); e != nil {
+					return false, e
+				}
 				continue
 			}
 			a.Status = "model_unavailable"
 			_ = s.saveAdaptive(ctx, a)
+			return false, e
+		}
+		checkpoint.Candidate = &spec
+		checkpoint.Phase = "validate"
+		if e = s.saveAdaptive(ctx, a); e != nil {
+			return false, e
+		}
+		if e = adaptiveProgress(ctx, "validate", fmt.Sprintf("Testing candidate on %d archived responses", len(corpus)), 0, int64(len(corpus))); e != nil {
 			return false, e
 		}
 		d, e := catalog.EvaluateAdapterStream(a.source(), spec, previous, func(yield func(catalog.AdapterSample) error) error {
@@ -474,6 +563,11 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 				}
 			}
 			training.Current = &spec
+			checkpoint.Current = &spec
+			checkpoint.Candidate = nil
+			checkpoint.Feedback = training.Feedback
+			checkpoint.Round = round + 1
+			checkpoint.Phase = "propose"
 			a.Status = "needs_review"
 			if e = s.saveAdaptive(ctx, a); e != nil {
 				return false, e
@@ -494,13 +588,15 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 				return false, e
 			}
 		} else {
-			if e = s.writeJSON(ctx, adapterPath(a.ID)+"/versions/"+candidateID+".json", receipt); e != nil {
+			if e = s.persistAdaptiveVersion(ctx, *a, receipt); e != nil {
 				return false, e
 			}
 			a.Versions = append(a.Versions, candidateID)
 		}
 		a.ActiveVersion = candidateID
 		a.Status = "active"
+		a.ReplayPending = true
+		checkpoint.Phase = "accepted"
 		if e = s.saveAdaptive(ctx, a); e != nil {
 			return false, e
 		}
@@ -564,6 +660,28 @@ func (s *Service) replayAdaptive(ctx context.Context, a *AdaptiveStore) ([]catal
 	}
 	return offers, nil
 }
+func (s *Service) publishAdaptive(ctx context.Context, a *AdaptiveStore) (AdaptiveStoreView, error) {
+	if e := adaptiveProgress(ctx, "replay", "Replaying archived pages with the validated rule", 0, 0); e != nil {
+		return a.view(), e
+	}
+	offers, e := s.replayAdaptive(ctx, a)
+	if e != nil {
+		return a.view(), e
+	}
+	if s.queries != nil && len(offers) > 0 {
+		if e = s.storeOffers(ctx, offers); e != nil {
+			return a.view(), e
+		}
+	}
+	a.ReplayPending = false
+	if e = s.saveAdaptive(ctx, a); e != nil {
+		return a.view(), e
+	}
+	out := a.view()
+	out.ObservedOffers = len(offers)
+	return out, nil
+}
+
 func (s *Service) addAdaptiveLocked(ctx context.Context, in AddStoreInput) (AdaptiveStoreView, error) {
 	root := strings.TrimSpace(in.URL)
 	if e := catalog.PublicStoreURL(root); e != nil {
@@ -607,7 +725,15 @@ func (s *Service) addAdaptiveLocked(ctx context.Context, in AddStoreInput) (Adap
 		if e != nil {
 			return AdaptiveStoreView{}, e
 		}
+		if a.Revision == 0 && s.conn != nil {
+			if e = s.saveAdaptive(ctx, &a); e != nil {
+				return a.view(), e
+			}
+		}
 		if a.ActiveVersion != "" {
+			if a.ReplayPending {
+				return s.publishAdaptive(ctx, &a)
+			}
 			return a.view(), nil
 		}
 	} else {
@@ -618,8 +744,15 @@ func (s *Service) addAdaptiveLocked(ctx context.Context, in AddStoreInput) (Adap
 			return AdaptiveStoreView{}, e
 		}
 		ids = append(ids, id)
-		if e = s.writeJSON(ctx, adaptiveIndex, ids); e != nil {
-			return AdaptiveStoreView{}, e
+		if s.conn == nil {
+			if e = s.writeJSON(ctx, adaptiveIndex, ids); e != nil {
+				return AdaptiveStoreView{}, e
+			}
+		}
+	}
+	if a.Revision == 0 && s.conn != nil {
+		if e = s.saveAdaptive(ctx, &a); e != nil {
+			return a.view(), e
 		}
 	}
 	if a.PauseUntil.After(s.now()) {
@@ -650,6 +783,9 @@ func (s *Service) addAdaptiveLocked(ctx context.Context, in AddStoreInput) (Adap
 			return v, nil
 		}
 	}
+	if e = s.saveAdaptive(ctx, &a); e != nil {
+		return a.view(), e
+	}
 	ok, e := s.learn(ctx, &a)
 	if e != nil {
 		a.Status = "study_incomplete"
@@ -661,27 +797,18 @@ func (s *Service) addAdaptiveLocked(ctx context.Context, in AddStoreInput) (Adap
 	if !ok {
 		return a.view(), nil
 	}
-	offers, e := s.replayAdaptive(ctx, &a)
-	if e != nil {
-		return a.view(), e
-	}
-	if s.queries != nil && len(offers) > 0 {
-		if e = s.storeOffers(ctx, offers); e != nil {
-			return a.view(), e
-		}
-	}
-	out := a.view()
-	out.ObservedOffers = len(offers)
-	return out, nil
+	return s.publishAdaptive(ctx, &a)
 }
 func (s *Service) AddAdaptiveStore(ctx context.Context, in AddStoreInput) (AdaptiveStoreView, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.adaptiveMu.Lock()
+	defer s.adaptiveMu.Unlock()
 	return s.addAdaptiveLocked(ctx, in)
 }
 func (s *Service) AdaptiveStores(ctx context.Context, _ struct{}) ([]AdaptiveStoreView, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.conn == nil {
+		s.adaptiveMu.Lock()
+		defer s.adaptiveMu.Unlock()
+	}
 	ids, e := s.readAdaptiveIDs(ctx)
 	if e != nil {
 		return nil, e
@@ -697,32 +824,29 @@ func (s *Service) AdaptiveStores(ctx context.Context, _ struct{}) ([]AdaptiveSto
 	return out, nil
 }
 func (s *Service) RepairAdaptiveStore(ctx context.Context, in AdapterActionInput) (AdaptiveStoreView, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.adaptiveMu.Lock()
+	defer s.adaptiveMu.Unlock()
 	a, e := s.readAdaptive(ctx, in.ID)
 	if e != nil {
 		return AdaptiveStoreView{}, e
+	}
+	if a.Revision == 0 && s.conn != nil {
+		if e = s.saveAdaptive(ctx, &a); e != nil {
+			return a.view(), e
+		}
+	}
+	if a.ReplayPending {
+		return s.publishAdaptive(ctx, &a)
 	}
 	ok, e := s.learn(ctx, &a)
 	if e != nil || !ok {
 		return a.view(), e
 	}
-	offers, e := s.replayAdaptive(ctx, &a)
-	if e != nil {
-		return a.view(), e
-	}
-	if s.queries != nil {
-		if e = s.storeOffers(ctx, offers); e != nil {
-			return a.view(), e
-		}
-	}
-	v := a.view()
-	v.ObservedOffers = len(offers)
-	return v, nil
+	return s.publishAdaptive(ctx, &a)
 }
 func (s *Service) RollbackAdaptiveStore(ctx context.Context, in AdapterRollbackInput) (AdaptiveStoreView, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.adaptiveMu.Lock()
+	defer s.adaptiveMu.Unlock()
 	a, e := s.readAdaptive(ctx, in.ID)
 	if e != nil {
 		return AdaptiveStoreView{}, e
@@ -741,6 +865,7 @@ func (s *Service) RollbackAdaptiveStore(ctx context.Context, in AdapterRollbackI
 	}
 	a.ActiveVersion = in.Version
 	a.Status = "active_rolled_back"
+	a.ReplayPending = false
 	// Rollback applies to future extraction; prior historical quotes remain
 	// as dated observations, not rewritten history.
 	if e = s.saveAdaptive(ctx, &a); e != nil {
@@ -779,6 +904,13 @@ func (s *Service) refreshAdaptive(ctx context.Context, src catalog.Source, at ti
 		}
 		return ready[i].URL < ready[j].URL
 	})
+	if s.conn != nil {
+		ready, e = s.dueAdaptive(ctx, a, at)
+		if e != nil {
+			r.Errors = []string{e.Error()}
+			return r
+		}
+	}
 	fetch := s.adaptiveFetcher()
 	r.CandidatePages = len(ready)
 	if len(ready) > 12 {
@@ -790,7 +922,27 @@ func (s *Service) refreshAdaptive(ctx context.Context, src catalog.Source, at ti
 			break
 		}
 		r.Pages++
-		body, e := fetch(ctx, src, t.URL)
+		var body []byte
+		var sample catalog.AdapterSample
+		// A capture receipt is persisted before parsing; on interruption reuse
+		// that exact body instead of making a duplicate network request.
+		var pending *AdapterReceipt
+		for i := len(a.Samples) - 1; i >= 0; i-- {
+			rec := a.Samples[i]
+			if rec.URL == t.URL && rec.HTML && rec.Hash != t.Hash {
+				pending = &rec
+				break
+			}
+			if rec.URL == t.URL {
+				break
+			}
+		}
+		if pending != nil {
+			sample, e = s.loadSample(ctx, a, *pending)
+			body = sample.Body
+		} else {
+			body, e = fetch(ctx, src, t.URL)
+		}
 		if e != nil {
 			a.taskFailure(t.URL, e, s.now())
 			r.Errors = append(r.Errors, t.URL+": "+e.Error())
@@ -800,10 +952,12 @@ func (s *Service) refreshAdaptive(ctx context.Context, src catalog.Source, at ti
 			}
 			continue
 		}
-		sample := catalog.AdapterSample{URL: t.URL, Body: body, CapturedAt: s.now().UTC()}
-		if e = s.captureAdaptive(ctx, &a, sample, isAdapterHTML(t.URL, body)); e != nil {
-			r.Errors = append(r.Errors, e.Error())
-			return r
+		if pending == nil {
+			sample = catalog.AdapterSample{URL: t.URL, Body: body, CapturedAt: s.now().UTC()}
+			if e = s.captureAdaptive(ctx, &a, sample, isAdapterHTML(t.URL, body)); e != nil {
+				r.Errors = append(r.Errors, e.Error())
+				return r
+			}
 		}
 		result, e := catalog.ParseAdapter(src, *src.Adaptive, t.URL, body, sample.CapturedAt)
 		t.Hash = sampleHash(body)
@@ -829,7 +983,16 @@ func (s *Service) refreshAdaptive(ctx context.Context, src catalog.Source, at ti
 		for _, u := range links {
 			a.enqueue(u)
 		}
-		if e = s.saveAdaptive(ctx, &a); e != nil {
+		var verified []catalog.Offer
+		if e == nil {
+			verified = result.Offers
+		}
+		if s.conn != nil {
+			e = s.saveAdaptivePGWithOffers(ctx, &a, verified)
+		} else {
+			e = s.saveAdaptive(ctx, &a)
+		}
+		if e != nil {
 			r.Errors = append(r.Errors, e.Error())
 			return r
 		}
@@ -856,6 +1019,13 @@ func (s *Service) refreshAdaptive(ctx context.Context, src catalog.Source, at ti
 			r.Errors = append(r.Errors, "adapter study: "+e.Error())
 		} else if ok {
 			rows, e := s.replayAdaptive(ctx, &a)
+			if e == nil && s.queries != nil {
+				e = s.storeOffers(ctx, rows)
+			}
+			if e == nil {
+				a.ReplayPending = false
+				e = s.saveAdaptive(ctx, &a)
+			}
 			if e != nil {
 				r.Errors = append(r.Errors, e.Error())
 			} else {

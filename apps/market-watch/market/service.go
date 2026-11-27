@@ -23,6 +23,8 @@ type Store interface {
 }
 type Service struct {
 	queries         *db.Queries
+	conn            *agentsdk.AgentDB
+	adaptiveMu      sync.Mutex
 	store           Store
 	fetch           catalog.Fetch
 	adaptiveFetch   catalog.Fetch
@@ -159,8 +161,13 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 		}
 		count++
 		if src.Adaptive != nil {
-			// Native adaptive state is written under the existing service lock.
-			ch <- s.refreshAdaptive(ctx, src, at)
+			// Native adaptive stores are advanced only by a leased durable job.
+			// Featured refresh must not become a second owner of that queue.
+			if s.conn != nil {
+				ch <- catalog.Run{Source: src.ID, Mode: "adaptive_durable_job", Status: "partial", Errors: []string{"adaptive store has an independent native refresh job"}}
+			} else {
+				ch <- s.refreshAdaptive(ctx, src, at)
+			}
 		} else {
 			go func(src catalog.Source) { ch <- catalog.Collect(ctx, src, s.fetch, false, 10, at) }(src)
 		}

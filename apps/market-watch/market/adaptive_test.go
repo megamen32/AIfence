@@ -113,3 +113,45 @@ func TestAdaptiveStoreLearnRepairAndRollback(t *testing.T) {
 		t.Fatal("existing host duplicated")
 	}
 }
+
+func TestAdaptiveLearningResumesRejectedRound(t *testing.T) {
+	ctx := t.Context()
+	store := memoryStore{}
+	s := New(store)
+	root := "https://resume-shop.example.com/"
+	a := AdaptiveStore{ID: adapterID("resume-shop.example.com"), Host: "resume-shop.example.com", Root: root, Status: "studying", Tasks: map[string]AdapterTask{}}
+	for i := 0; i < 6; i++ {
+		u := fmt.Sprintf("%sproduct/%d/", root, i)
+		if e := s.captureAdaptive(ctx, &a, catalog.AdapterSample{URL: u, Body: adaptiveFixture(u, "v1"), CapturedAt: time.Now().UTC()}, true); e != nil {
+			t.Fatal(e)
+		}
+	}
+	n := 0
+	s.SetAdapterProposer(func(_ context.Context, _ catalog.AdapterTraining) (catalog.AdapterSpec, error) {
+		n++
+		if n == 1 {
+			return catalog.AdapterSpec{}, nil
+		}
+		return catalog.AdapterSpec{}, fmt.Errorf("interrupted model")
+	})
+	if ok, e := s.learn(ctx, &a); e == nil || ok {
+		t.Fatal("interrupted study accepted", ok, e)
+	}
+	persisted, e := s.readAdaptive(ctx, a.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if persisted.Study == nil || persisted.Study.Round != 1 || len(persisted.Study.Feedback) == 0 {
+		t.Fatalf("lost checkpoint: %+v", persisted.Study)
+	}
+	restarted := New(store)
+	restarted.SetAdapterProposer(func(_ context.Context, in catalog.AdapterTraining) (catalog.AdapterSpec, error) {
+		if len(in.Feedback) == 0 {
+			t.Fatal("lost prior validation feedback")
+		}
+		return catalog.AdapterSpec{Cases: []catalog.AdapterCase{adaptiveCase("v1")}}, nil
+	})
+	if ok, e := restarted.learn(ctx, &persisted); e != nil || !ok || !persisted.ReplayPending {
+		t.Fatal("resume failed", ok, e)
+	}
+}

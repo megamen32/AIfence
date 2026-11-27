@@ -23,6 +23,7 @@ func NewWithCatalog(store Store, conn *agentsdk.AgentDB) *Service {
 	}
 	s := New(store)
 	s.queries = db.New(conn)
+	s.conn = conn
 	return s
 }
 
