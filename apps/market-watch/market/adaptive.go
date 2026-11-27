@@ -52,11 +52,14 @@ type AdapterVersionRecord struct {
 	ArchiveCount int                     `json:"archive_count"`
 }
 type AdapterReceipt struct {
-	URL     string    `json:"url"`
-	At      time.Time `json:"at"`
-	Hash    string    `json:"sha256"`
-	Holdout bool      `json:"holdout"`
-	HTML    bool      `json:"html"`
+	URL           string    `json:"url"`
+	At            time.Time `json:"at"`
+	Hash          string    `json:"sha256"`
+	Holdout       bool      `json:"holdout"`
+	HTML          bool      `json:"html"`
+	ArchivePath   string    `json:"archive_path,omitempty"`
+	ArchiveOffset int64     `json:"archive_offset,omitempty"`
+	ArchiveLength int64     `json:"archive_length,omitempty"`
 }
 type AdapterTask struct {
 	URL         string    `json:"url"`
@@ -368,14 +371,29 @@ func (s *Service) captureAdaptive(ctx context.Context, a *AdaptiveStore, sample 
 	if !found && html {
 		hold = count%3 == 2
 	}
-	a.Samples = append(a.Samples, AdapterReceipt{sample.URL, sample.CapturedAt, hash, hold, html})
+	a.Samples = append(a.Samples, AdapterReceipt{URL: sample.URL, At: sample.CapturedAt, Hash: hash, Holdout: hold, HTML: html})
 	return s.saveAdaptive(ctx, a)
 }
 func (s *Service) loadSample(ctx context.Context, a AdaptiveStore, r AdapterReceipt) (catalog.AdapterSample, error) {
 	if !validHash(r.Hash) || !catalog.Allowed(a.source(), r.URL) {
 		return catalog.AdapterSample{}, fmt.Errorf("invalid archived receipt")
 	}
-	b, e := s.store.ReadFile(ctx, adapterPath(a.ID)+"/raw/"+r.Hash+".gz")
+	path := adapterPath(a.ID) + "/raw/" + r.Hash + ".gz"
+	if r.ArchivePath != "" {
+		prefix := adapterPath(a.ID) + "/legacy/"
+		base := strings.TrimSuffix(strings.TrimPrefix(r.ArchivePath, prefix), ".tar")
+		if !strings.HasPrefix(r.ArchivePath, prefix) || !strings.HasSuffix(r.ArchivePath, ".tar") || !validHash(base) {
+			return catalog.AdapterSample{}, fmt.Errorf("invalid archive bundle path")
+		}
+		path = r.ArchivePath
+	}
+	b, e := s.store.ReadFile(ctx, path)
+	if e == nil && r.ArchivePath != "" {
+		if r.ArchiveOffset < 0 || r.ArchiveLength <= 0 || r.ArchiveOffset > int64(len(b)) || r.ArchiveLength > int64(len(b))-r.ArchiveOffset {
+			return catalog.AdapterSample{}, fmt.Errorf("invalid archive offset")
+		}
+		b = b[r.ArchiveOffset : r.ArchiveOffset+r.ArchiveLength]
+	}
 	if e != nil {
 		return catalog.AdapterSample{}, e
 	}
