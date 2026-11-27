@@ -1,0 +1,12 @@
+{
+  "release": "personal/2026.11.27.6",
+  "agentsdk": "0c8f01752e1bf7917bcaced92eca96aa12482362",
+  "sol": "297ec9a165e3b03375d7b0030e7ca310814a8707",
+  "airlock": "0c5951ebb5d32f666d94c7ef909dd8ebb13097ad",
+  "app_packages": {
+    "product-manager": "apps/product-manager.tar.gz",
+    "metrika-analyst": "apps/metrika-analyst.tar.gz",
+    "market-watch": "apps/market-watch.tar.gz"
+  },
+  "core_tag": "personal/2026.11.27.6"
+}
