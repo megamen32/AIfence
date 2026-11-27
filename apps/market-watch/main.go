@@ -1,6 +1,7 @@
 package main
 
 import (
+	collector "agent/collector"
 	"agent/handlers"
 	"agent/market"
 	"agent/views"
@@ -29,6 +30,7 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterTool(tool.Typed[market.QuoteInput, market.OrderQuote]("quote_quantity").Description("Compare the requested order quantity using only published compatible tiers.").Execute(s.OrderQuote).Build(), agentsdk.AccessUser)
 	a.RegisterStaticAsset(&agentsdk.StaticAsset{Name: views.AppCSSName, ContentType: "text/css; charset=utf-8", Data: views.AppCSS})
 	a.RegisterTool(withMarketEvidence(tool.Typed[market.CompareInput, market.Comparison]("compare_offers").Description("Compare observed public prices for one exact SKU. Only comparable groups can have a lowest displayed price. Includes a link to the matching web view.").Execute(s.CompareSKU).Build()), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[collector.RepairBatch, collector.RuleProposal]("propose_parser_repair").Description("Internal admin-only parser repair proposal over a bounded batch of public HTML evidence. Returns declarative selectors; does not activate or execute code.").Execute(proposeParserRepair(a)).Build(), agentsdk.AccessAdmin)
 	a.RegisterTool(tool.Typed[struct{}, market.CrawlReport]("crawl_coverage").Description("Latest imported dated reconciliation of distinct sitemap license URLs, including unknown denominators and missing prices.").Execute(s.CrawlCoverage).Build(), agentsdk.AccessUser)
 	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/coverage/import", Handler: s.ImportCoverage, Access: agentsdk.AccessAdmin, Description: "Import a dated sitemap reconciliation"})
 
