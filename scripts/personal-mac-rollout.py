@@ -24,6 +24,70 @@ def sha(path):
 def read_json(path):
     return json.loads(path.read_text())
 
+
+def release_object(path):
+    try:
+        data = path.read_bytes()
+        value = json.loads(data)
+    except (OSError, ValueError) as error:
+        raise ValueError("cannot read release record: " + str(path)) from error
+    if not isinstance(value, dict):
+        raise ValueError("release record must be an object: " + str(path))
+    return data, value
+
+def digest(value, length, label):
+    if not isinstance(value, str) or not re.fullmatch("[a-f0-9]{" + str(length) + "}", value):
+        raise ValueError("invalid " + label)
+    return value
+
+def platform_components(release):
+    return {name: digest(release.get(field), 40, "release " + field)
+            for name, field in (("airlock", "core"), ("agentsdk", "agentsdk"), ("sol", "sol"))}
+
+def verify_release_channel(manifest, revision):
+    # Policy comes only from the installed copy of the published channel.
+    approved = RUNTIME / "personal-releases/current"
+    _, channel = release_object(approved / "channel.json")
+    approved_bytes, release = release_object(approved / "release.json")
+    frozen = channel.get("frozen", False)
+    if type(frozen) is not bool:
+        raise ValueError("channel frozen must be a boolean")
+    expected_hash = digest(channel.get("platform_manifest_sha256"), 64, "channel platform manifest hash")
+    components = channel.get("components")
+    if not isinstance(components, dict):
+        raise ValueError("channel components must be an object")
+    expected = {name: digest(components.get(name), 40, "channel " + name)
+                for name in ("airlock", "agentsdk", "sol")}
+    if "aifence" in components:
+        digest(components["aifence"], 40, "channel aifence")
+    if hashlib.sha256(approved_bytes).hexdigest() != expected_hash or platform_components(release) != expected:
+        raise ValueError("approved platform manifest differs from the published channel")
+    archives = release.get("archives")
+    if not isinstance(archives, dict):
+        raise ValueError("approved platform archives must be an object")
+    expected_archives = {service: digest(archives.get(archive), 64, "release " + archive)
+                         for service, archive in (("airlock", "backend.tar.gz"), ("frontend", "frontend.tar.gz"))}
+    if not frozen:
+        return
+    candidate_bytes, candidate = release_object(manifest.parent / "release.json")
+    if platform_components(candidate) != expected or revision != expected["airlock"]:
+        raise ValueError("frozen platform component revisions cannot change")
+    if hashlib.sha256(candidate_bytes).hexdigest() != expected_hash:
+        raise ValueError("candidate platform manifest differs from the frozen release")
+    try:
+        rows = read_json(manifest)
+    except (OSError, ValueError) as error:
+        raise ValueError("cannot read candidate image receipt") from error
+    if not isinstance(rows, list) or len(rows) != len(SERVICES):
+        raise ValueError("frozen release requires exactly two image receipts")
+    image_archives = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("service") not in SERVICES or row["service"] in image_archives:
+            raise ValueError("invalid or duplicate frozen image service")
+        image_archives[row["service"]] = digest(row.get("sha256"), 64, "image archive hash")
+    if image_archives != expected_archives:
+        raise ValueError("candidate image archives differ from the frozen release")
+
 def save(path, value):
     tmp = path.with_name("." + path.name + ".new")
     with tmp.open("x") as stream:
@@ -123,7 +187,9 @@ def verify_images(rows, revision):
             raise ValueError("image identity, architecture or provenance mismatch")
 
 def apply(manifest, revision, schema, root):
-    rows = {row["service"]: row for row in read_json(manifest)}
+    verify_release_channel(manifest, revision)
+    image_manifest_text = manifest.read_text()
+    rows = {row["service"]: row for row in json.loads(image_manifest_text)}
     verify_images(rows, revision)
     local = RUNTIME / "compose.local.yml"
     pointer = RUNTIME / "personal-overlay/manifest.json"
@@ -193,6 +259,9 @@ def apply(manifest, revision, schema, root):
     if pointer.read_text() != old_manifest or local.read_text() != old_local or any(
             inspect(s)["Id"] != before[s]["Id"] for s in SERVICES):
         raise RuntimeError("deployment state changed during backup")
+    verify_release_channel(manifest, revision)
+    if manifest.read_text() != image_manifest_text:
+        raise RuntimeError("image receipt changed during backup")
     changed = []
     try:
         for s in SERVICES:
@@ -208,7 +277,7 @@ def apply(manifest, revision, schema, root):
         check_served(rows["frontend"]["artifact_sha256"])
         if pointer.read_text() != old_manifest or local.read_text() != old_local:
             raise RuntimeError("persistent release pointer changed during deployment")
-        save(pointer, manifest.read_text())
+        save(pointer, image_manifest_text)
         save(local, next_local)
         result = {"status": "healthy", "revision": revision, "schema": db_schema(), "health": health,
                   "images": {s: inspect(s)["Image"] for s in SERVICES}, "backup_sha256": hashes["airlock.dump"]}
@@ -218,7 +287,7 @@ def apply(manifest, revision, schema, root):
         if db_schema() == initial_schema:
             if local.read_text() == next_local:
                 save(local, old_local)
-            if pointer.read_text() == manifest.read_text():
+            if pointer.read_text() == image_manifest_text:
                 save(pointer, old_manifest)
             for s in reversed(changed):
                 if inspect(s)["Image"] != old_rows[s]["local_image_id"]:
@@ -236,6 +305,7 @@ def main():
     args = parser.parse_args()
     if not re.fullmatch("[a-f0-9]{40}", args.revision):
         parser.error("--revision must be a full Git commit")
+    verify_release_channel(args.manifest.resolve(), args.revision)
     os.umask(0o077)
     os.environ["DOCKER_HOST"] = "unix://" + str(Path.home() / ".colima/aifence/docker.sock")
     os.environ.pop("DOCKER_CONTEXT", None)
