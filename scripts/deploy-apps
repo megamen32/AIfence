@@ -2,6 +2,81 @@
 # Stage tracked app sources outside the checkout; never bypass SDK source CAS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Personal installs use the guarded native entrypoint from the current main worktree.
+personal_python="${AIFENCE_PYTHON:-/opt/homebrew/bin/python3}"
+if [[ ! -x "$personal_python" ]]; then personal_python="$(command -v python3)"; fi
+personal_target="$("$personal_python" - "${AIRLOCK_URL:-http://localhost:42080}" <<'PERSONAL_ORIGIN'
+import ipaddress, sys, urllib.parse
+u = urllib.parse.urlsplit(sys.argv[1])
+if u.scheme not in ("http", "https") or not u.hostname or u.username or u.password or u.path not in ("", "/") or u.query or u.fragment:
+    sys.exit("AIRLOCK_URL must be an HTTP(S) origin without credentials or path")
+try:
+    port = u.port
+    if port is None:
+        port = 443 if u.scheme == "https" else 80
+except ValueError:
+    sys.exit("Invalid AIRLOCK_URL port")
+host = u.hostname.lower().rstrip(".")
+try:
+    host = str(ipaddress.ip_address(host))
+except ValueError:
+    pass
+loopback = host in ("localhost", "127.0.0.1", "::1") and port == 42080
+public = host == "airlock.bezrabotnyi.com" and port == (443 if u.scheme == "https" else 80)
+print("personal" if loopback or public else "stand")
+PERSONAL_ORIGIN
+)"
+if [[ "$personal_target" == personal ]]; then
+  exec "$personal_python" - "$ROOT" "$@" 3<&0 <<'PERSONAL_MAIN'
+import os, pathlib, subprocess, sys
+root = pathlib.Path(sys.argv[1]).resolve()
+def git(*args, at=root):
+    try:
+        return subprocess.check_output(["git", "-C", str(at), *args], stderr=subprocess.PIPE)
+    except (OSError, subprocess.CalledProcessError):
+        sys.exit("Cannot verify canonical main for personal deployment")
+main = git("rev-parse", "--verify", "refs/heads/main^{commit}").decode().strip()
+selected = main
+if "AIFENCE_DEPLOY_COMMIT" in os.environ:
+    selected = git("rev-parse", "--verify", "--end-of-options", os.environ["AIFENCE_DEPLOY_COMMIT"] + "^{commit}").decode().strip()
+matches = []
+for record in git("worktree", "list", "--porcelain", "-z").split(b"\0\0"):
+    fields = record.split(b"\0")
+    if b"branch refs/heads/main" in fields:
+        matches.extend(pathlib.Path(os.fsdecode(field[len(b"worktree "):])).resolve()
+                       for field in fields if field.startswith(b"worktree "))
+if len(matches) != 1 or not matches[0].is_dir():
+    sys.exit("Personal deployment requires the installed main worktree")
+target = matches[0]
+if target == root:
+    sys.exit("Refusing recursive personal deployment delegation")
+def common(at):
+    return pathlib.Path(os.fsdecode(git("rev-parse", "--path-format=absolute", "--git-common-dir", at=at)).strip()).resolve()
+if common(root) != common(target) or git("symbolic-ref", "--quiet", "HEAD", at=target).strip() != b"refs/heads/main":
+    sys.exit("Personal deployment main worktree does not belong to this repository")
+if git("rev-parse", "HEAD", at=target).decode().strip() != main:
+    sys.exit("Personal deployment main worktree changed; retry with its current commit")
+script = target / "scripts/deploy-apps"
+source = git("show", main + ":scripts/deploy-apps")
+if script.is_symlink() or not script.is_file() or script.read_bytes() != source or not os.access(script, os.X_OK):
+    sys.exit("Canonical personal deploy-apps differs from its main commit")
+required = (
+    b'\nverify_main_release() {\n',
+    b'\nfrozen, _, approved, _ = policy["approved_release"](approved_path)\n',
+    b'\nif frozen and pins != approved:\n',
+    b'\nverify_main_release "$release_dir/packages/apps.json"\n',
+    b'\n"$python_bin" "$ROOT/scripts/personal-build-apps.py" --commit "$commit" ',
+)
+if any(marker not in source for marker in required):
+    sys.exit("Canonical main is missing the native personal release guard")
+env = dict(os.environ, AIFENCE_DEPLOY_COMMIT=selected)
+# Restore the caller's stdin after the Python source heredoc.
+os.dup2(3, 0)
+os.close(3)
+os.execve(script, [str(script), *sys.argv[2:]], env)
+PERSONAL_MAIN
+fi
 export PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin:$PATH"
 export GOMAXPROCS="${GOMAXPROCS:-2}" GOFLAGS="${GOFLAGS:--p=1}"
 usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager|competitor-research" >&2; exit 2; }
