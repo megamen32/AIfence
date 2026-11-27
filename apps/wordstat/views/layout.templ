@@ -1,0 +1,21 @@
+package views
+import "github.com/airlockrun/agentsdk"
+templ Layout(title string) {
+    <!DOCTYPE html>
+    <html lang="ru">
+        <head>
+            <meta charset="UTF-8"/>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+            <title>{ title }</title>
+            <link rel="stylesheet" href={ AppCSSPath }/>
+            <meta name="htmx-config" content='{"noSwap":[204,304,401]}'/>
+            <script src={ agentsdk.Assets.HTMX }></script>
+            @agentsdk.WebUI(agentsdk.WebUIOptions{})
+        </head>
+        <body class="min-h-screen">
+            <main class="mx-auto min-w-0 w-full max-w-5xl p-4 sm:p-6">
+                { children... }
+            </main>
+        </body>
+    </html>
+}

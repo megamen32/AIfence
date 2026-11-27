@@ -1,0 +1,27 @@
+{
+  "verification": "registered Mac ShellMCP child, verified by parent operator",
+  "registered_name": "wordstat",
+  "running": true,
+  "pid_at_verification": 68525,
+  "started_at": "2026-11-27T08:00:37+05:00",
+  "command": "/Users/user/AIfence-worktrees/external-demand/apps/wordstat/scripts/wordstat-mcp",
+  "args": [],
+  "tools_count": 5,
+  "registered_consumer_call": {
+    "tool_ref": "wordstat/top_requests",
+    "arguments": {
+      "phrase": "касперский для бизнеса",
+      "numPhrases": 3
+    },
+    "totalCount": "842",
+    "first_counts": [
+      "842",
+      "180",
+      "170"
+    ]
+  },
+  "yandex_api_key_copied_to_mac": false,
+  "credential_storage": "project .runtime/service-token, mode 0600; value excluded",
+  "source_status": "historical_only",
+  "exact_top_regions_window_known": false
+}
