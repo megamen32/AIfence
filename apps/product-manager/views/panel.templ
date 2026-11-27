@@ -56,6 +56,9 @@ templ Panel(v HomeView) {
 	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
 		<header class="dashboard-top">
 			<strong>Product Manager</strong>
+			if v.Mode == "demo" {
+				<span class="dashboard-demo-badge">ДЕМО</span>
+			}
 		</header>
 		<nav class="dashboard-tabs" aria-label="Экраны">
 			for _, tab := range v.Tabs {
@@ -70,7 +73,7 @@ templ Panel(v HomeView) {
 			} else if v.Monitor != nil && v.Monitor.Selected != nil {
 				@caseScreen(v.Tab, v.Monitor.Selected, nil)
 			} else {
-				<p class="dashboard-empty">Гипотез пока нет. Откройте отклонение на вкладке «Обзор» или спросите в чате «Что требует внимания?».</p>
+				<p class="dashboard-empty">Гипотез пока нет. Откройте отклонение на вкладке «Утро» или спросите в чате «Что требует внимания?».</p>
 			}
 			if v.Monitor != nil && len(v.Monitor.Records) > 0 && v.Tab == "overview" {
 				<details class="dashboard-history">
@@ -163,7 +166,7 @@ templ coverageBar(items []CoverageItem) {
 templ catalogPanel(m *Monitor) {
 	<section class="dashboard-catalog" aria-label="Карта каталога">
 		<div class="dashboard-heading">
-			<h2>Карта каталога</h2>
+			<h2>Каталог по группам</h2>
 			if m.Catalog != nil {
 				<small>{ m.Catalog.Group }</small>
 			}

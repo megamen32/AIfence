@@ -5,7 +5,7 @@ import "github.com/airlockrun/agentsdk/lucide"
 templ MonitorPanel(m *Monitor) {
 	<section class="pm-dashboard" aria-label="Продуктовый мониторинг">
 		<dl class="dashboard-status">
-			<div><dt>Полный каталог</dt><dd>
+			<div><dt>Под наблюдением</dt><dd>
 				if m.Catalog != nil && m.Catalog.Count != "" {
 					{ m.Catalog.Count }
 				} else {
@@ -13,8 +13,8 @@ templ MonitorPanel(m *Monitor) {
 				}
 			</dd></div>
 			<div><dt>Тревоги</dt><dd class="dashboard-alarm">{ countLabel(len(m.Pulse)) }</dd></div>
-			<div><dt>На проверке</dt><dd>{ countLabel(m.ReviewCount) }</dd></div>
-			<div><dt>Последний снимок</dt><dd>
+			<div><dt>Под угрозой</dt><dd class="dashboard-alarm">{ countLabel(len(m.Pulse)) }</dd></div>
+			<div><dt>Данные</dt><dd>
 				if m.Updated != "" {
 					{ m.Updated }
 				} else {
@@ -32,7 +32,7 @@ templ MonitorPanel(m *Monitor) {
 			</details>
 		}
 		<section class="dashboard-exceptions" aria-label="Открытые исключения">
-			<div class="dashboard-heading"><h2>Открытые исключения</h2><small>Потенциал в ₽/нед</small></div>
+			<div class="dashboard-heading"><h2>Что смотреть первым</h2><small>по ₽ в неделю</small></div>
 			if len(m.Pulse) == 0 && m.Updated == "" && len(m.Products) == 0 {
 				<p class="dashboard-empty">Продаж ещё нет: ни один источник не присылал данные. Спросите в чате «Что требует внимания?», агент прочитает Метрику, продажи и цены, и отклонения появятся здесь.</p>
 			} else if len(m.Pulse) == 0 {

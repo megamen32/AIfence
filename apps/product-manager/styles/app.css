@@ -264,6 +264,7 @@ h3{font-size:1.03rem;font-weight:650;letter-spacing:-.015em;margin-bottom:.6rem}
 .dashboard-top,.dashboard-tabs {display:flex;align-items:center;gap:.5rem;padding:.65rem .85rem;border-bottom:1px solid var(--rule)}
 .dashboard-top {justify-content:space-between}
 .dashboard-top strong {font-weight:680;font-size:.96rem}
+.dashboard-demo-badge {margin-inline-start:auto;color:var(--warn);font-size:.68rem;font-weight:700;letter-spacing:.08em}
 .dashboard-modes {display:flex;gap:.2rem;font-size:.72rem}
 .dashboard-modes a,.dashboard-tabs a {padding:.35rem .5rem;border-radius:.35rem;white-space:nowrap;color:var(--muted)}
 .dashboard-modes [aria-current=page],.dashboard-tabs [aria-current=page] {background:var(--raised);color:var(--ink);font-weight:650}
