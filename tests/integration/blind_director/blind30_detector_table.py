@@ -1,48 +1,41 @@
 #!/usr/bin/env python3
-"""Score offline blind scans (no model) against vault truth.
+"""Score cause_signal candidates of offline blind scans against vault truth (no model).
 
-Generate scans: BLIND30_DIR=<dir with run-*> BLIND30_OUT=<out> go test -run TestBlind30Offline .
-(in apps/metrika-analyst). Then: blind30_detector_table.py <dir with run-*> <out> [topN] [week_tolerance_days]
-S0/S12: any controlled or cause alert in top-N is a false alarm. Positives: hit = family, exact
-start week and cause_type match."""
-import json, sys, glob, os, datetime as dt
-root, scans = sys.argv[1], sys.argv[2]
-top = int(sys.argv[3]) if len(sys.argv) > 3 else 3
-TOL = int(sys.argv[4]) if len(sys.argv) > 4 else 0
-ALERT = {"controlled_decline", "uncontrolled_decline", "cause"}
-rows = []
-for tpath in sorted(glob.glob(f"{root}/run-*/vault/case-*/truth.json")):
-    run, case = tpath.split("/")[-4], tpath.split("/")[-2]
-    ch = json.load(open(tpath))["choice"]
-    sc = json.load(open(f"{scans}/{run}/{case}.scan.json"))
-    start = dt.date(2026, 5, 11) + dt.timedelta(weeks=ch["week"])
-    cands = sc.get("candidates") or []
-    alerts = [c for c in cands if c.get("kind") in ALERT or c.get("cause_type")]
-    topc = alerts[:top]
-    fam_ok = lambda c: c.get("product_key") in (ch["family"],) or c.get("family") == ch["family"]
-    def wk_ok(c):
-        f = dt.date.fromisoformat(c["period"]["from"])
-        return abs((f - start).days) <= TOL
-    s = ch["scenario"]
-    if s in ("S0", "S12"):
-        verdict = "ok" if not topc else "false_alarm"
-        det = ""
-    else:
-        m = [c for c in topc if fam_ok(c) and wk_ok(c)]
-        ct = [c for c in m if c.get("cause_type") == ch["cause_type"]]
-        verdict = "hit" if ct else ("family+week" if m else ("miss" if not topc else "wrong"))
-        det = ""
-    d0 = topc[0] if topc else {}
-    rows.append((run[4:10], case, s, ch["family"].replace("kaspersky_", "k_"), str(start), ch["cause_type"],
-                 d0.get("cause_type") or d0.get("kind", "-"), (d0.get("product_key") or "-").replace("kaspersky_", "k_"),
-                 (d0.get("period") or {}).get("from", "-"), len(alerts), verdict))
-w = [6, 7, 4, 32, 10, 30, 30, 32, 10, 3, 12]
-hdr = ("run", "case", "scn", "planted family", "week", "planted cause", "detected #1", "det family", "det week", "n", "verdict")
-print(" ".join(h.ljust(x) for h, x in zip(hdr, w)))
-for r in rows:
-    print(" ".join(str(v).ljust(x) for v, x in zip(r, w)))
+Scans: BLIND30_DIR=<dir with run-*> BLIND30_OUT=<out> go test -run TestBlind30Offline . (apps/metrika-analyst).
+Usage: blind30_detector_table.py CASES SCANS [-v]
+hit = family, exact onset week and cause_type; abstain_ok = no cause when a metric the cause needs
+was dropped from the snapshot; S0/S12 and every non-planted family must get no cause."""
+import json, sys, glob, datetime as dt
 from collections import Counter
-by = Counter((r[2], r[-1]) for r in rows)
-print(); print(sorted(by.items()))
+root, scans = sys.argv[1], sys.argv[2]; verbose = "-v" in sys.argv
+NEED = {"S6": {"bounce_rate", "avg_visit_duration"}, "S13": {"checkouts"}, "S14": {"checkouts"}}
+res = Counter(); rows = []; other = 0; nfam = 0
+for t in sorted(glob.glob(f"{root}/run-*/vault/case-*/truth.json")):
+    run, case = t.split("/")[-4], t.split("/")[-2]
+    T = json.load(open(t)); ch = T["choice"]; dev = T.get("dev", {})
+    sc = json.load(open(f"{scans}/{run}/{case}.scan.json"))
+    cs = [c for c in sc["candidates"] if c["kind"] == "cause_signal"]
+    start = str(dt.date(2026, 5, 11) + dt.timedelta(weeks=ch["week"]))
+    s = ch["scenario"]; fam = ch["family"]
+    mine = [c for c in cs if c["product_key"] == fam]
+    others = [c for c in cs if c["product_key"] != fam]
+    nfam += 7 if s in ("S0", "S12") else 6
+    other += len(others) if s not in ("S0", "S12") else 0
+    dropped = set(dev.get("dropped", []))
+    if s in ("S0", "S12"):
+        v = "false_alarm" if cs else "ok"; other += len(cs)
+    else:
+        c = mine[0] if mine else None
+        can = not (NEED.get(s, set()) & dropped)
+        if c is None: v = "miss" if can else "abstain_ok"
+        elif c["cause_type"] != ch["cause_type"]: v = "wrong_cause"
+        elif c["period"]["from"] != start: v = "wrong_week"
+        else: v = "hit"
+    res[(s, v)] += 1
+    rows.append((run[-6:], case, s, ch.get("severity"), ch.get("traffic_lift", ch.get("bot_share", "")), dev.get("overlap", ""), ",".join(dropped), start,
+                 [(c["product_key"][:10], c["cause_type"][:10], c["period"]["from"], c.get("cause_strength")) for c in cs], v))
+if verbose:
+    for r in rows: print(*r)
 pos = [r for r in rows if r[2] not in ("S0", "S12")]
-print(f"hits {sum(r[-1]=='hit' for r in pos)}/{len(pos)}; family+week (any type) {sum(r[-1] in ('hit','family+week') for r in pos)}/{len(pos)}; S0/S12 false alarms {sum(r[-1]=='false_alarm' for r in rows)}/{len(rows)-len(pos)}")
+print(sorted(res.items()))
+print(f"positives: hit {sum(r[-1]=='hit' for r in pos)}/{len(pos)} (abstain_ok {sum(r[-1]=='abstain_ok' for r in pos)}, wrong_week {sum(r[-1]=='wrong_week' for r in pos)}, wrong_cause {sum(r[-1]=='wrong_cause' for r in pos)}, miss {sum(r[-1]=='miss' for r in pos)}); false cause on clean families {other}/{nfam}")

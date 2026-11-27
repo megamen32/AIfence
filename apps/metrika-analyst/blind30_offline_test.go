@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -17,6 +18,9 @@ func TestBlind30Offline(t *testing.T) {
 	root, out := os.Getenv("BLIND30_DIR"), os.Getenv("BLIND30_OUT")
 	if root == "" || out == "" {
 		t.Skip("BLIND30_DIR and BLIND30_OUT not set")
+	}
+	if z, err := strconv.ParseFloat(os.Getenv("BLIND30_Z"), 64); err == nil {
+		causeZ = z
 	}
 	cases, _ := filepath.Glob(filepath.Join(root, "run-*", "inputs", "case-*"))
 	sort.Strings(cases)
