@@ -17,6 +17,13 @@ WHERE upper(o.sku) = upper(sqlc.arg(sku)::text)
 ORDER BY o.observed_at,o.source,o.url,o.basis,o.quantity,o.max_quantity
 LIMIT 4001;
 
+-- name: DiscoverFamilySKUs :many
+SELECT DISTINCT upper(l.sku)::text AS sku
+FROM latest_offers l
+WHERE l.sku <> '' AND strpos(lower(l.offer->>'name'), lower(sqlc.arg(family)::text)) > 0
+ORDER BY sku
+LIMIT 51;
+
 -- name: MatrixPage :many
 WITH page AS (
     SELECT DISTINCT CASE WHEN l.sku='' THEN 'url:'||l.source||':'||l.url ELSE 'sku:'||upper(l.sku) END AS cursor_key

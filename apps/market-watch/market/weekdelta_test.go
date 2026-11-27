@@ -22,11 +22,6 @@ func TestWeekDeltaUsesLatestReadPerSeriesAndReportsMissingWeeks(t *testing.T) {
 	b1 := deltaOffer("softline", currentStart.Add(26*time.Hour), 660000, "https://store.softline.ru/kes/")
 	onlyBaseline := deltaOffer("softmap", baselineStart.Add(24*time.Hour), 673900, "https://softmap.ru/kes/")
 	onlyCurrent := deltaOffer("softmagazin", currentStart.Add(70*time.Hour), 748800, "https://softmagazin.ru/kes/")
-	snaps := []Snapshot{{CapturedAt: baselineStart.Format(time.RFC3339), Runs: []catalog.Run{{Source: "softline", Status: "ok", Offers: []catalog.Offer{a1, a2, onlyBaseline}}}},
-		{CapturedAt: currentStart.Format(time.RFC3339), Runs: []catalog.Run{{Source: "softline", Status: "ok", Offers: []catalog.Offer{b1, onlyCurrent}}}}}
-	_ = snaps
-	// The SQL path needs a database; the pure grouping is verified through the
-	// exported helper with the same key rules used by the service.
 	rows := []catalog.Offer{a1, a2, b1, onlyBaseline, onlyCurrent}
 	got := GroupWeekDelta(rows, "KL4141RCEFS", baselineStart, currentStart, time.Date(2026, 11, 27, 0, 0, 0, 0, time.UTC))
 	if got.ComparablePairs != 1 || len(got.Series) != 3 || len(got.MissingPeriods) != 2 {
@@ -67,5 +62,19 @@ func TestWeekDeltaRejectsIncompleteOrOverlappingWeeks(t *testing.T) {
 		if _, err := s.WeekDelta(t.Context(), in); err == nil {
 			t.Fatalf("accepted invalid input %+v", in)
 		}
+	}
+}
+
+func TestWeekDeltaDoesNotCountUnknownPriceBasis(t *testing.T) {
+	baseline := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+	current := baseline.AddDate(0, 0, 7)
+	a := deltaOffer("softline", baseline, 10000, "https://store.softline.ru/kes/")
+	b := a
+	b.CapturedAt = current.Format(time.RFC3339)
+	b.PriceMinor = 9000
+	a.PriceBasis, b.PriceBasis = "displayed_offer_price", "displayed_offer_price"
+	out := GroupWeekDelta([]catalog.Offer{a, b}, a.SKU, baseline, current, current.AddDate(0, 0, 7))
+	if out.ComparablePairs != 0 || len(out.Evidence.Observations) != 0 || len(out.Series) != 1 || out.Series[0].Comparable {
+		t.Fatalf("unknown price basis counted as a numeric change: %+v", out)
 	}
 }

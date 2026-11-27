@@ -33,6 +33,9 @@ type Details struct {
 	PreviousCapturedAt string   `json:"previous_captured_at,omitempty"`
 	MaxQuantity        *int64   `json:"max_quantity,omitempty"`
 	MatchStatus        string   `json:"match_status"`
+	EvidenceIDs        []string `json:"evidence_ids,omitempty"`
+	BaselineWeek       *Period  `json:"baseline_week,omitempty"`
+	CurrentWeek        *Period  `json:"current_week,omitempty"`
 }
 type Observation struct {
 	ID         string    `json:"id"`

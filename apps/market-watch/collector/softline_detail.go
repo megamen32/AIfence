@@ -32,6 +32,14 @@ func SoftlineDetail(doc *goquery.Document, page string, at time.Time) (*Offer, e
 	counter := doc.Find("input.js-product-quantity").First()
 	minimum, _ := counter.Attr("min")
 	maximum, _ := counter.Attr("max")
+	// min/max are the cart's overall input limits; data-minval/data-maxval
+	// describe the selected license tier. Only compare the tier to product JSON.
+	if tier, ok := counter.Attr("data-minval"); ok && quantityValue(tier) != nil {
+		minimum = tier
+	}
+	if tier, ok := counter.Attr("data-maxval"); ok {
+		maximum = tier
+	}
 	o := Offer{Source: "softline", SKU: strings.ToUpper(strings.TrimSpace(sku)), Name: name, URL: page, Currency: "RUB", CapturedAt: at.UTC().Format(time.RFC3339), Quantity: quantityValue(minimum)}
 	var cfg struct {
 		Product struct {
