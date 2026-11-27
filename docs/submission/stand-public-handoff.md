@@ -1,43 +1,14 @@
-# Public stand repair — 2026-11-26
+# Historical deployment note
 
-The isolated AIfence Airlock on server-100 was switched from loopback-only
-local mode to HTTPS proxy mode. Public origin:
-https://aifence.bezrabotnyi.com/
+The owner excluded the former external deployment from the jury package. Do not
+use its historical ingress, health checks or access boundaries as the jury URL
+or as proof of the current demo path.
 
-## Applied state
+The jury path is the Mac Airlock reached through the tunnel recorded by the
+`sol-stand` session. Its exact URL belongs in the single temporary marker in
+the root `README.md` only after
+`/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md` is available.
 
-- A Let's Encrypt certificate covering the apex and *.aifence.bezrabotnyi.com
-  was issued by the existing stand ACME process. The certificate's validity
-  ends 2027-02-24.
-- Isolated compose project aifence-stand only: Caddy proxy on 127.0.0.1:42082,
-  DOMAIN=aifence.bezrabotnyi.com, TLS_MODE=proxy, HTTPS PUBLIC_URL and S3_URL_PUBLIC,
-  exact trusted Docker gateway 172.18.0.1/32 and REVERSE_PROXY_LIMIT=2.
-- Original environment retained with mode 0600 at
-  /srv/aifence-stand/data/app/.env.aifence-local-before-public.
-  The original loopback-only Caddy was left in place for recovery.
-- Only the new vhost was added to Nginx sites-available/sites-enabled.
-  No existing vhost, SNI map, production Airlock or shared model configuration
-  was edited. The proxy replaces client-provided forwarding headers.
-- The first vhost attempt was rolled back when the immediate TLS test failed.
-  The second passed after the Nginx reload converged. nginx -t passed.
-
-## Verification
-
-Normal HTTPS, without skipping TLS verification, from server-100 and server-44:
-apex 200, Product Manager app subdomain 401 (auth required), S3 subdomain 403
-(anonymous access forbidden), /health returned status ok, db=true, s3=true.
-
-The Mac's system resolver did not resolve the apex in the last test; public
-DNS (1.1.1.1) did, and the Mac's explicit address HTTPS health test passed.
-This is a remaining local DNS issue, not an HTTPS certificate failure.
-
-## Follow-up
-
-This was an explicitly requested, scoped operational repair on the server.
-The new ingress must be reconciled with the canonical infrastructure
-configuration by its owner; unrelated WIP was not edited. Confirm renewal
-and Nginx certificate reload in the normal infrastructure workflow.
-Do not re-run the local-only stand setup over this public configuration.
-
-The cutover verification covered HTTPS, authorization boundaries and health.
-Authenticated Product Manager and Gemma 64K acceptance are tracked separately.
+The former deployment repair remains an operational history record outside the
+submission route. No public hostname, certificate name or external origin is
+reproduced here by design.

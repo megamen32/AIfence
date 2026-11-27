@@ -14,9 +14,9 @@ AIfence принимает обычный вопрос директора инт
 
 | Материал | Ссылка | Статус |
 | --- | --- | --- |
-| Стенд | [текущий HTTPS origin](https://aifence.bezrabotnyi.com/) · [чат](https://aifence.bezrabotnyi.com/chat) | Доступ требует приглашения в демонстрационное пространство. Перед отправкой жюри подставить точный tunnel URL из `/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md`; если URL отличается от текущего origin, authoritative считается именно REPORT. |
+| Стенд | Mac Airlock через tunnel | Доступ требует приглашения в демонстрационное пространство. Точный tunnel URL берётся из `/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md`; единственный временный маркер находится в корневом README. |
 | Запуск и проверка стенда | [deployment.md](deployment.md) | HTTPS и границы анонимного доступа описаны; сервисный health-check не заменяет вход в приложение. |
-| Экономика | [economics.md](economics.md) · [economics-handoff.md](economics-handoff.md) | Токены и формулы зафиксированы. Модель — Terra fast. Денежный эффект KES оставлен формулой, потому что датасет содержит индекс, а не объём заказов и маржу. |
+| Экономика | [economics.md](economics.md) · [economics-handoff.md](economics-handoff.md) | Индекс KES измерен; добавлены рублёвый калькулятор и отдельный пример с помеченными допущениями. Фактическая сумма требует объёма заказов, среднего чека и маржи. |
 | Модели, API и лицензии | [models-and-prior-work.md](models-and-prior-work.md) | Состав сверён с manifests и notices; точный checkpoint Terra fast и право передачи должны быть добавлены в финальный релиз. |
 | Видео | [demo.md](demo.md) | Сценарий на 2:55 в четырёх сценах; кадры 1–4 помечены файлами из `docs/qa/scenes-27-11/`. |
 | Заявка | [form-draft.md](form-draft.md) | Рабочий текст; финальный SHA и контакты подставляются после freeze. |

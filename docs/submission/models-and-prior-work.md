@@ -9,13 +9,32 @@ Airlock-исходники и ключи в репозиторий не вход
 
 | Компонент | Где используется | Лицензия и статус для подачи |
 | --- | --- | --- |
-| **Terra fast** | Единственная модель исполнения Product Manager в конкурсной версии; вызывается через настроенный слот Airlock | Точный checkpoint/model ID, карточка весов и текст лицензии должны быть зафиксированы в финальном релизе. Допуск конкурса: open weights, локальный запуск и лицензия, разрешающая использование; неподтверждённый артефакт нельзя объявлять лицензированным. |
+| **Terra fast** | Единственная заявленная первичная модель исполнения Product Manager в конкурсной версии; actual execution ID и route read-back приведены ниже | Checkpoint весов, карточка и текст лицензии ещё должны быть подтверждены для финального релиза. Допуск конкурса: open weights, локальный запуск и лицензия, разрешающая использование; неподтверждённый артефакт нельзя объявлять лицензированным. |
 | Airlock Enterprise v0.8.15 | Аутентификация, чат, слоты моделей, storage, jobs, native app bindings и каталог файлов | Проприетарная Enterprise-лицензия и условия владельца платформы; это предыдущая наработка и закрытая зависимость, её исходники не публикуются. Версия зафиксирована в [`platform/airlock.lock.json`](../../platform/airlock.lock.json). |
 | AIfence | Три приложения, контракты, workflow, синтетические fixtures и документация | Собственный код команды/владельца, заявляемый как собственная предыдущая наработка. В корне репозитория нет `LICENSE`; публичную лицензию или условия передачи конкурсной версии должен выбрать владелец. |
 
 Старые QA-файлы в `docs/submission/model-acceptance/` содержат отдельные
 исторические проверки Gemma/Ollama. Они не являются заявлением о текущей модели
-продукта: в подачу выносится только Terra fast после финального read-back.
+продукта.
+
+## Фактический read-back слота демо-стенда
+
+27 ноября 2026 года конфигурация локального Mac Airlock была прочитана из
+таблиц `system_settings`, `providers` и `provider_models` в read-only режиме:
+
+| Поле | Значение |
+| --- | --- |
+| Effective execution provider | `omniroute` (`openai-compatible`) |
+| Effective execution model ID | `combo/airlock-personal-exec-terra61-safe` |
+| Catalog display name | `Terra 6.1, MiniMax failover, personal chat` |
+| Model catalog capabilities | tool call: `true`; reasoning: `false`; context: 128 000; output: 8 192 |
+| Effective build model ID | `combo/airlock-personal-build-sol62-safe` |
+
+Это actual route read-back, а не значение из исторического QA-файла. В имени
+выбранного safe-маршрута явно указан MiniMax failover; поэтому в заявке Terra
+fast следует называть primary execution model, а fallback — отдельным свойством
+маршрута. Отдельный checkpoint весов и его лицензия в этой конфигурации не
+раскрыты и не должны быть придуманы.
 
 ## API и внешние сервисы
 

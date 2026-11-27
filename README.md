@@ -9,11 +9,11 @@ private customer files stay outside the repository.
 
 ## Jury links and delivery status
 
-- **Stand:** [aifence.bezrabotnyi.com](https://aifence.bezrabotnyi.com/) · [open
-  Airlock chat](https://aifence.bezrabotnyi.com/chat). Interactive access
-  requires an invitation to the demonstration workspace; the exact tunnel
-  URL from the final `sol-stand` report must be checked before sending it to a
-  jury member.
+- **Jury stand:** TODO — after
+  `/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md` appears, put
+  the exact Mac Airlock tunnel URL here. Until that report is available, no
+  jury URL is claimed; access requires an invitation to the demonstration
+  workspace.
 - **Health check:** [stand and deployment notes](docs/submission/deployment.md).
   An anonymous HTTP check is only a service check; it does not grant access to
   the applications.
@@ -94,7 +94,7 @@ pinned SDK/Sol cache and then deploy the exact verified commit:
 export AIFENCE_PERSONAL_CACHE="$HOME/AIfence-worktrees/personal-integration/.runtime/personal-release"
 export GOPROXY=off
 /opt/homebrew/bin/python3 scripts/personal-build-apps.py --commit <sha> --output <private-output-directory>
-export AIRLOCK_URL=https://aifence.bezrabotnyi.com
+export AIRLOCK_URL=<mac-airlock-tunnel-from-sol-stand-report>
 export AIFENCE_DEPLOY_COMMIT=<verified-main-sha>
 ./scripts/deploy-apps --dry-run
 ```

@@ -1,8 +1,14 @@
 # Стенд для жюри и развёртывание
 
-**Стенд** — [aifence.bezrabotnyi.com](https://aifence.bezrabotnyi.com/). **Вход в чат** — [открыть Airlock](https://aifence.bezrabotnyi.com/chat).
+**Стенд для жюри** — Mac Airlock на этом Mac через tunnel. Точный URL выдаёт
+`/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md`; публичная ссылка
+в этот комплект не копируется.
 
-26 ноября 2026 г. обычный HTTPS GET без авторизации и с проверкой TLS вернул HTTP 200 для `/`, `/chat` и `/health`. Первые два маршрута вернули HTML Airlock. Проверка здоровья вернула `status=ok`, `db=true`, `s3=true`. Это проверка доступности сервиса. Историческая проверка после переключения HTTPS зафиксировала анонимный 401 на поддомене Product Manager. [Операторская запись](stand-public-handoff.md).
+На 27 ноября 2026 г. jury-путь — это Mac Airlock через tunnel из отчёта
+`sol-stand`. Локальные health-checks и доступ приложения проверяются отдельно;
+health-check не выдаёт права на вход. История исключённого внешнего развёртывания
+зафиксирована в [операторской записи](stand-public-handoff.md) без публичного
+адреса.
 
 Для интерактивной проверки нужен отдельный участник демонстрационного пространства с доступом к Product Manager, Market Watch и Metrika Analyst. Оператору предстоит проверить приглашение в чистом профиле от имени жюри и передать его отдельно. В этом пространстве используются синтетические показатели, публичные SKU и цены, демонстрационный бэклог. Маршрут для жюри после входа: открыть Product Manager из списка приложений и задать вопрос из [сценария](demo.md). Этот маршрут проверяется из чистого браузера 28.11 в 09:00 (UTC+5).
 
@@ -17,7 +23,7 @@
 Из чистого интеграционного checkout после `git fetch origin main` укажите полный SHA проверенного коммита. После штатного входа SDK выполните dry run и обновите приложения с тем же SHA.
 
 ```sh
-export AIRLOCK_URL=https://aifence.bezrabotnyi.com
+export AIRLOCK_URL='<mac-airlock-tunnel-from-sol-stand-report>'
 export AIFENCE_DEPLOY_COMMIT='VERIFIED_COMMIT_SHA'
 (cd apps/market-watch && go tool air login "$AIRLOCK_URL")
 git merge-base --is-ancestor "$AIFENCE_DEPLOY_COMMIT" origin/main &&

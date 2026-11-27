@@ -100,6 +100,53 @@ late_cost_rub = 1,685385 × B
 Индексный результат — фактический value proxy из данных, а не придуманная
 денежная оценка.
 
+## Рублёвый калькулятор в терминах заказчика
+
+Калькулятор переводит тот же измеренный процент падения в вклад, который мог
+быть потерян из-за позднего обнаружения. Он явно разделяет наблюдение и
+допущения:
+
+| Вход | Смысл | Статус для KES |
+| --- | --- | --- |
+| `orders_per_week` | самостоятельные заказы в обычную неделю, шт. | нет в обезличенном датасете |
+| `average_check_rub` | средний чек одного заказа, ₽ | нет в обезличенном датасете |
+| `margin_pct` | маржа после переменных затрат, % от чека | нет в обезличенном датасете |
+| `failure_drop_pct` | доля падения заказов | **измерено: 32,726%** по индексу KES выше |
+| `first_detection_after_weeks` | сколько недель потерь остаётся, если нашли в первую неделю | допущение сценария |
+| `late_detection_after_weeks` | сколько недель потерь остаётся при позднем обнаружении | допущение сценария |
+| `preventable_fraction` | доля дополнительной потери, которую ранняя реакция могла бы предотвратить | допущение сценария, от 0 до 1 |
+
+Формулы:
+
+```text
+weekly_failure_cost = orders_per_week × average_check_rub
+                    × margin_pct / 100 × failure_drop_pct / 100
+cost_if_found_first_week = weekly_failure_cost × first_detection_after_weeks
+cost_if_found_late = weekly_failure_cost × late_detection_after_weeks
+late_detection_penalty = weekly_failure_cost
+                       × (late_detection_after_weeks - first_detection_after_weeks)
+                       × preventable_fraction
+```
+
+### Пример с явными допущениями
+
+Это **не измерение Softline**. Для иллюстрации принято: `100` заказов в
+неделю, средний чек `50 000 ₽`, маржа `20%`, измеренное падение `32,726%`,
+обнаружение в первую неделю против обнаружения через четыре недели, а доля
+предотвращаемой дополнительной потери равна `100%`.
+
+```text
+weekly_failure_cost = 100 × 50 000 × 20% × 32,726% = 327 260 ₽
+found_in_week_1      = 327 260 × 1 = 327 260 ₽
+found_in_week_4      = 327 260 × 4 = 1 309 040 ₽
+late_detection_cost  = 327 260 × (4 − 1) × 100% = 981 780 ₽
+```
+
+В этом сценарии `981 780 ₽` — стоимость трёх дополнительных недель задержки
+при заданных допущениях. Она не должна показываться как фактический финансовый
+эффект, пока заказчик не передаст абсолютный объём заказов, средний чек и
+маржу.
+
 ## Входы для финального калькулятора
 
 Заполнять только после замера Terra fast и согласования экономики. Файл
@@ -119,12 +166,21 @@ late_cost_rub = 1,685385 × B
   "observed_orders_per_week": null,
   "contribution_rub_per_order": null,
   "weeks_earlier": null,
-  "recoverable_fraction": null
+  "recoverable_fraction": null,
+  "orders_per_week": null,
+  "average_check_rub": null,
+  "margin_pct": null,
+  "failure_drop_pct": 32.726,
+  "first_detection_after_weeks": 1,
+  "late_detection_after_weeks": 4,
+  "preventable_fraction": null
 }
 ```
 
 `0` для ставок токенов допустим только после подтверждения open-weights
-маршрута; неизвестные вычисления, объём заказов и маржа остаются `null`.
+маршрута; неизвестные вычисления, объём заказов, средний чек и маржа остаются
+`null`. Поля рублёвого калькулятора возвращают `null`, пока не заполнены все
+явно перечисленные входы.
 
 ```sh
 python3 docs/submission/economics.py data/economics-input.json
