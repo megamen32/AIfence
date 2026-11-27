@@ -193,11 +193,13 @@ func newAgent() *agentsdk.Agent {
 	}).ParseFS(assets, "index.html"))
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Description: "Сравнение показателей", Handler: func(w http.ResponseWriter, r *http.Request) error {
 		data := struct {
-			Batch     *Batch
-			Error     string
-			CounterID int64
+			Batch      *Batch
+			Error      string
+			CounterID  int64
+			SourcePath string
 		}{CounterID: 114698578}
 		q := r.URL.Query()
+		data.SourcePath = q.Get("source_path")
 		if rawCounter := q.Get("counter_id"); rawCounter != "" {
 			parsed, e := strconv.ParseInt(rawCounter, 10, 64)
 			if e != nil || parsed < 0 {
