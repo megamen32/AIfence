@@ -10,6 +10,7 @@ type familyCoverage struct {
 	ObservedSeries  int `json:"observed_series"`
 	ComparablePairs int `json:"comparable_pairs"`
 	MissingSeries   int `json:"missing_series"`
+	MissingSKUWeeks int `json:"missing_sku_weeks"`
 }
 
 // familyDelta aggregates counts and evidence IDs only. Absolute prices stay

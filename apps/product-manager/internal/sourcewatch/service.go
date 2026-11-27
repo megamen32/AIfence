@@ -357,7 +357,12 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	if len(w.SKUs) > 0 || w.Family != "" {
 		marketStatus = family.Status
 	}
-	if metrika.Status != "ok" || (w.MarketBinding != "" && marketStatus != "ok" && marketStatus != "partial") {
+	// A market answer that names the weeks it lacks is a valid observation of
+	// absence. It must not silence a store or demand signal that the other
+	// sources did prove, and it must not become a price cause on its own.
+	// Only a malformed envelope, or no evidence from any source, is incomplete.
+	marketUsable := marketStatus == "ok" || marketStatus == "partial" || marketStatus == "unavailable"
+	if metrika.Status != "ok" || (w.MarketBinding != "" && !marketUsable) {
 		return Outcome{Status: "incomplete"}, nil
 	}
 	var delta *observation
