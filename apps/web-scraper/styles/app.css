@@ -5,6 +5,7 @@
  */
 
 @import "tailwindcss";
+@import "./design-system.css";
 
 @plugin "../.airlock/toolchain/lib/tailwind/daisyui.mjs" {
   themes: light --default, dark --prefersdark;

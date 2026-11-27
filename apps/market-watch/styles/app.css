@@ -5,6 +5,7 @@
  */
 
 @import "tailwindcss";
+@import "./design-system.css";
 
 @plugin "../.airlock/toolchain/lib/tailwind/daisyui.mjs" {
   themes: light --default, dark --prefersdark;
@@ -46,16 +47,16 @@
 
 /* Market Watch uses the active Airlock theme for both standalone and embedded views. */
 body {
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--aif-font-sans);
   background: var(--color-base-200);
   color: var(--color-base-content);
 }
 .workspace {
   --border: color-mix(in srgb, var(--color-base-content) 15%, var(--color-base-100));
   --muted: color-mix(in srgb, var(--color-base-content) 72%, var(--color-base-100));
-  max-width: 94rem;
+  max-width: var(--aif-content-max);
   margin-inline: auto;
-  padding: 0 clamp(.85rem, 3vw, 3rem) 2.5rem;
+  padding: 0 var(--aif-page-pad) 2.5rem;
   min-width: 0;
 }
 .brand, .section-nav, .section-heading, .panel-head, .shop, .message,
@@ -75,7 +76,7 @@ h2 { font-size: 1.09rem; letter-spacing: -.018em; font-weight: 660; }
 button, a, input, select { touch-action: manipulation; }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .search-panel, .result-panel, .source-card, .source-summary, .empty-state {
-  background: var(--color-base-100); border: 1px solid var(--border); border-radius: .8rem;
+  background: var(--color-base-100); border: 1px solid var(--border); border-radius: var(--aif-radius-card);
 }
 .search-panel { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .8rem; padding: 1rem; }
 .field { flex: 1 1 9.5rem; min-width: 0; display: grid; gap: .35rem; font-size: .82rem; font-weight: 610; }

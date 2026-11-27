@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Metrika Analyst</title>
 <style>
-:root{color-scheme:dark;--bg:#16181b;--surface:#1f2226;--surface-2:#272b30;--line:#33383f;--text:#f1f3f6;--muted:#98a1ad;--faint:#6d7580;--coral:#f07a6e;--coral-bg:#f07a6e22;--blue:#7aa7ff;--green:#5fd19a;--green-bg:#5fd19a1f;--amber:#e8b64f;--amber-bg:#e8b64f1f;--grey:#8d96a3}
+:root{color-scheme:dark;--aif-font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--aif-content-max:72rem;--aif-page-pad:clamp(1rem,3vw,2.25rem);--aif-radius-control:.65rem;--aif-radius-card:.9rem;--aif-motion-base:420ms;--bg:#16181b;--surface:#1f2226;--surface-2:#272b30;--line:#33383f;--text:#f1f3f6;--muted:#98a1ad;--faint:#6d7580;--coral:#f07a6e;--coral-bg:#f07a6e22;--blue:#7aa7ff;--green:#5fd19a;--green-bg:#5fd19a1f;--amber:#e8b64f;--amber-bg:#e8b64f1f;--grey:#8d96a3}
 @media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f4f6f8;--surface:#fff;--surface-2:#eef1f4;--line:#dde3e8;--text:#17212b;--muted:#5f6b77;--faint:#8b96a1;--coral:#c9483f;--coral-bg:#c9483f17;--blue:#2f6bd6;--green:#1c8a5a;--green-bg:#1c8a5a14;--amber:#a46b00;--amber-bg:#a46b0014;--grey:#7b8592}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
-.shell{max-width:1040px;margin:0 auto;padding:18px clamp(12px,3vw,28px) 32px;display:grid;gap:14px}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 var(--aif-font-sans);font-variant-numeric:tabular-nums}
+.shell{max-width:var(--aif-content-max);margin:0 auto;padding:var(--aif-page-pad) var(--aif-page-pad) 32px;display:grid;gap:var(--aif-space-4)}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:16px}
 .brand svg{color:var(--blue)}
@@ -107,7 +107,7 @@ button{font:inherit;font-weight:640;padding:8px 14px;border:0;border-radius:8px;
 <main class="shell">
 <header class="top">
   <div class="brand"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-7"/></svg>Metrika Analyst</div>
-  {{if .SourceChip}}<span class="chip"><i></i>{{.SourceChip}}</span>{{end}}
+  {{if .SourceChip}}<span class="chip"><i></i><span data-source-chip>{{.SourceChip}}</span></span>{{end}}
 </header>
 
 {{if eq .State "ok"}}
@@ -150,8 +150,8 @@ button{font:inherit;font-weight:640;padding:8px 14px;border:0;border-radius:8px;
   {{range .Sources}}
     <article class="src {{.Tone}}">
       <div class="src-head"><span class="mark">{{.Mark}}</span>{{.Title}}</div>
-      <small>{{.Detail}}</small>
-      {{if .Locator}}<code>{{.Locator}}</code>{{end}}
+      <small data-source-detail>{{.Detail}}</small>
+      {{if .Locator}}<code data-source-locator>{{.Locator}}</code>{{end}}
       <span class="status">{{.Status}}</span>
     </article>
   {{end}}
@@ -258,6 +258,23 @@ button{font:inherit;font-weight:640;padding:8px 14px;border:0;border-radius:8px;
   form.addEventListener("submit", () => save(read()));
   clear?.addEventListener("click", () => { try { localStorage.removeItem(key); } catch (_) {} render(); });
   save(read());
+})();
+</script>
+<script>
+(() => {
+  const chip = document.querySelector("[data-source-chip]");
+  if (chip && chip.textContent.trim().startsWith("Выгрузка Метрики ·")) {
+    chip.textContent = "Яндекс Метрика · недельное чтение";
+  }
+  document.querySelectorAll("[data-source-detail]").forEach((node) => {
+    const value = node.textContent.trim().toLowerCase();
+    if (value.startsWith("aifence-")) node.textContent = "Сохранённое наблюдение Метрики";
+  });
+  document.querySelectorAll("[data-source-locator]").forEach((node) => {
+    if (node.textContent.trim().toLowerCase().startsWith("scenario:")) {
+      node.textContent = "Недельное наблюдение Метрики";
+    }
+  });
 })();
 </script>
 </body>
