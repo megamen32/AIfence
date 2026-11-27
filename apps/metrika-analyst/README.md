@@ -236,3 +236,21 @@ collect и в `details` соответствующей строки `watchdog.al
 подходят к другому набору. Для шести живых прогонов под одним пользователем
 завершайте чат до переключения набора, затем запускайте новый чат. Для
 параллельных прогонов используйте отдельных пользователей.
+
+## Две недели внешнего спроса
+
+`compare_wordstat` возвращает число запросов, `compare_google_trends` — недельный индекс 0–100. Вход обоих инструментов содержит точные `product_key`, `query`, `geo` и `monday` (UTC-понедельник сразу после двух сравниваемых недель). Периоды включают даты с понедельника по воскресенье. `ALL` означает все регионы. Для Wordstat `RU` соответствует региону 225, также принимается код региона Яндекса.
+
+- Wordstat без `source_path` выполняет один запрос к официальному API через пользовательское подключение `wordstat` и необязательный `wordstat_folder_id`. API отдаёт историю по 7 октября 2026 года. Более поздняя неделя, отсутствие подключения или строки за неделю дают `unavailable`.
+- Wordstat с `source_path` и Google Trends читают один явно выбранный `aifence.v1` JSON с `source: research` из области текущего пользователя в Airlock (`evidence/user-<id>/…`). Укажите `fixtures/external-demand.json`, чтобы явно выбрать встроенный синтетический ряд Kaspersky Endpoint Security за недели 14–20 и 21–27 сентября 2026 года. Пустой путь для Trends даёт `unavailable`.
+- Каждое наблюдение сохраняет `period`, `source_ref` с локатором исходной строки и `details` с `query`, `geo`, `origin`, `synthetic` и `normalization`. Маркеры происхождения — `live_api`, `authorized_import` и `synthetic_fixture`. В импорте используйте только локаторы и URL без учётных данных.
+- Для Wordstat задайте `normalization: weekly_count_all_devices`. Для Google Trends возьмите обе недели из одной выгрузки с общей шкалой, установите `normalization: google_trends_0_100:<export-id>` и `source_ref.revision: <export-id>` для обеих строк. Не объединяйте отдельно нормированные выгрузки и не записывайте подавленное или отсутствующее значение как 0. Индекс описывает относительный поисковый интерес.
+- `ok` содержит ровно две сопоставимые строки, от ранней к поздней. При неполных данных `unavailable` содержит пустой массив и причину. Некорректный ответ, дубликаты и ошибки чтения API имеют явную ошибку. Наблюдаемый ноль остаётся числом.
+
+Для `sourcewatch` сохранён вызов `compare_demand({phrase, monday})` с `source: wordstat`, `product_key: <phrase>`, источником `yandex-wordstat:search-api` и пустым массивом для `unavailable`. Новые результаты с `source: research` совместимы с импортом evidence-v1 в Product Manager. Существующие `read_wordstat` и `read_google_trends` работают со снимками Product Manager.
+
+Локальная проверка связки и происхождения данных в `apps/metrika-analyst`:
+
+```sh
+GOMAXPROCS=2 GOFLAGS=-p=1 go test -run '^TestExternalDemand' -count=1 .
+```

@@ -1,0 +1,109 @@
+{
+  "schema_version": "aifence.v1",
+  "source": "research",
+  "as_of": "2026-09-28T00:00:00Z",
+  "status": "ok",
+  "observations": [
+    {
+      "id": "kes:wordstat:ru:2026-09-14",
+      "kind": "metric",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "search_queries",
+      "value": 1120,
+      "unit": "count",
+      "period": {
+        "from": "2026-09-14",
+        "to": "2026-09-20"
+      },
+      "source_ref": {
+        "source_id": "wordstat",
+        "locator": "fixtures/external-demand.json#kes:wordstat:ru:2026-09-14",
+        "revision": "kes-weekly-wordstat-r1"
+      },
+      "status": "observed",
+      "details": {
+        "query": "Kaspersky Endpoint Security",
+        "geo": "RU",
+        "origin": "synthetic_fixture",
+        "synthetic": true,
+        "normalization": "weekly_count_all_devices"
+      }
+    },
+    {
+      "id": "kes:wordstat:ru:2026-09-21",
+      "kind": "metric",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "search_queries",
+      "value": 980,
+      "unit": "count",
+      "period": {
+        "from": "2026-09-21",
+        "to": "2026-09-27"
+      },
+      "source_ref": {
+        "source_id": "wordstat",
+        "locator": "fixtures/external-demand.json#kes:wordstat:ru:2026-09-21",
+        "revision": "kes-weekly-wordstat-r1"
+      },
+      "status": "observed",
+      "details": {
+        "query": "Kaspersky Endpoint Security",
+        "geo": "RU",
+        "origin": "synthetic_fixture",
+        "synthetic": true,
+        "normalization": "weekly_count_all_devices"
+      }
+    },
+    {
+      "id": "kes:google_trends:ru:2026-09-14",
+      "kind": "metric",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "search_interest",
+      "value": 61,
+      "unit": "index",
+      "period": {
+        "from": "2026-09-14",
+        "to": "2026-09-20"
+      },
+      "source_ref": {
+        "source_id": "google_trends",
+        "locator": "fixtures/external-demand.json#kes:google_trends:ru:2026-09-14",
+        "revision": "kes-weekly-trends-r1"
+      },
+      "status": "observed",
+      "details": {
+        "query": "Kaspersky Endpoint Security",
+        "geo": "RU",
+        "origin": "synthetic_fixture",
+        "synthetic": true,
+        "normalization": "google_trends_0_100:kes-weekly-trends-r1"
+      }
+    },
+    {
+      "id": "kes:google_trends:ru:2026-09-21",
+      "kind": "metric",
+      "product_key": "kaspersky_endpoint_security",
+      "metric_key": "search_interest",
+      "value": 54,
+      "unit": "index",
+      "period": {
+        "from": "2026-09-21",
+        "to": "2026-09-27"
+      },
+      "source_ref": {
+        "source_id": "google_trends",
+        "locator": "fixtures/external-demand.json#kes:google_trends:ru:2026-09-21",
+        "revision": "kes-weekly-trends-r1"
+      },
+      "status": "observed",
+      "details": {
+        "query": "Kaspersky Endpoint Security",
+        "geo": "RU",
+        "origin": "synthetic_fixture",
+        "synthetic": true,
+        "normalization": "google_trends_0_100:kes-weekly-trends-r1"
+      }
+    }
+  ],
+  "warnings": []
+}
