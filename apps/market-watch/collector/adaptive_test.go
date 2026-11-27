@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,5 +39,34 @@ func TestAdaptiveWrongIdentityAndPrice(t *testing.T) {
 	result, e = ParseAdapter(s, spec, u, raw, time.Now())
 	if e != nil || len(result.Offers) > 0 {
 		t.Fatal("from price accepted", result, e)
+	}
+}
+
+func TestAdaptiveUniqueVisibleCurrentPrice(t *testing.T) {
+	u := "https://shop.example.com/item/"
+	s := Source{ID: "shop", Host: "shop.example.com"}
+	field := func(q string) Field { return Field{Selector: q} }
+	c := AdapterCase{ID: "visible", Kind: "product", Match: ".pd-price", Rows: "body", Name: field("h1"), SKU: field(".pd-sku code"), Price: field(".pd-price > b.pr"), Currency: field(".pd-price > b.pr"), PriceScope: ".pd-price", Status: field(".pd-price__ask"), Basis: "displayed_total"}
+	spec := AdapterSpec{Cases: []AdapterCase{c}}
+	if e := ValidateAdapter(spec); e != nil {
+		t.Fatal(e)
+	}
+	body := `<html><head><link rel="canonical" href="/item/"></head><body><h1>License</h1><div class="pd-sku">Артикул <code>ABC</code></div><div class="pd-price"><s>341 600 ₽</s><b class="pr">170 800 ₽</b></div></body></html>`
+	r, e := ParseAdapter(s, spec, u, []byte(body), time.Now())
+	if e != nil || len(r.Offers) != 1 || r.Offers[0].PriceMinor != 17080000 || r.Offers[0].SKU != "ABC" {
+		t.Fatal("actual published amount rejected", r, e)
+	}
+	for _, bad := range []string{
+		strings.Replace(body, "<s>341 600 ₽</s>", "<span>341 600 ₽</span>", 1),
+		strings.Replace(body, "<b class=\"pr\">", "<b class=\"pr\" hidden>", 1),
+		strings.Replace(body, "170 800 ₽", "от 170 800 ₽", 1),
+		strings.Replace(body, "170 800 ₽", "170 800", 1),
+		strings.Replace(body, "href=\"/item/\"", "href=\"/other/\"", 1),
+		strings.Replace(body, "<h1>License</h1>", "<h1>License</h1><h1>Other</h1>", 1),
+	} {
+		r, e = ParseAdapter(s, spec, u, []byte(bad), time.Now())
+		if e != nil || len(r.Offers) > 0 {
+			t.Fatal("ambiguous/incorrect amount accepted", bad, r, e)
+		}
 	}
 }
