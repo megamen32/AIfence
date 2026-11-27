@@ -86,18 +86,18 @@ type WeekDelta struct {
 }
 
 type deltaSeriesKey struct {
-	seller, url, basis, currency, name string
-	quantity, maximum                  int64
-	terms                              comparisonTerms
+	seller, url, basis, currency string
+	quantity, maximum            int64
+	terms                        comparisonTerms
 }
 
 func deltaKeyOf(o Observation) deltaSeriesKey {
-	return deltaSeriesKey{o.Details.Seller, o.SourceRef.URL, o.Details.PriceBasis, o.Currency, o.Details.Name,
+	return deltaSeriesKey{o.Details.Seller, o.SourceRef.URL, o.Details.PriceBasis, o.Currency,
 		quantityValue(o.Details.Quantity), quantityValue(o.Details.MaxQuantity), termsOf(o)}
 }
 
 func deltaLabel(k deltaSeriesKey) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%d/%d|%v", k.seller, k.url, k.basis, k.currency, k.name, k.quantity, k.maximum, k.terms)
+	return fmt.Sprintf("%s|%s|%s|%s|%d/%d|%v", k.seller, k.url, k.basis, k.currency, k.quantity, k.maximum, k.terms)
 }
 
 func parseWeek(label, from, to string) (time.Time, time.Time, error) {
