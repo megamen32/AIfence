@@ -33,8 +33,10 @@ templ MonitorPanel(m *Monitor) {
 		}
 		<section class="dashboard-exceptions" aria-label="Открытые исключения">
 			<div class="dashboard-heading"><h2>Открытые исключения</h2><small>Потенциал в ₽/нед</small></div>
-			if len(m.Pulse) == 0 {
-				<p class="dashboard-empty">Отклонений нет: продажи всех товаров идут вровень с контролем. Новые появятся здесь после следующей недельной проверки или когда вы спросите в чате «Что требует внимания?».</p>
+			if len(m.Pulse) == 0 && m.Updated == "" && len(m.Products) == 0 {
+				<p class="dashboard-empty">Продаж ещё нет: ни один источник не присылал данные. Спросите в чате «Что требует внимания?», агент прочитает Метрику, продажи и цены, и отклонения появятся здесь.</p>
+			} else if len(m.Pulse) == 0 {
+				<p class="dashboard-empty">Отклонений нет: продажи идут вровень с контролем. Новые появятся здесь после следующей недельной проверки.</p>
 			}
 			for _, p := range m.Pulse {
 				<article class="dashboard-alert">
