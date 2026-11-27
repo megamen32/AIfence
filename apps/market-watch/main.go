@@ -36,7 +36,8 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterTool(tool.Typed[market.AdapterRollbackInput, market.AdaptiveStoreView]("rollback_store_adapter").Description("Restore a previously validated adapter version without rewriting historical price observations.").Execute(s.RollbackAdaptiveOwned).Build(), agentsdk.AccessAdmin)
 	a.RegisterTool(tool.Typed[collector.AdapterTraining, collector.AdapterSpec]("propose_store_adapter").Description("Internal admin diagnostic: propose declarative store adapter from provided training markup; this tool neither activates a store nor decides acceptance.").Execute(proposeStoreAdapter(a)).Build(), agentsdk.AccessAdmin)
 
-	tick := agentsdk.RegisterJob(a, &agentsdk.Job[struct{}, market.AdaptiveTickResult]{Name: "advance_adaptive_stores", Version: 1, Description: "Advance one adaptive store in a bounded leased window", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.AdvanceAdaptiveJob})
+	_ = agentsdk.RegisterJob(a, &agentsdk.Job[struct{}, market.AdaptiveTickResult]{Name: "advance_adaptive_stores", Version: 1, Description: "Advance one adaptive store in a bounded leased window", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.AdvanceAdaptiveJob})
+	tick := agentsdk.RegisterJob(a, &agentsdk.Job[struct{}, market.AdaptiveTickResult]{Name: "advance_adaptive_stores", Version: 2, Description: "Advance independent stores with bounded parallel fetch/parse windows", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.AdvanceAdaptiveJobV2})
 	tick.Cron(&agentsdk.JobCron[struct{}]{Slug: "advance_adaptive_stores", Schedule: "*/3 * * * *", Description: "Advance due URL tasks using the app database"})
 	configuredCatalog := a.RegisterEnvVar(&agentsdk.EnvVar{
 		Slug: "baserow_catalog_url", Description: "Authenticated native Baserow price matrix URL for this deployment",

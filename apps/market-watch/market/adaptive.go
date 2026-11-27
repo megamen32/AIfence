@@ -60,6 +60,11 @@ type AdapterReceipt struct {
 	ArchivePath   string    `json:"archive_path,omitempty"`
 	ArchiveOffset int64     `json:"archive_offset,omitempty"`
 	ArchiveLength int64     `json:"archive_length,omitempty"`
+	HTTPStatus    int       `json:"http_status,omitempty"`
+	ResponseURL   string    `json:"response_url,omitempty"`
+	Location      string    `json:"location,omitempty"`
+	Bytes         int64     `json:"bytes,omitempty"`
+	ArchiveState  string    `json:"archive_state,omitempty"`
 }
 type AdapterTask struct {
 	URL         string    `json:"url"`
@@ -954,6 +959,9 @@ func (s *Service) refreshAdaptive(ctx context.Context, src catalog.Source, at ti
 	if a.PauseUntil.After(s.now()) {
 		r.Errors = []string{"source paused until " + a.PauseUntil.Format(time.RFC3339)}
 		return r
+	}
+	if s.conn != nil {
+		return s.refreshAdaptiveNative(ctx, src, a, at)
 	}
 	// Process independent due URLs, rather than restarting discovery.
 	var ready []AdapterTask
