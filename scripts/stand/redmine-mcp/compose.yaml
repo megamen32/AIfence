@@ -1,0 +1,29 @@
+# Redmine MCP for Product Manager on the local Airlock stand.
+# Start: docker --context colima-aifence compose -f scripts/stand/redmine-mcp/compose.yaml up -d --build
+# Airlock reaches it on the private "aifence" network.
+# The Airlock private-CIDR policy permits this local test route.
+name: aifence-redmine-mcp
+services:
+  redmine-mcp:
+    build: .
+    image: aifence-redmine-mcp:2.23.0
+    restart: unless-stopped
+    environment:
+      REDMINE_URL: http://aifence-personal-redmine:3000
+      REDMINE_PUBLIC_URL: http://redmine.localhost:42080
+      REDMINE_PER_USER_TRUST_PROXY: "true"
+      REDMINE_MCP_ALLOW_TOOLS: list_redmine_projects,list_project_trackers,list_project_issue_custom_fields,list_redmine_issues,get_redmine_issue,create_redmine_issue,update_redmine_issue
+    networks:
+      aifence:
+        aliases: [redmine-mcp]
+      redmine:
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 384m
+networks:
+  aifence:
+    external: true
+    name: aifence
+  redmine:
+    external: true
+    name: aifence-personal-redmine_backend

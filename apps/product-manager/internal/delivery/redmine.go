@@ -1,17 +1,17 @@
-// Package delivery pushes owner-approved Product Manager results to the
-// customer's work tools: a Redmine issue draft and a Dion message draft.
-// Nothing here runs from chat or a model tool. Only the panel's explicit
-// confirmation POST reaches these functions.
+// Package delivery puts Product Manager results into the customer's work
+// tools: a Redmine issue draft per verified signal and the morning Dion
+// message. A background job runs it; chat and model tools cannot reach it.
 package delivery
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,16 +23,21 @@ import (
 // AILabel is the visible mark on every issue the assistant drafts.
 const AILabel = "сгенерирована ИИ-помощником"
 
-// Field names created in Redmine for assistant drafts. When a Redmine
-// installation has no such fields the marker goes into subject/description.
+// Field names configured on the authorized Redmine project.
 const (
 	FieldAI     = "Сгенерирована ИИ-помощником"
 	FieldSignal = "ID сигнала"
 )
 
-// Requester is the part of an Airlock connection handle the delivery needs.
-type Requester interface {
-	Request(ctx context.Context, opts agentsdk.RequestOpts) ([]byte, error)
+// Redmine delivers backlog drafts to one Redmine project through the
+// Redmine MCP server. Airlock injects the assistant's API key.
+type Redmine struct {
+	MCP       MCPCaller
+	DB        agentsdk.DBTX
+	Transact  func(context.Context, *sql.TxOptions, func(agentsdk.DBTX) error) error
+	Project   string // Redmine project identifier
+	Tracker   string // tracker name, e.g. Улучшение
+	PublicURL string // browser-facing Redmine origin for links
 }
 
 // RedmineIssue is the stored receipt of one delivered issue.
@@ -42,27 +47,33 @@ type RedmineIssue struct {
 	URL      string `json:"url"`
 	Subject  string `json:"subject"`
 	Reused   bool   `json:"reused,omitempty"`
+	// Noted marks an existing similar issue that received a comment with the
+	// new signal instead of a duplicate.
+	Noted     bool `json:"noted,omitempty"`
+	JournalID int  `json:"journal_id,omitempty"`
 }
 
-// Redmine delivers approved backlog tasks to one Redmine project.
-type Redmine struct {
-	Conn      Requester
-	DB        agentsdk.DBTX
-	Project   string // Redmine project identifier
-	Tracker   string // tracker name, e.g. Улучшение
-	PublicURL string // browser-facing Redmine origin for links
-}
-
-// SignalKey is the idempotency key: the first producer signal of the card,
-// or the hypothesis ID when the card has no signal.
+// SignalKey is the first producer signal recorded on the card.
 func SignalKey(r decision.Record) string {
 	for _, id := range r.Hypothesis.SignalIDs {
 		if strings.TrimSpace(id) != "" {
 			return strings.TrimSpace(id)
 		}
 	}
-	return r.Hypothesis.ID
+	return ""
 }
+
+// Eligible reports whether a card carries a verified signal window and may
+// become a backlog draft without a human typing anything.
+func Eligible(r decision.Record) bool {
+	c := r.SignalContrast
+	return c != nil && !r.SignalContrastUnverified && c.Basis != "" &&
+		c.Baseline.From != "" && c.Baseline.To != "" && c.Current.From != "" && c.Current.To != "" &&
+		finite(c.BaselineMean) && finite(c.CurrentMean) && finite(c.RelativeChangePct) &&
+		r.EvidenceSnapshotID != "" && SignalKey(r) != "" && r.Hypothesis.Status != "rejected"
+}
+
+func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 // Lookup returns the stored issue for this owner and signal, if any.
 func (d *Redmine) Lookup(ctx context.Context, owner, signal string) (*RedmineIssue, error) {
@@ -81,17 +92,33 @@ func (d *Redmine) Lookup(ctx context.Context, owner, signal string) (*RedmineIss
 	return &out, nil
 }
 
-// Deliver creates the Redmine issue for an approved card exactly once per
-// owner and signal. Order: local receipt, then a search in Redmine by the
-// signal field or subject marker (covers a lost local write), then create.
+// Deliver creates the Redmine issue for a card exactly once per owner and
+// signal. Order: local receipt, then a search in Redmine by the "ID сигнала"
+// field (an issue made earlier or by hand is reused), then create.
 func (d *Redmine) Deliver(ctx context.Context, owner string, r decision.Record) (RedmineIssue, error) {
-	if r.Task == nil {
-		return RedmineIssue{}, errors.New("сначала подтвердите задачу на карточке")
+	if !Eligible(r) {
+		return RedmineIssue{}, errors.New("у карточки нет подтверждённого сигнала с измеренными периодами")
 	}
+	if d.Transact == nil {
+		return d.deliver(ctx, owner, r)
+	}
+	var issue RedmineIssue
+	err := d.Transact(ctx, nil, func(tx agentsdk.DBTX) error {
+		// Serialize the remote lookup and mutation across jobs and interactive requests.
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, "pm-redmine-delivery", d.Project); err != nil {
+			return err
+		}
+		scoped := *d
+		scoped.DB = tx
+		var err error
+		issue, err = scoped.deliver(ctx, owner, r)
+		return err
+	})
+	return issue, err
+}
+
+func (d *Redmine) deliver(ctx context.Context, owner string, r decision.Record) (RedmineIssue, error) {
 	signal := SignalKey(r)
-	if signal == "" {
-		return RedmineIssue{}, errors.New("у карточки нет идентификатора сигнала")
-	}
 	if got, err := d.Lookup(ctx, owner, signal); err != nil || got != nil {
 		if got != nil {
 			return *got, nil
@@ -102,13 +129,18 @@ func (d *Redmine) Deliver(ctx context.Context, owner string, r decision.Record) 
 	if err != nil {
 		return RedmineIssue{}, err
 	}
-	subject := Subject(r, signal)
-	issue, found, err := d.find(ctx, project, signal, subject)
+	issue, found, err := d.find(ctx, project, signal)
 	if err != nil {
 		return RedmineIssue{}, err
 	}
 	if !found {
-		issue, err = d.create(ctx, project, r, signal, subject)
+		issue, found, err = d.similar(ctx, project, r, signal)
+		if err != nil {
+			return RedmineIssue{}, err
+		}
+	}
+	if !found {
+		issue, err = d.create(ctx, project, r, signal, Subject(r, signal))
 		if err != nil {
 			return RedmineIssue{}, err
 		}
@@ -132,117 +164,247 @@ func (d *Redmine) Deliver(ctx context.Context, owner string, r decision.Record) 
 type projectInfo struct {
 	ID        int
 	TrackerID int
-	FieldAI   int
 	FieldSig  int
+	FieldAI   int
+}
+
+type customField struct {
+	ID    int `json:"id"`
+	Value any `json:"value"`
+}
+
+type named struct {
+	ID           int           `json:"id"`
+	Name         string        `json:"name"`
+	Identifier   string        `json:"identifier"`
+	Subject      string        `json:"subject"`
+	Description  string        `json:"description"`
+	Error        string        `json:"error"`
+	CustomFields []customField `json:"custom_fields"`
+	Journals     []struct {
+		ID    int    `json:"id"`
+		Notes string `json:"notes"`
+	} `json:"journals"`
+}
+
+func (d *Redmine) call(ctx context.Context, tool string, args map[string]any, out any) error {
+	var raw json.RawMessage
+	res, err := d.MCP.CallTool(ctx, tool, args)
+	if err == nil {
+		err = decodeMCP(res, &raw)
+	}
+	if err != nil {
+		return fmt.Errorf("Redmine MCP %s: %w", tool, err)
+	}
+	var obj struct {
+		Error  any             `json:"error"`
+		Result json.RawMessage `json:"result"`
+	}
+	if json.Unmarshal(raw, &obj) == nil {
+		if obj.Error != nil {
+			return fmt.Errorf("Redmine MCP %s: %v", tool, obj.Error)
+		}
+		if len(obj.Result) > 0 {
+			raw = obj.Result
+		}
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("Redmine MCP %s: %w", tool, err)
+	}
+	return nil
+}
+
+func (d *Redmine) list(ctx context.Context, tool string, args map[string]any) ([]named, error) {
+	var items []named
+	if err := d.call(ctx, tool, args, &items); err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.Error != "" {
+			return nil, fmt.Errorf("Redmine MCP %s: %s", tool, item.Error)
+		}
+	}
+	return items, nil
 }
 
 func (d *Redmine) project(ctx context.Context) (projectInfo, error) {
-	body, err := d.Conn.Request(ctx, agentsdk.RequestOpts{Path: "/projects/" + url.PathEscape(d.Project) + ".json?include=trackers,issue_custom_fields"})
+	projects, err := d.list(ctx, "list_redmine_projects", map[string]any{})
 	if err != nil {
-		return projectInfo{}, fmt.Errorf("Redmine: проект %s недоступен: %w", d.Project, err)
+		return projectInfo{}, err
 	}
-	var res struct {
-		Project struct {
-			ID       int `json:"id"`
-			Trackers []struct {
-				ID   int    `json:"id"`
-				Name string `json:"name"`
-			} `json:"trackers"`
-			Fields []struct {
-				ID   int    `json:"id"`
-				Name string `json:"name"`
-			} `json:"issue_custom_fields"`
-		} `json:"project"`
-	}
-	if err := json.Unmarshal(body, &res); err != nil {
-		return projectInfo{}, fmt.Errorf("Redmine: ответ проекта не JSON: %w", err)
-	}
-	p := projectInfo{ID: res.Project.ID}
-	for _, t := range res.Project.Trackers {
-		if p.TrackerID == 0 || t.Name == d.Tracker {
-			p.TrackerID = t.ID
-		}
-		if t.Name == d.Tracker {
-			break
-		}
-	}
-	for _, f := range res.Project.Fields {
-		switch f.Name {
-		case FieldAI:
-			p.FieldAI = f.ID
-		case FieldSignal:
-			p.FieldSig = f.ID
+	p := projectInfo{}
+	for _, it := range projects {
+		if it.Identifier == d.Project || strconv.Itoa(it.ID) == d.Project {
+			p.ID = it.ID
 		}
 	}
 	if p.ID == 0 {
-		return projectInfo{}, errors.New("Redmine: проект не найден")
+		return projectInfo{}, fmt.Errorf("Redmine: проект %s не найден или не доступен «ИИ помощнику»", d.Project)
+	}
+	trackers, err := d.list(ctx, "list_project_trackers", map[string]any{"project_id": p.ID})
+	if err != nil {
+		return projectInfo{}, err
+	}
+	for _, t := range trackers {
+		if t.Name == d.Tracker {
+			p.TrackerID = t.ID
+		}
+	}
+	fields, err := d.list(ctx, "list_project_issue_custom_fields", map[string]any{"project_id": p.ID})
+	if err != nil {
+		return projectInfo{}, err
+	}
+	for _, f := range fields {
+		switch f.Name {
+		case FieldSignal:
+			p.FieldSig = f.ID
+		case FieldAI:
+			p.FieldAI = f.ID
+		}
+	}
+	if p.FieldAI == 0 || p.FieldSig == 0 || p.TrackerID == 0 {
+		return projectInfo{}, errors.New("Redmine: в проекте отсутствует трекер или обязательные поля помощника")
 	}
 	return p, nil
 }
 
-type issueList struct {
-	Issues []struct {
-		ID      int    `json:"id"`
-		Subject string `json:"subject"`
-	} `json:"issues"`
-}
-
-func (d *Redmine) find(ctx context.Context, p projectInfo, signal, subject string) (RedmineIssue, bool, error) {
-	q := url.Values{"project_id": {strconv.Itoa(p.ID)}, "status_id": {"*"}, "limit": {"5"}}
-	if p.FieldSig != 0 {
-		q.Set("cf_"+strconv.Itoa(p.FieldSig), signal)
-	} else {
-		q.Set("subject", "~"+marker(signal))
-	}
-	body, err := d.Conn.Request(ctx, agentsdk.RequestOpts{Path: "/issues.json?" + q.Encode()})
-	if err != nil {
-		return RedmineIssue{}, false, fmt.Errorf("Redmine: поиск задачи по сигналу: %w", err)
-	}
-	var res issueList
-	if err := json.Unmarshal(body, &res); err != nil {
-		return RedmineIssue{}, false, err
-	}
-	for _, it := range res.Issues {
-		if p.FieldSig != 0 || strings.Contains(it.Subject, marker(signal)) {
-			return RedmineIssue{SignalID: signal, IssueID: it.ID, URL: d.link(it.ID), Subject: it.Subject}, true, nil
+func (d *Redmine) find(ctx context.Context, p projectInfo, signal string) (RedmineIssue, bool, error) {
+	args := map[string]any{"project_id": p.ID, "status_id": "*", "limit": 100, "include_custom_fields": true,
+		"filters": map[string]any{"cf_" + strconv.Itoa(p.FieldSig): signal}}
+	for offset := 0; ; offset += 100 {
+		args["offset"] = offset
+		issues, err := d.list(ctx, "list_redmine_issues", args)
+		if err != nil {
+			return RedmineIssue{}, false, fmt.Errorf("Redmine: поиск задачи по сигналу: %w", err)
+		}
+		for _, it := range issues {
+			if it.ID > 0 && slices.ContainsFunc(it.CustomFields, func(f customField) bool { return f.ID == p.FieldSig && f.Value == signal }) {
+				return d.receipt(it, signal), true, nil
+			}
+		}
+		if len(issues) < 100 {
+			return RedmineIssue{}, false, nil
 		}
 	}
-	return RedmineIssue{}, false, nil
+}
+
+func (d *Redmine) receipt(it named, signal string) RedmineIssue {
+	return RedmineIssue{SignalID: signal, IssueID: it.ID, URL: d.link(it.ID), Subject: it.Subject}
+}
+
+// A product can have several unrelated problems. Require the exact product
+// and proposed intervention, or the exact issue/card title, for a match.
+func relevant(it named, r decision.Record) bool {
+	h := r.Hypothesis
+	product, action, title := strings.TrimSpace(h.ProductKey), strings.TrimSpace(h.ProposedAction), strings.TrimSpace(h.Title)
+	sameTitle := title != "" && (strings.EqualFold(strings.TrimSpace(it.Subject), title) ||
+		strings.HasPrefix(it.Subject, "[ИИ] "+title+" ["))
+	sameAction := action != "" && strings.Contains(it.Description, action)
+	return product != "" && strings.Contains(it.Description, "*Продукт:* "+product+"\n") && (sameTitle || sameAction)
+}
+
+func evidenceMarker(r decision.Record) string {
+	c := r.SignalContrast
+	raw, _ := json.Marshal([]any{r.Hypothesis.ProductKey, r.Hypothesis.SuccessCriterion.MetricKey,
+		c.Basis, c.Baseline, c.Current, c.BaselineMean, c.CurrentMean, c.RelativeChangePct})
+	return "PM evidence " + fmt.Sprintf("%x", sha256.Sum256(raw))
+}
+
+func (d *Redmine) similar(ctx context.Context, p projectInfo, r decision.Record, signal string) (RedmineIssue, bool, error) {
+	var matches []named
+	for offset := 0; ; offset += 100 {
+		issues, err := d.list(ctx, "list_redmine_issues", map[string]any{"project_id": p.ID, "status_id": "open", "limit": 100, "offset": offset,
+			"fields": []string{"id", "subject", "description"}})
+		if err != nil {
+			return RedmineIssue{}, false, fmt.Errorf("Redmine: сверка с бэклогом: %w", err)
+		}
+		for _, it := range issues {
+			if it.ID > 0 && relevant(it, r) {
+				matches = append(matches, it)
+			}
+		}
+		if len(issues) < 100 {
+			break
+		}
+	}
+	if len(matches) == 0 {
+		return RedmineIssue{}, false, nil
+	}
+	if len(matches) != 1 {
+		return RedmineIssue{}, false, errors.New("Redmine: найдено несколько подходящих открытых задач")
+	}
+	it := matches[0]
+	get := func() (named, error) {
+		var issue named
+		err := d.call(ctx, "get_redmine_issue", map[string]any{"issue_id": it.ID, "include_journals": true, "include_attachments": false}, &issue)
+		if err == nil && issue.ID != it.ID {
+			err = errors.New("Redmine: не удалось прочитать задачу и её журнал")
+		}
+		return issue, err
+	}
+	prior, err := get()
+	if err != nil {
+		return RedmineIssue{}, false, err
+	}
+	issue := d.receipt(it, signal)
+	if strings.Contains(prior.Description, evidenceMarker(r)) {
+		return issue, true, nil
+	}
+	for _, journal := range prior.Journals {
+		if strings.Contains(journal.Notes, evidenceMarker(r)) || strings.Contains(journal.Notes, "@"+signal+"@") {
+			issue.JournalID, issue.Noted = journal.ID, true
+			return issue, true, nil
+		}
+	}
+	var res map[string]any
+	if err := d.call(ctx, "update_redmine_issue", map[string]any{"issue_id": it.ID, "fields": map[string]any{"notes": Note(r, signal)}}, &res); err != nil {
+		return RedmineIssue{}, false, err
+	}
+	confirmed, err := get()
+	if err != nil {
+		return RedmineIssue{}, false, err
+	}
+	for _, journal := range confirmed.Journals {
+		if journal.ID > 0 && strings.Contains(journal.Notes, evidenceMarker(r)) {
+			issue.JournalID, issue.Noted = journal.ID, true
+			return issue, true, nil
+		}
+	}
+	return RedmineIssue{}, false, errors.New("Redmine: новый комментарий не найден в журнале задачи")
+}
+
+// Note is the comment left on an existing issue for a new signal.
+func Note(r decision.Record, signal string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Новый сигнал по этому продукту (%s): @%s@.\n", AILabel, signal)
+	if c := r.SignalContrast; c != nil {
+		fmt.Fprintf(&b, "Было %s (%s – %s), стало %s (%s – %s), изменение %s%%.\n", num(c.BaselineMean), c.Baseline.From, c.Baseline.To, num(c.CurrentMean), c.Current.From, c.Current.To, signed(c.RelativeChangePct))
+	}
+	if a := strings.TrimSpace(r.Hypothesis.ProposedAction); a != "" {
+		fmt.Fprintf(&b, "Гипотеза помощника: %s\n", a)
+	}
+	fmt.Fprintf(&b, "Снимок данных: @%s@. Источники: %s.\n%s", r.EvidenceSnapshotID, strings.Join(append(slices.Clone(r.Hypothesis.SignalIDs), r.Hypothesis.SupportIDs...), ", "), evidenceMarker(r))
+	return b.String()
 }
 
 func (d *Redmine) create(ctx context.Context, p projectInfo, r decision.Record, signal, subject string) (RedmineIssue, error) {
-	issue := map[string]any{
-		"project_id":  p.ID,
-		"subject":     subject,
-		"description": Description(r, signal),
-	}
-	if p.TrackerID != 0 {
-		issue["tracker_id"] = p.TrackerID
-	}
-	fields := []map[string]any{}
-	if p.FieldAI != 0 {
-		fields = append(fields, map[string]any{"id": p.FieldAI, "value": "1"})
-	}
-	if p.FieldSig != 0 {
-		fields = append(fields, map[string]any{"id": p.FieldSig, "value": signal})
-	}
-	if len(fields) > 0 {
-		issue["custom_fields"] = fields
-	}
-	body, err := d.Conn.Request(ctx, agentsdk.RequestOpts{Method: "POST", Path: "/issues.json", Body: map[string]any{"issue": issue}, Headers: map[string]string{"Content-Type": "application/json"}})
-	if err != nil {
-		return RedmineIssue{}, fmt.Errorf("Redmine: задача не создана: %w", err)
-	}
+	fields := map[string]any{"tracker_id": p.TrackerID, FieldAI: "1", FieldSignal: signal}
 	var res struct {
-		Issue struct {
-			ID      int    `json:"id"`
-			Subject string `json:"subject"`
-		} `json:"issue"`
+		ID      int    `json:"id"`
+		Subject string `json:"subject"`
+		Error   any    `json:"error"`
+		Issue   *named `json:"issue"`
 	}
-	if err := json.Unmarshal(body, &res); err != nil || res.Issue.ID == 0 {
-		return RedmineIssue{}, errors.New("Redmine: ответ без номера задачи")
+	if err := d.call(ctx, "create_redmine_issue", map[string]any{"project_id": p.ID, "subject": subject, "description": Description(r, signal), "fields": fields}, &res); err != nil {
+		return RedmineIssue{}, err
 	}
-	return RedmineIssue{SignalID: signal, IssueID: res.Issue.ID, URL: d.link(res.Issue.ID), Subject: res.Issue.Subject}, nil
+	if res.Issue != nil && res.ID == 0 {
+		res.ID, res.Subject = res.Issue.ID, res.Issue.Subject
+	}
+	if res.Error != nil || res.ID == 0 {
+		return RedmineIssue{}, fmt.Errorf("Redmine: задача не создана: %v", res.Error)
+	}
+	return RedmineIssue{SignalID: signal, IssueID: res.ID, URL: d.link(res.ID), Subject: res.Subject}, nil
 }
 
 func (d *Redmine) link(id int) string {
@@ -275,7 +437,7 @@ func Subject(r decision.Record, signal string) string {
 func Description(r decision.Record, signal string) string {
 	h := r.Hypothesis
 	var b strings.Builder
-	fmt.Fprintf(&b, "_Черновик %s. Создан после подтверждения владельцем в Product Manager._\n\n", AILabel)
+	fmt.Fprintf(&b, "_Черновик %s: фоновая проверка Product Manager нашла сигнал и не нашла по нему задачи._\n\n", AILabel)
 	fmt.Fprintf(&b, "*Продукт:* %s\n", nonEmpty(h.ProductKey, "не указан"))
 	fmt.Fprintf(&b, "*Сигнал:* @%s@\n", signal)
 	if c := r.SignalContrast; c != nil {
@@ -318,12 +480,15 @@ func Description(r decision.Record, signal string) string {
 	if r.CardURL != "" {
 		fmt.Fprintf(&b, "Карточка: %s\n", r.CardURL)
 	}
+	if Eligible(r) {
+		fmt.Fprintln(&b, evidenceMarker(r))
+	}
 	return b.String()
 }
 
 func taskID(r decision.Record) string {
 	if r.Task == nil {
-		return ""
+		return "нет"
 	}
 	return r.Task.ID
 }

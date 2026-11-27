@@ -13,6 +13,7 @@ import (
 	"agent/internal/decision"
 
 	"github.com/airlockrun/agentsdk"
+	"github.com/google/uuid"
 )
 
 // MCPCaller is the part of an Airlock MCP handle the Dion delivery needs.
@@ -20,8 +21,8 @@ type MCPCaller interface {
 	CallTool(ctx context.Context, toolName string, args any) (*agentsdk.MCPToolCallResponse, error)
 }
 
-// DionDraft is one prepared morning message. UserIO stores the draft; it is
-// sent only by an explicit owner confirmation in the panel.
+// DionDraft is one prepared morning message. UserIO stores the draft and its
+// durable send receipt.
 type DionDraft struct {
 	Day        string `json:"day"`
 	ChatID     string `json:"chat_id"`
@@ -42,12 +43,14 @@ type Dion struct {
 	Chat func(context.Context) (string, error) // the only allowed UserIO conversation ID
 }
 
+var OfficeTime = time.FixedZone("Asia/Yekaterinburg", 5*60*60)
+
 // Top picks the record with the largest verified relative change.
 func Top(records []decision.Record) (decision.Record, bool) {
 	best, ok := decision.Record{}, false
 	for _, r := range records {
 		c := r.SignalContrast
-		if c == nil || math.IsNaN(c.RelativeChangePct) || math.IsInf(c.RelativeChangePct, 0) {
+		if !Eligible(r) {
 			continue
 		}
 		if !ok || math.Abs(c.RelativeChangePct) > math.Abs(best.SignalContrast.RelativeChangePct) {
@@ -132,7 +135,7 @@ func (d *Dion) Prepare(ctx context.Context, owner string, now time.Time, records
 	if chat == "" {
 		return DionDraft{}, errors.New("тестовый чат Dion не задан в настройке dion_test_chat")
 	}
-	day := now.UTC().Add(5 * time.Hour).Format("2006-01-02")
+	day := now.In(OfficeTime).Format("2006-01-02")
 	if prev, err := d.byDay(ctx, owner, day); err != nil || (prev != nil && (prev.Sent || prev.ChatID == chat)) {
 		if prev != nil {
 			return *prev, nil
@@ -141,12 +144,18 @@ func (d *Dion) Prepare(ctx context.Context, owner string, now time.Time, records
 	}
 	top, ok := Top(records)
 	text := MorningText(top, ok, day)
-	res, err := d.MCP.CallTool(ctx, "userio.messages.prepare", map[string]any{"conversation_id": chat, "text": text})
+	request := uuid.NewSHA1(uuid.NameSpaceURL, []byte("aifence/dion/"+owner+"/"+day+"/"+chat)).String()
+	res, err := d.MCP.CallTool(ctx, "userio.messages.prepare", map[string]any{
+		"conversation_id": chat, "text": text, "request_id": request,
+	})
 	if err != nil {
 		return DionDraft{}, fmt.Errorf("UserIO: черновик не создан: %w", err)
 	}
 	var out struct {
 		DraftID string `json:"draft_id"`
+		ChatID  string `json:"conversation_id"`
+		Channel string `json:"channel"`
+		Body    string `json:"body"`
 		Draft   struct {
 			ID string `json:"id"`
 		} `json:"draft"`
@@ -161,6 +170,10 @@ func (d *Dion) Prepare(ctx context.Context, owner string, now time.Time, records
 	if id == "" {
 		return DionDraft{}, errors.New("UserIO не вернул draft_id")
 	}
+	if out.ChatID != chat || out.Channel != "dion" || out.Body == "" {
+		return DionDraft{}, errors.New("UserIO вернул неподходящий черновик Dion")
+	}
+	text = out.Body
 	dr := DionDraft{Day: day, ChatID: chat, DraftID: id, Text: text, PreparedAt: now.UTC().Format(time.RFC3339)}
 	if ok {
 		dr.SignalID, dr.CardURL = SignalKey(top), top.CardURL
@@ -168,8 +181,8 @@ func (d *Dion) Prepare(ctx context.Context, owner string, now time.Time, records
 	return dr, d.save(ctx, owner, dr)
 }
 
-// Send approves the stored draft with its exact snapshot. Repeated
-// confirmations return the first receipt and never send twice.
+// Send submits the stored draft with its exact snapshot. Repeated calls return
+// the first receipt and never send twice.
 func (d *Dion) Send(ctx context.Context, owner, day string, now time.Time) (DionDraft, error) {
 	dr, err := d.byDay(ctx, owner, day)
 	if err != nil {
@@ -195,12 +208,19 @@ func (d *Dion) Send(ctx context.Context, owner, day string, now time.Time) (Dion
 	if err != nil {
 		return DionDraft{}, fmt.Errorf("UserIO: отправка не подтверждена: %w", err)
 	}
-	var out map[string]any
+	var out struct {
+		Sent      bool   `json:"sent"`
+		Confirmed bool   `json:"delivery_confirmed"`
+		Status    string `json:"delivery_status"`
+		Receipt   string `json:"receipt"`
+	}
 	if err := decodeMCP(res, &out); err != nil {
 		return DionDraft{}, err
 	}
-	receipt, _ := json.Marshal(out)
-	dr.Sent, dr.SentAt, dr.Receipt = true, now.UTC().Format(time.RFC3339), string(receipt)
+	if !out.Sent || !out.Confirmed || out.Status != "delivered" || out.Receipt == "" {
+		return *dr, errors.New("UserIO не подтвердил доставку в Dion")
+	}
+	dr.Sent, dr.SentAt, dr.Receipt = true, now.UTC().Format(time.RFC3339), out.Receipt
 	return *dr, d.save(ctx, owner, *dr)
 }
 
