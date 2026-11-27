@@ -123,6 +123,12 @@ templ decisionActions(d *Decision) {
 		if d.Action != "" {
 			<p>{ d.Action }</p>
 		}
+		if d.BaserowURL != "" {
+			<a class="text-link" href={ d.BaserowURL } target="_blank" rel="noopener noreferrer">
+				<span>Открыть в Baserow</span>
+				@lucide.Icon("arrow-up-right", "size-4")
+			</a>
+		}
 	</section>
 }
 
