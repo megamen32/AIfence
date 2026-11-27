@@ -69,3 +69,23 @@ func TestAgentComposition(t *testing.T) {
 		t.Fatal("missing opt-in signal topic")
 	}
 }
+
+func TestSourceWatchComposition(t *testing.T) {
+	m := newAgent().Manifest()
+	if len(m.JobCrons) != 0 {
+		t.Fatal("source checks require an owner's explicit schedule")
+	}
+	if !slices.ContainsFunc(m.JobHandlers, func(h wire.JobHandlerDef) bool { return h.Name == "check_source_watch" && h.Version == 1 }) {
+		t.Fatal("missing source watch job")
+	}
+	for _, name := range []string{"start_source_watch", "stop_source_watch", "list_source_watches"} {
+		if !slices.ContainsFunc(m.Tools, func(t wire.ToolDef) bool { return t.Name == name && t.Access == wire.AccessUser }) {
+			t.Errorf("missing user tool %s", name)
+		}
+	}
+	if !slices.ContainsFunc(m.AgentDefinitions, func(d wire.AgentDefinition) bool {
+		return d.Slug == "review_source_signal" && d.ModelSlot == "source_watch_analysis" && d.Capabilities != nil && len(d.Capabilities.Allow) == 0 && len(d.Tools) == 0
+	}) {
+		t.Fatal("signal agent must be restricted to supplied evidence")
+	}
+}
