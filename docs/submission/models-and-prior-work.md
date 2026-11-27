@@ -1,25 +1,75 @@
-# Модели, лицензии и предыдущие наработки
+# Модели, API, лицензии и предыдущие наработки
 
-## Модели и среда
+Сверка выполнена 27 ноября 2026 года по `apps/*/go.mod`,
+`apps/*/package.json`, npm lock-файлам, Dockerfile и сгенерированным
+`THIRD_PARTY_NOTICES.generated.md`. Таблица описывает состав продукта; закрытые
+Airlock-исходники и ключи в репозиторий не входят.
 
-| Компонент | Использование | Лицензия и подтверждение |
+## Модель и платформенная среда
+
+| Компонент | Где используется | Лицензия и статус для подачи |
 | --- | --- | --- |
-| Gemma 4 | В операторском руководстве зафиксирован профиль выполнения `gemma4:aifence-64k` на базе `gemma4:latest` и отдельный профиль сборки `gemma4:latest`. У измеренного образа указаны 8B, Q4_K_M и префикс дайджеста `c6eb396dbd59`. | Для весов Gemma 4 E4B исходная карточка Google указывает Apache-2.0. Точный upstream-артефакт установленной квантовки сверяется по манифесту перед сдачей. В тесте модельного маршрута из сети стенда обработано 60 614 входных токенов и восстановлены 3 из 3 контрольных меток. Полный KES-прогон через Airlock отслеживается отдельно. [Карточка Google](https://huggingface.co/google/gemma-4-E4B-it) · [QA маршрута](model-acceptance/QA-64K-20261126.md) · [Профиль стенда](../qa/stand.md). |
-| Ollama | Среда выполнения Gemma 4 в зафиксированном модельном тесте. | Код Ollama — MIT. Точную версию рантайма для стенда указывает оператор при фиксации релиза. [LICENSE Ollama](https://github.com/ollama/ollama/blob/main/LICENSE). |
-| Sol 6.2 и Terra 6.1 | Для разработки по сведениям владельца. | Перед заполнением формы подтвердить провайдера, точный ID моделей и условия использования. Название библиотеки `airlockrun/sol` учитывается отдельно. |
-| Airlock Enterprise | Предыдущая наработка. Приватная платформа v0.8.15, в проекте закреплён релиз. | Лицензия и право конкурсного показа определяются условиями Enterprise. Для конкурсной версии остаётся пин, исходный код и образы идут через разрешённый операторский маршрут. [Пин платформы](../../platform/airlock.lock.json). |
-| AIfence | Три приложения, контракты, синтетические данные и документация проекта. | Корневой файл LICENSE пока отсутствует. Авторство, состав работ до конкурса и лицензию исходников подтверждает владелец перед передачей. Упоминание traz в плане не подкреплено фактической зависимостью зафиксированных приложений. |
+| **Terra fast** | Единственная модель исполнения Product Manager в конкурсной версии; вызывается через настроенный слот Airlock | Точный checkpoint/model ID, карточка весов и текст лицензии должны быть зафиксированы в финальном релизе. Допуск конкурса: open weights, локальный запуск и лицензия, разрешающая использование; неподтверждённый артефакт нельзя объявлять лицензированным. |
+| Airlock Enterprise v0.8.15 | Аутентификация, чат, слоты моделей, storage, jobs, native app bindings и каталог файлов | Проприетарная Enterprise-лицензия и условия владельца платформы; это предыдущая наработка и закрытая зависимость, её исходники не публикуются. Версия зафиксирована в [`platform/airlock.lock.json`](../../platform/airlock.lock.json). |
+| AIfence | Три приложения, контракты, workflow, синтетические fixtures и документация | Собственный код команды/владельца, заявляемый как собственная предыдущая наработка. В корне репозитория нет `LICENSE`; публичную лицензию или условия передачи конкурсной версии должен выбрать владелец. |
 
-## Основные библиотеки
+Старые QA-файлы в `docs/submission/model-acceptance/` содержат отдельные
+исторические проверки Gemma/Ollama. Они не являются заявлением о текущей модели
+продукта: в подачу выносится только Terra fast после финального read-back.
 
-| Библиотека | Версия | Лицензия |
+## API и внешние сервисы
+
+| API или сервис | Назначение | Лицензия/условия |
 | --- | --- | --- |
-| `airlockrun/agentsdk`, `airlockrun/goai`, `airlockrun/sol` (транзитивная) | v0.11.0, v0.3.4, v0.1.23 | Apache-2.0, Oleg Karpov |
-| `a-h/templ`, `lib/pq`, `temoto/robotstxt` | v0.3.1020, v1.12.3, v1.1.2 | MIT |
-| `PuerkitoBio/goquery`, `gofrs/flock`, `google/uuid` | v1.14.0, v0.13.1, v1.6.0 | BSD-3-Clause |
-| `modelcontextprotocol/go-sdk` (транзитивная) | v1.8.0 | Apache-2.0 и сохранившиеся MIT-вклады, документация вне спецификаций CC BY 4.0 |
-| Tailwind CSS, daisyUI, htmx, Lucide | Tailwind v4.1.0 и daisyUI v5.5.23 по Dockerfile. htmx и Lucide предоставляет SDK. | Tailwind CSS и daisyUI — MIT, htmx — 0BSD, Lucide — ISC и MIT для иконок из Feather |
-| `yandex-metrica-mcp`, `supergateway` (шлюз Metrika Analyst) | 1.0.1, 4.3.0 | MIT по метаданным [BoxLab](https://registry.npmjs.org/yandex-metrica-mcp/1.0.1) и [Supergateway](https://registry.npmjs.org/supergateway/4.3.0) |
-| Playwright (проверка пути покупки) | Фиксированного Python-пина в приложении нет | Apache-2.0. Для включения браузерного бинарника сохранить уведомления соответствующей сборки. [LICENSE](https://github.com/microsoft/playwright-python/blob/main/LICENSE). |
+| Airlock native SDK и app bindings | Запуск приложений, storage, jobs, каталог файлов и вызовы источников от имени пользователя | `agentsdk`/Airlock Enterprise: Apache-2.0 для опубликованного SDK; приватная платформа и её условия описаны отдельно выше. |
+| Yandex Metrika Reports API | Авторизованные отчёты, сравнение периодов и проверка счётчика | Условия API Yandex; токен не хранится в Git. Локальный мост `yandex-metrica-mcp` — MIT. |
+| Yandex Wordstat | Динамика спроса по ключам через MCP-мост | Условия API Yandex; `mcp-yandex-wordstat` — MIT. |
+| Google Trends через HasData MCP | Дополнительная динамика спроса; bridge использует Streamable HTTP | Условия HasData и Google Trends; удалённый сервис не является поставляемой библиотекой. Локальный `mcp-remote` — MIT. |
+| Публичные страницы и структурированные данные магазинов | Market Watch читает разрешённые публичные карточки, цены и условия, с датой и URL | Условия сайтов, robots и rate limits; обход ограничений и авторизация за пределами разрешённых доступов не используются. |
+| Redmine MCP 2.23.0 | Идемпотентное создание задачи с флагом «сгенерирована ИИ-помощником» и ID сигнала | `redmine-mcp-server` — MIT; Redmine и его данные подчиняются условиям отдельного стенда. |
+| UserIO/Dion MCP | Подготовка и отправка утренней сводки в один разрешённый чат | Внешний сервис и пользовательская учётка; условия сервиса, токен и идентификатор чата не входят в Git. |
 
-Версии Go сверяются по `go.mod` каждого приложения, лицензии — по LICENSE именно этих версий. Для поставляемых бинарников сохранить оригинальные LICENSE, copyright и NOTICE по итоговой сборке. Готовые уведомления [Market Watch](../../apps/market-watch/THIRD_PARTY_NOTICES.generated.md) и [Product Manager](../../apps/product-manager/THIRD_PARTY_NOTICES.generated.md) сверить с финальным артефактом. Для поставки шлюза использовать [npm lock](../../apps/metrika-analyst/package-lock.json); таблица покрывает основные компоненты.
+## Go-библиотеки
+
+| Модуль | Версия | Лицензия |
+| --- | --- | --- |
+| `github.com/airlockrun/agentsdk` | v0.11.0 | Apache-2.0, copyright Oleg Karpov; уведомление в `THIRD_PARTY_NOTICES.generated.md` |
+| `github.com/airlockrun/goai` | v0.3.4 | Apache-2.0; notice также фиксирует происхождение Go-порта Vercel AI SDK |
+| `github.com/airlockrun/sol` | v0.1.23, транзитивный/build profile | Apache-2.0 |
+| `github.com/a-h/templ` | v0.3.1020 | MIT |
+| `github.com/PuerkitoBio/goquery` | v1.14.0 | BSD-3-Clause |
+| `github.com/temoto/robotstxt` | v1.1.2 | MIT |
+| `github.com/gofrs/flock` | v0.13.1 | BSD-3-Clause |
+| `github.com/lib/pq` | v1.12.3 | MIT |
+| `github.com/google/uuid` | v1.6.0 | BSD-3-Clause |
+| `github.com/google/jsonschema-go` | v0.4.3 | MIT |
+| `github.com/modelcontextprotocol/go-sdk` | v1.8.0, транзитивный | Apache-2.0 и сохранившиеся MIT-вклады; документация вне спецификаций CC BY-4.0 |
+
+Версии взяты из `go.mod` приложений. `PuerkitoBio/goquery` и
+`temoto/robotstxt` реально импортируются Market Watch, но в текущем
+сгенерированном notice Market Watch их блоков нет; перед публикацией нужно
+перегенерировать уведомления и проверить итоговый бинарник.
+
+## Node-мосты и UI
+
+| Пакет | Версия | Лицензия |
+| --- | --- | --- |
+| `mcp-remote` | 0.1.43 | MIT; pinned upstream описан в `apps/google-trends/UPSTREAM.md` |
+| `yandex-metrica-mcp` | 1.0.1 | MIT по `apps/metrika-analyst/package-lock.json` |
+| `mcp-yandex-wordstat` | 2.5.0 | MIT по `apps/wordstat/mcp/package-lock.json` |
+| `supergateway` | 4.3.0 | MIT |
+| `@modelcontextprotocol/*` | версии из npm lock | Смешанный Apache-2.0/MIT состав; брать лицензии из lock-файла конкретного моста |
+| Tailwind CSS / daisyUI | 4.1.0 / 5.5.23 | MIT |
+| htmx / Lucide | 4.0.0 / 1.34.0 | htmx — 0BSD; Lucide — ISC, отдельные Feather-иконки — MIT |
+| Playwright | 1.55.0 в `apps/product-manager/setup.sh` | Apache-2.0; Chromium и уведомления бинарной сборки проверяются отдельно |
+
+Сгенерированные уведомления приложений находятся в:
+
+- [`apps/market-watch/THIRD_PARTY_NOTICES.generated.md`](../../apps/market-watch/THIRD_PARTY_NOTICES.generated.md);
+- [`apps/product-manager/THIRD_PARTY_NOTICES.generated.md`](../../apps/product-manager/THIRD_PARTY_NOTICES.generated.md);
+- [`apps/google-trends/THIRD_PARTY_NOTICES.generated.md`](../../apps/google-trends/THIRD_PARTY_NOTICES.generated.md);
+- [`apps/wordstat/THIRD_PARTY_NOTICES.generated.md`](../../apps/wordstat/THIRD_PARTY_NOTICES.generated.md).
+
+Финальный пакет должен сохранить эти уведомления, LICENSE/copyright всех
+поставляемых компонентов и отдельно подтвердить лицензию именно того
+checkpoint Terra fast, который попадёт на стенд.

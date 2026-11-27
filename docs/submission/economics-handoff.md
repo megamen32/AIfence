@@ -4,11 +4,11 @@ The local QA measurement package is stored on the M1 in the Git-ignored
 `data/submission/economics-audit-20261126/` directory. Read `report.md`
 first. It contains measured Airlock run usage, a native detector
 microbenchmark, provenance, calculator checks and the remaining acceptance
-steps. The historical QA data are synthetic, not a final KES/Gemma run.
+steps. The historical QA data are synthetic, not a final KES/Terra fast run.
 
-For final acceptance, measure one full run on the deployed open model:
+For final acceptance, measure one full run on the deployed open-weights Terra fast model:
 
-1. Record its actual model ID, build, date and scope.
+1. Record its actual Terra fast model ID, checkpoint/build, date and scope.
 2. Read the completed conversation using `scripts/measure-chat` on the
    correct Docker context. Use only aggregate usage from the intended run.
    Measure the native scheduled detector separately.

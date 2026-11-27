@@ -1,6 +1,44 @@
 # AIfence
 
-An AI product manager for an online store: market observation + web analytics + research + decisions + feedback. Hackathon project. The contest version uses synthetic metrics and may include public SKUs and prices.
+AIfence is a product manager for an online store. A director can ask a vague
+question such as «по Касперскому продажи просели?», and the system collects
+available market and analytics evidence, compares a product with an appropriate
+reference, separates a signal from a proven cause, and proposes the next
+check. The contest build uses synthetic metrics and public catalog products;
+private customer files stay outside the repository.
+
+## Jury links and delivery status
+
+- **Stand:** [aifence.bezrabotnyi.com](https://aifence.bezrabotnyi.com/) · [open
+  Airlock chat](https://aifence.bezrabotnyi.com/chat). Interactive access
+  requires an invitation to the demonstration workspace; the exact tunnel
+  URL from the final `sol-stand` report must be checked before sending it to a
+  jury member.
+- **Health check:** [stand and deployment notes](docs/submission/deployment.md).
+  An anonymous HTTP check is only a service check; it does not grant access to
+  the applications.
+- **Source repository:** [github.com/megamen32/AIfence](https://github.com/megamen32/AIfence).
+  On 27 November 2026 an unauthenticated web and API check both returned
+  HTTP 404, so the repository was not public at that point. The owner decides
+  whether and how to publish a contest copy.
+- **Confluence:** a possible post-submission handoff only; no Confluence URL
+  is part of the current jury package.
+
+The submission kit is in [docs/submission/README.md](docs/submission/README.md):
+economics, model and license declarations, jury access, and the video script.
+
+## Architecture in ten lines
+
+1. Airlock supplies authentication, the assistant loop, storage, scheduling and file access.
+2. Market Watch is an independent source for dated, comparable public offers and price changes.
+3. Metrika Analyst is an independent source for authorized reports and imported historical aggregates.
+4. Product Manager is the only application that orchestrates an investigation.
+5. `workflows/collect-evidence.js` calls source tools under the current user's grants.
+6. The workflow saves a versioned evidence snapshot in the shared Airlock file catalog.
+7. Product Manager imports that snapshot or an explicitly authorized historical snapshot.
+8. Code calculates windows, changes, sample sizes and missing data; the model explains bounded evidence.
+9. A hypothesis records evidence for, evidence against, unknowns, a cheap distinguishing check and a success rule.
+10. Background delivery can create an idempotent Redmine task and an owner notification through Dion.
 
 ## Native M1 build and deployment
 
@@ -37,7 +75,31 @@ Product Manager is the only application orchestrating investigations. On native 
 
 Private inputs: `материалы/`, `materials/`, `data/`, `private/`; all ignored by Git. Keep them local and read-only. Import only within authorized closed workspace and configured non-training model provider. Never send raw customer data or credentials to third parties or publish them. The repository remains private until the owner decides how to share the contest version.
 
-Start with [architecture](docs/architecture.md), [contracts](contracts/README.md), and [track assignments](docs/tracks/README.md). The [submission pack](docs/submission/README.md) contains the jury access instructions, video script, economics, licenses and verified limits. On 27 November, KT1 finishes model-free reads by 11:00, and KT5 checks 3–5 cases on a fixed revision from 18:00 to 21:30. Record after 22:00 using the final results table. On 28 November 2026, check access in a clean browser at 09:00. Planned submission is at 10:00. All times are UTC+5. External publication and submission require separate owner approval.
+Start with [architecture](docs/architecture.md), [contracts](contracts/README.md), and [track assignments](docs/tracks/README.md). The [submission pack](docs/submission/README.md) contains the jury access instructions, video script, economics, licenses and verified limits. The code freeze is **28 November 2026, 00:00 UTC+5** and the submission deadline is **28 November 2026, 12:00 UTC+5**. The internal plan is to check access in a clean browser at 09:00 and have the form ready by 10:00. External publication and submission require separate owner approval.
+
+## Run locally
+
+The original Airlock bootstrap uses an isolated Colima profile and the pinned
+private platform source:
+
+```sh
+./scripts/up
+# open http://localhost:42080 and complete the first-time activation/model setup
+```
+
+For the installed native M1 profile, build a committed candidate with the
+pinned SDK/Sol cache and then deploy the exact verified commit:
+
+```sh
+export AIFENCE_PERSONAL_CACHE="$HOME/AIfence-worktrees/personal-integration/.runtime/personal-release"
+export GOPROXY=off
+/opt/homebrew/bin/python3 scripts/personal-build-apps.py --commit <sha> --output <private-output-directory>
+export AIRLOCK_URL=https://aifence.bezrabotnyi.com
+export AIFENCE_DEPLOY_COMMIT=<verified-main-sha>
+./scripts/deploy-apps --dry-run
+```
+
+The full release and stand procedure is [documented here](docs/submission/deployment.md).
 
 ### Optional authorized image cache
 
