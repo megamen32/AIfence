@@ -103,7 +103,9 @@ def binom(rng, n, p):
     return min(n, max(0, int(round(rng.gauss(mean, math.sqrt(max(var, 1e-9)))))))
 
 
-def make_case(idx, fault, strength, rng, out):
+def make_case(idx, fault, strength, rng, out, jitter=0.0):
+    # --jitter: each case draws its own effect size within +-jitter of the bucket value
+    jit = (lambda x: x * (1 + rng.uniform(-jitter, jitter))) if jitter else (lambda x: x)
     n_weeks = rng.choice([24, 26, 28, 30, 32])
     last_monday = dt.date(2026, 11, 16)
     start = last_monday - dt.timedelta(weeks=n_weeks - 1)
@@ -167,6 +169,9 @@ def make_case(idx, fault, strength, rng, out):
     if fault == "S12":
         add_release(weeks[onset], target, "Запуск checkout-эксперимента (A/B 50/50)", "checkouts", "experiment")
     bot_ramp = rng.choice([1, 2])
+    eff_bot = jit(S6_BOT_SHARE.get(strength, 0))
+    eff_s13 = min(0.9, jit(S13_ORDER_LOSS.get(strength, 0)))
+    eff_s14 = tuple(jit(x) for x in S14_EFFECT.get(strength, (0, 0)))
     if fault == "S7":
         add_release(weeks[onset], target, "Миграция названий и ключей каталога", "card_views", "major")
 
@@ -196,16 +201,16 @@ def make_case(idx, fault, strength, rng, out):
 
                 if fault == "S6" and is_t and dev == "desktop":
                     ramp = min(1.0, (i - onset + 1) / bot_ramp)
-                    bots = poisson(rng, lam * S6_BOT_SHARE[strength] * ramp)
+                    bots = poisson(rng, lam * eff_bot * ramp)
                 if fault == "S14" and is_t:
-                    v_up, c_down = S14_EFFECT[strength]
+                    v_up, c_down = eff_s14
                     visits_mult = 1 + v_up
                     # absolute checkouts fall by c_down despite the extra visits
                     chk_mult = (1 - c_down) / ((1 + v_up) * 0.85)
                 if fault == "S13" and is_t:
                     pos = i - onset                    # 0 .. k-1; the latest week is the most incomplete
                     k = n_weeks - onset
-                    ord_late = S13_ORDER_LOSS[strength] * (pos + 1) / k
+                    ord_late = eff_s13 * (pos + 1) / k
                 if fault == "S12" and is_t:
                     chk_mult = 1 + 0.5 * rng.uniform(-0.06, 0.04)  # half the traffic, small variant effect
 
@@ -306,12 +311,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
     ap.add_argument("--seed", type=int, default=20261127)
+    ap.add_argument("--jitter", type=float, default=0.0, help="per-case effect-size spread, e.g. 0.3")
     a = ap.parse_args()
     rng = random.Random(a.seed)
     plan = list(PLAN)
     rng.shuffle(plan)  # case number does not reveal the fault type
     for i, (fault, strength) in enumerate(plan, 1):
-        make_case(i, fault, strength, random.Random(rng.random()), a.out)
+        make_case(i, fault, strength, random.Random(rng.random()), a.out, a.jitter)
     print(f"wrote {len(plan)} cases to {a.out}")
 
 
