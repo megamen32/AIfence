@@ -5,6 +5,8 @@
 /data/
 /.runtime/
 /.worktrees/
+/.wt-diag/
+/graphify-out/
 # Private Airlock platform source never goes to Git
 /platform/airlock/
 /airlock/
@@ -12,6 +14,8 @@
 **/.env.*
 !**/.env.example
 **/credentials.json
+**/operator.json
+**/access.json
 **/*.pem
 **/*.key
 **/*.sqlite
@@ -26,6 +30,9 @@
 **/build/
 **/bin/
 *.log
+# Screen recordings stay out of Git (submitted via the form, not the repo)
+*.mp4
+*.mov
 
 # Generated local demo evidence may contain restricted partner data.
 /apps/metrika-analyst/demo_sources/data/
