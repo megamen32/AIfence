@@ -14,9 +14,9 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "blind_director"))
-from prompt_guard import require_prompt
+from prompt_guard import PRICE_ACCEPTANCE, require_prompt
 
-QUESTION = "слушайте, по Касперскому что-то не так с продажами или мне кажется? гляньте, нам надо что-нибудь делать?"
+QUESTION = PRICE_ACCEPTANCE
 CASES = tuple(f"case-{i:02d}" for i in range(7, 12))
 SERIES = ("sales", "market", "wordstat", "google_trends")
 PRODUCTS = (
@@ -109,7 +109,7 @@ def checksums(files):
 
 
 def pack(plan):
-    require_prompt(QUESTION)
+    require_prompt(QUESTION, purpose="price_acceptance")
     if set(plan) != set(CASES):
         raise ValueError("Expected five neutral case IDs")
     inputs, vault = {}, {}
