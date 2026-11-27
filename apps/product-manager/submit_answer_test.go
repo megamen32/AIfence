@@ -36,6 +36,15 @@ func TestSubmitAnswerContract(t *testing.T) {
 			t.Errorf("invalid %s accepted", k)
 		}
 	}
+	oversized := map[string]any{}
+	for k, v := range base {
+		oversized[k] = v
+	}
+	row := map[string]any{"источник": "наблюдения", "локатор": strings.Repeat("x", 220), "наблюдение": strings.Repeat("я", 90)}
+	oversized["доказательства"] = []any{row, row, row}
+	if _, err := run(oversized); err == nil {
+		t.Fatal("combined rendered output over 800 characters was accepted")
+	}
 	base["решение"] = "Недостаточно данных."
 	base["контроль"] = nil
 	base["величина_%"] = nil

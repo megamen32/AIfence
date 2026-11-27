@@ -8,7 +8,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"agent/internal/answer"
 	"agent/internal/decision"
 	"agent/internal/evidence"
 )
@@ -54,6 +56,7 @@ type ProductReading struct {
 	CheckedSKUs         int             `json:"checked_sku_count"`
 	ComparableSKUs      int             `json:"comparable_sku_count"`
 	EstimatedWeeklyRUB  *float64        `json:"estimated_weekly_potential_rub"`
+	salesRef            evidence.SourceRef
 	windowEnd           string
 	Product             string      `json:"product"`
 	PriceEvidenceStatus string      `json:"price_evidence_status"`
@@ -65,16 +68,8 @@ type ProductReading struct {
 	Source              string      `json:"sales_source"`
 }
 
-// DirectorReply keeps the pricing decision and both measured series together.
-type DirectorReply struct {
-	PriceDecision   string `json:"price_decision"`
-	SalesAndControl string `json:"sales_and_control"`
-	WeeklyImpact    string `json:"weekly_impact"`
-	Source          string `json:"source"`
-}
-
 type SalesBrief struct {
-	Replies     []DirectorReply   `json:"director_replies,omitempty"`
+	Replies     []answer.Input    `json:"director_replies,omitempty"`
 	Readings    []ProductReading  `json:"product_readings,omitempty"`
 	Comparisons []PriceComparison `json:"price_comparisons,omitempty"`
 	Facts       []BriefFact       `json:"observations,omitempty"`
@@ -156,6 +151,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 		if json.Unmarshal([]byte(r.Details), &refs) == nil && len(refs.Refs) > 0 && refs.Refs[0].Ref.Locator != "" && refs.Refs[0].Ref.SourceID != "" {
 			source = refs.Refs[0].Ref
 		}
+		reading.salesRef = source
 		reading.Source = source.SourceID + ", " + source.Locator
 		readings = append(readings, reading)
 		facts = append(facts, BriefFact{Product: reading.Product, Fact: fact + " " + reading.Weekly, Source: source.SourceID, Locator: source.Locator})
@@ -295,7 +291,7 @@ func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, 
 	}
 }
 
-func directorReply(r ProductReading) DirectorReply {
+func directorReply(r ProductReading) answer.Input {
 	price := "Для решения о цене нужны сопоставимые предложения того же артикула."
 	switch r.PriceEvidenceStatus {
 	case "insufficient_comparable_quotes":
@@ -303,5 +299,18 @@ func directorReply(r ProductReading) DirectorReply {
 	case "comparable_quotes_available":
 		price = fmt.Sprintf("До решения о цене сравните нашу цену с предложениями на одинаковых условиях: такие предложения есть для %d из %d артикулов.", r.ComparableSKUs, r.CheckedSKUs)
 	}
-	return DirectorReply{PriceDecision: price, SalesAndControl: r.Sales, WeeklyImpact: r.Weekly, Source: r.Source}
+	out := answer.Input{Decision: price, Evidence: []answer.Evidence{}}
+	c := r.Comparison
+	if c.Target.Name != "" && c.Control.Name != "" && r.salesRef.Locator != "" {
+		out.Change = &c.Target.Percent
+		out.Control = &answer.Control{Product: c.Control.Name, Change: c.Control.Percent}
+		out.Evidence = append(out.Evidence, answer.Evidence{Source: r.salesRef.SourceID, Ref: r.salesRef.Locator, Fact: fmt.Sprintf("%s: %s–%s к %s–%s, по %d недели.", c.Target.Name, c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.WeeksPerWindow)})
+	}
+	for _, q := range r.OfferExample {
+		fact, _, _ := strings.Cut(q.Fact, ". ")
+		if len(out.Evidence) < 3 && utf8.RuneCountInString(fact) <= 130 && utf8.RuneCountInString(q.Locator) <= 240 && q.Locator != "" {
+			out.Evidence = append(out.Evidence, answer.Evidence{Source: q.Source, Ref: q.Locator, Fact: fact})
+		}
+	}
+	return out
 }

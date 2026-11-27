@@ -1,6 +1,7 @@
 package main
 
 import (
+	"agent/internal/answer"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,24 +14,6 @@ import (
 	"github.com/airlockrun/goai/tool"
 	"github.com/google/jsonschema-go/jsonschema"
 )
-
-type answerControl struct {
-	Product string  `json:"название"`
-	Change  float64 `json:"величина_%"`
-}
-
-type answerEvidence struct {
-	Source string `json:"источник"`
-	Ref    string `json:"локатор"`
-	Fact   string `json:"наблюдение"`
-}
-
-type directorAnswer struct {
-	Decision string           `json:"решение"`
-	Change   *float64         `json:"величина_%"`
-	Control  *answerControl   `json:"контроль"`
-	Evidence []answerEvidence `json:"доказательства"`
-}
 
 type acceptedAnswer struct {
 	Text string `json:"текст"`
@@ -55,7 +38,7 @@ const answerSchema = `{
 }`
 
 func submitAnswerTool() tool.Tool {
-	t := tool.Typed[directorAnswer, acceptedAnswer]("submit_answer").
+	t := tool.Typed[answer.Input, acceptedAnswer]("submit_answer").
 		Description("Validate and return the final short director answer. Decision comes first; pass measured change and named control together, or null for both when unavailable. Cite observations actually read. This formats a reply without creating a backlog task.").
 		Execute(renderAnswer).Build()
 	t.InputSchema = json.RawMessage(answerSchema)
@@ -89,7 +72,7 @@ func answerPercent(n float64) string {
 	return strings.NewReplacer("-", "−", ".", ",").Replace(strconv.FormatFloat(n, 'f', 1, 64)) + "%"
 }
 
-func renderAnswer(_ context.Context, a directorAnswer) (acceptedAnswer, error) {
+func renderAnswer(_ context.Context, a answer.Input) (acceptedAnswer, error) {
 	if !answerField(a.Decision) {
 		return acceptedAnswer{}, errors.New("решение должно занимать одну непустую строку")
 	}

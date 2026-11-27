@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"agent/handlers"
+	"agent/internal/answer"
 	"agent/internal/evidence"
 )
 
@@ -30,10 +31,11 @@ func TestStandaloneReviewAttachmentKeepsControlAndSource(t *testing.T) {
 }
 
 func TestDirectorReplyUsesDecisionThenPairedFacts(t *testing.T) {
-	r := handlers.DirectorReply{PriceDecision: "Цена остаётся прежней.", SalesAndControl: "Первый ряд −12,3%, контроль 1,2%.", WeeklyImpact: "Нужны заказы и вклад.", Source: "synthetic/sales"}
-	data, _ := json.Marshal(handlers.SalesBrief{Replies: []handlers.DirectorReply{r}})
+	change := -12.3
+	r := answer.Input{Decision: "Цена остаётся прежней.", Change: &change, Control: &answer.Control{Product: "Astra Linux", Change: 1.2}, Evidence: []answer.Evidence{{Source: "synthetic", Ref: "row 8", Fact: "Одинаковые окна."}}}
+	data, _ := json.Marshal(handlers.SalesBrief{Replies: []answer.Input{r}})
 	lines := strings.Split(strings.TrimSpace(reviewAttachment(string(data))), "\n")
-	if len(lines) != 3 || lines[0] != r.PriceDecision || lines[1] != r.SalesAndControl || !strings.Contains(lines[2], r.Source) {
+	if len(lines) != 3 || lines[0] != r.Decision || !strings.Contains(lines[1], "Astra Linux 1,2%") || !strings.Contains(lines[2], "row 8") {
 		t.Fatal(lines)
 	}
 }

@@ -60,7 +60,12 @@ func reviewAttachment(output string) string {
 	var b strings.Builder
 	if len(review.Replies) > 0 {
 		for _, r := range review.Replies {
-			fmt.Fprintf(&b, "%s\n%s\n%s Источник: %s.\n", r.PriceDecision, r.SalesAndControl, r.WeeklyImpact, r.Source)
+			if validated, err := renderAnswer(context.Background(), r); err == nil {
+				b.WriteString(validated.Text)
+				b.WriteByte('\n')
+			} else {
+				return output
+			}
 		}
 		return b.String()
 	}
