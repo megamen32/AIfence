@@ -14,6 +14,29 @@ import (
 	"github.com/google/uuid"
 )
 
+type AdaptiveJobResult struct {
+	ID             string `json:"id"`
+	Status         string `json:"status"`
+	Storage        string `json:"storage"`
+	ActiveVersion  string `json:"active_version"`
+	Archived       int    `json:"archived_responses"`
+	Queued         int    `json:"queued"`
+	ObservedOffers int    `json:"observed_offers"`
+	Note           string `json:"note"`
+}
+
+func jobResult(v AdaptiveStoreView) AdaptiveJobResult {
+	return AdaptiveJobResult{ID: v.ID, Status: v.Status, Storage: v.Storage, ActiveVersion: v.ActiveVersion, Archived: v.Archived, Queued: v.Queued, ObservedOffers: v.ObservedOffers, Note: v.Note}
+}
+func (s *Service) AddAdaptiveJobResult(ctx context.Context, j agentsdk.JobContext, in AddStoreInput) (AdaptiveJobResult, error) {
+	v, e := s.AddAdaptiveJob(ctx, j, in)
+	return jobResult(v), e
+}
+func (s *Service) RepairAdaptiveJobResult(ctx context.Context, j agentsdk.JobContext, in AdapterActionInput) (AdaptiveJobResult, error) {
+	v, e := s.RepairAdaptiveJob(ctx, j, in)
+	return jobResult(v), e
+}
+
 type adaptiveProgressKey struct{}
 type AdaptiveTickResult struct {
 	Advanced int    `json:"advanced"`
