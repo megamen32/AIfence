@@ -14,8 +14,8 @@ import (
 )
 
 type BriefQuery struct {
-	Offset  int  `json:"offset,omitempty"`
-	Summary bool `json:"summary,omitempty"`
+	Offset   int  `json:"offset,omitempty"`
+	Summary  bool `json:"summary,omitempty"`
 	Director bool `json:"director,omitempty"`
 }
 
@@ -65,7 +65,16 @@ type ProductReading struct {
 	Source              string      `json:"sales_source"`
 }
 
+// DirectorReply keeps the pricing decision and both measured series together.
+type DirectorReply struct {
+	PriceDecision   string `json:"price_decision"`
+	SalesAndControl string `json:"sales_and_control"`
+	WeeklyImpact    string `json:"weekly_impact"`
+	Source          string `json:"source"`
+}
+
 type SalesBrief struct {
+	Replies     []DirectorReply   `json:"director_replies,omitempty"`
 	Readings    []ProductReading  `json:"product_readings,omitempty"`
 	Comparisons []PriceComparison `json:"price_comparisons,omitempty"`
 	Facts       []BriefFact       `json:"observations,omitempty"`
@@ -87,7 +96,17 @@ func (h *Handler) SalesBrief(ctx context.Context, q BriefQuery) (SalesBrief, err
 	if err != nil {
 		return SalesBrief{}, err
 	}
-	return salesBrief(rows, records.Records, q), nil
+	if q.Director {
+		q.Summary = true
+	}
+	result := salesBrief(rows, records.Records, q)
+	if q.Director && len(result.Readings) > 0 {
+		for _, r := range result.Readings {
+			result.Replies = append(result.Replies, directorReply(r))
+		}
+		result.Readings = nil
+	}
+	return result, nil
 }
 
 func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQuery) SalesBrief {
@@ -274,4 +293,15 @@ func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, 
 	if !earliest.IsZero() && r.windowEnd != "" && earliest.Format(time.DateOnly) > r.windowEnd {
 		r.PriceTiming = fmt.Sprintf("Даже самая ранняя из проверенных цен датирована %s, после окончания периода продаж %s. Эти цены не объясняют историческое падение.", earliest.Format("02.01.2006"), date(r.windowEnd))
 	}
+}
+
+func directorReply(r ProductReading) DirectorReply {
+	price := "Для решения о цене нужны сопоставимые предложения того же артикула."
+	switch r.PriceEvidenceStatus {
+	case "insufficient_comparable_quotes":
+		price = fmt.Sprintf("Снижать цену пока не стоит. Ни по одному из %d проверенных артикулов у двух магазинов не подтверждены одинаковые условия.", r.CheckedSKUs)
+	case "comparable_quotes_available":
+		price = fmt.Sprintf("До решения о цене сравните нашу цену с предложениями на одинаковых условиях: такие предложения есть для %d из %d артикулов.", r.ComparableSKUs, r.CheckedSKUs)
+	}
+	return DirectorReply{PriceDecision: price, SalesAndControl: r.Sales, WeeklyImpact: r.Weekly, Source: r.Source}
 }

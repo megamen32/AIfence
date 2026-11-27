@@ -18,7 +18,7 @@ func TestAgentComposition(t *testing.T) {
 			t.Fatalf("visible description omits %q", contract)
 		}
 	}
-	for _, contract := range []string{"ровно три непустые строки", "Первая строка сразу даёт решение", "Вторая строка сохраняет обе даты окон"} {
+	for _, contract := range []string{"director_replies", "первая строка — price_decision", "sales_and_control", "оба имени и процента"} {
 		if !strings.Contains(manifest.Description, contract) {
 			t.Fatalf("visible response contract omits %q", contract)
 		}

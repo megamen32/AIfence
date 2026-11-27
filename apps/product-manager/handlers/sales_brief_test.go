@@ -63,3 +63,16 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 		t.Fatal(v)
 	}
 }
+
+func TestDirectorDecisionFollowsComparableGroups(t *testing.T) {
+	r := ProductReading{PriceEvidenceStatus: "insufficient_comparable_quotes", CheckedSKUs: 3, Sales: "Самостоятельные заказы −7,5%, контроль 1,2%.", Weekly: "Сумма неизвестна.", Source: "synthetic/sales"}
+	brief := directorReply(r)
+	if !strings.HasPrefix(brief.PriceDecision, "Снижать цену пока не стоит") || brief.SalesAndControl != r.Sales || brief.WeeklyImpact != r.Weekly {
+		t.Fatal(brief)
+	}
+	r.PriceEvidenceStatus = "comparable_quotes_available"
+	r.ComparableSKUs = 2
+	if got := directorReply(r); !strings.Contains(got.PriceDecision, "2 из 3") || strings.Contains(got.PriceDecision, "не стоит") {
+		t.Fatal(got)
+	}
+}
