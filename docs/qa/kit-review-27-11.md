@@ -2,8 +2,8 @@
 
 Проверены `README.md`, все Markdown-файлы в `docs/submission/`, ссылки на QA,
 рабочая книга KES, manifests и notices. 42082 не разворачивался, не
-перезапускался и не перестраивался. Изменения внесены только в README и
-`docs/submission/`; этот чеклист добавлен по заданию аудита.
+перезапускался и не перестраивался. Изменения внесены в README, submission kit,
+QA records, the Market Watch notice and the old public-route guard files.
 
 ## Проверки
 
@@ -14,15 +14,14 @@
 - [x] **Placeholder lint.** `python3 scripts/lint-placeholder-names.py` и
   `python3 scripts/lint-placeholder-names.py docs/submission` вернули
   `No placeholder product names found.`
-- [x] **Исключённый стенд.** В `README.md` и `docs/submission/` нет hostname
-  исключённого внешнего стенда. Из `docs/submission/deployment.md:21` и
-  `docs/submission/model-acceptance/QA-64K-20261126.md:33-35` убраны ссылки на
-  операторский QA-runbook, который мог раскрыть внешний адрес. Исторические
-  записи вне docs-зоны не менялись.
-- [x] **Приватность источников.** `README.md:12-16`,
-  `docs/submission/README.md:28`, `docs/submission/deployment.md:3-11` и
-  `docs/submission/form.md:15` оставляют один временный маркер Mac Airlock
-  tunnel; точного URL в отчёте `sol-stand` нет, поэтому не выдуман.
+- [x] **Исключённый стенд.** Whole-repository scan for the exact excluded
+  hostname is clean. The two QA links, the old stand runbook text, migration
+  defaults and the blind adapter's public-route branch were removed or made
+  private-runtime-only.
+- [x] **Jury stand.** `README.md:12-16`, `docs/submission/README.md:28`,
+  `docs/submission/deployment.md:3-11` и `docs/submission/form.md:15` теперь
+  указывают владельский Mac Airlock `http://localhost:42080`. Tunnel или
+  приглашение передаётся отдельно. Публичный стенд не используется.
 
 ## Числа и источники
 
@@ -60,30 +59,31 @@
   `goai v0.3.4`, `templ v0.3.1020`, `goquery v1.14.0`, `robotstxt v1.1.2`,
   `mcp-remote 0.1.43`, `yandex-metrica-mcp 1.0.1`,
   `mcp-yandex-wordstat 2.5.0`, `supergateway 4.3.0`.
-- [x] Модельный список объявляет Terra fast единственной продуктовой моделью;
+- [x] Модельный список объявляет Terra fast единственной заявленной продуктовой
+  моделью;
   исторические Gemma/Ollama в `docs/submission/model-acceptance/` и legacy
   `scripts/stand/configure.py` явно исключены из состава конкурсного продукта.
   Actual slot read-back остаётся в `models-and-prior-work.md:20-39`:
   `combo/airlock-personal-exec-terra61-safe` и MiniMax failover.
-- [ ] **Open-weights gate не закрыт.** Для Terra checkpoint и fallback
-  checkpoint не представлены карточка весов и лицензия. До получения этих
-  доказательств нельзя утверждать, что фактический fallback-маршрут полностью
-  соответствует правилу open weights. Это отмечено в
-  `models-and-prior-work.md:12,36-39,96-97` и в
-  `economics-handoff.md:9-19`.
-- [ ] **Notices.** `goquery` и `robotstxt` действительно импортируются
-  Market Watch, но их блоки отсутствуют в
-  `apps/market-watch/THIRD_PARTY_NOTICES.generated.md`; это зафиксировано в
-  `models-and-prior-work.md:67-70` и требует regeneration вне docs-зоны.
+- [x] **Open-weight license references.** Qwen3 open-weight licensing is
+  recorded in `models-and-prior-work.md:42-52` with official Qwen3 and model
+  card links. Gemma's separate Terms of Use are recorded as historical QA
+  context. The actual Terra and MiniMax underlying checkpoints remain an
+  unresolved route-level gate in `models-and-prior-work.md:12,35-40`.
+- [x] **Notices.** BSD-3-Clause and MIT blocks for goquery and robotstxt were
+  added to `apps/market-watch/THIRD_PARTY_NOTICES.generated.md`.
 
 ## Доставка и ссылки
 
 - [x] GitHub URL в `README.md:20-23` и `docs/submission/README.md:39` проверен
   анонимно: web/API возвращают HTTP 404. Документы честно оставляют репозиторий
   закрытым и передают решение владельцу; публикация не предпринималась.
-- [ ] Точный jury tunnel URL отсутствует в
-  `/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md`; до появления
-  этой строки комплект не содержит открываемой ссылки на жюри.
+- [x] Jury stand section is complete with the owner's Mac Airlock origin
+  `http://localhost:42080`. The tunnel or invitation remains an owner-provided
+  access detail and is intentionally outside the repository.
+- [ ] **Live KES acceptance.** The failed live acceptance in
+  `docs/qa/kes-contest-2026-11-27.md:13-18` remains owned by the e2e and stand
+  sessions. It cannot be repaired in the submission documentation.
 - [x] Ранее указанная грамматическая ошибка в `docs/submission/README.md:10`
   исправлена; описание, экономика, модели/лицензии и четырёхсценный сценарий
   теперь согласованы с проверенными источниками и ограничениями.
@@ -95,3 +95,6 @@
 - Не выполнялись deploy, restart, rebuild или live writes на 42082.
 - Текущая проверка не закрывает open-weights gate и не подменяет отсутствующий
   файл `terra-dev30-prompt-v4` локальным прогоном.
+- Дополнительные PM-panel screenshots from sessions 2 and 4 were not present
+  at audit time. Existing panel and video-scene files are linked from the
+  README and form. No broken placeholder links were added.

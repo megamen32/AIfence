@@ -5,8 +5,9 @@ umask 077
 CTX=${SOURCE_CONTEXT:-colima-aifence}
 REMOTE=${REMOTE:-server100}
 ROOT=${DEST_ROOT:-/home/roomhacker/aifence-move}
-HOST=${PUBLIC_HOST:-move.aifence.bezrabotnyi.com}
+HOST=${PUBLIC_HOST:?set PUBLIC_HOST to an approved private hostname}
 PORT=${CADDY_PORT:-44380}
+CERT_DIR=${CERT_DIR:?set CERT_DIR to the approved certificate directory}
 SRC=${SOURCE_ROOT:-/Users/user/AIfence}
 D=/opt/homebrew/bin/docker
 SSH=(ssh -o BatchMode=yes -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=120 "$REMOTE")
@@ -173,9 +174,9 @@ log "installing isolated HTTPS edge route"
 cat > "$TMP/nginx.conf" <<EOF
 server {
     listen 127.0.0.1:8444 ssl;
-    server_name $HOST *.aifence.bezrabotnyi.com;
-    ssl_certificate /etc/letsencrypt/live/aifence.bezrabotnyi.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/aifence.bezrabotnyi.com/privkey.pem;
+    server_name $HOST;
+    ssl_certificate $CERT_DIR/fullchain.pem;
+    ssl_certificate_key $CERT_DIR/privkey.pem;
     client_max_body_size 64m;
     location / {
         proxy_pass http://127.0.0.1:$PORT;
@@ -192,7 +193,7 @@ server {
     }
 }
 EOF
-cat "$TMP/nginx.conf" | remote "sudo tee /etc/nginx/sites-available/aifence-move.bezrabotnyi.com >/dev/null && sudo ln -sfn /etc/nginx/sites-available/aifence-move.bezrabotnyi.com /etc/nginx/sites-enabled/aifence-move.bezrabotnyi.com && sudo nginx -t && sudo systemctl reload nginx"
+cat "$TMP/nginx.conf" | remote "sudo tee /etc/nginx/sites-available/aifence-move >/dev/null && sudo ln -sfn /etc/nginx/sites-available/aifence-move /etc/nginx/sites-enabled/aifence-move && sudo nginx -t && sudo systemctl reload nginx"
 log "health checks"
 remote "curl -kfsS --max-time 20 -H 'Host: $HOST' https://127.0.0.1/health >/dev/null"
 remote "curl -kfsS --max-time 20 -H 'Host: $HOST' https://127.0.0.1/ >/dev/null"

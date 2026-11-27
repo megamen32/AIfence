@@ -43,9 +43,6 @@ def safe_url(url):
 
 def app_connection(slug, route):
     parsed = urllib.parse.urlsplit(route)
-    expected = slug + '.aifence.bezrabotnyi.com'
-    if parsed.scheme == 'https' and parsed.hostname == expected and parsed.port is None and not parsed.username and not parsed.password:
-        return ORIGIN, expected
     old = f'http://{slug}.localhost:42081'
     if route.rstrip('/') == old:
         return old, None

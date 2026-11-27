@@ -1,11 +1,11 @@
 # Стенд для жюри и развёртывание
 
-**Стенд для жюри** — Mac Airlock на этом Mac через tunnel. Точный URL выдаёт
-`/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md`; публичная ссылка
-в этот комплект не копируется.
+**Стенд для жюри** — владелецский Mac Airlock на `http://localhost:42080`.
+Tunnel или приглашение жюри передаётся отдельно. Публичный стенд в этот комплект
+не входит.
 
-На 27 ноября 2026 г. jury-путь — это Mac Airlock через tunnel из отчёта
-`sol-stand`. Локальные health-checks и доступ приложения проверяются отдельно;
+На 27 ноября 2026 г. jury-путь — это Mac Airlock на порту 42080. Локальные
+health-checks и доступ приложения проверяются отдельно;
 health-check не выдаёт права на вход. История исключённого внешнего развёртывания
 зафиксирована в [операторской записи](stand-public-handoff.md) без публичного
 адреса.
@@ -23,7 +23,7 @@ health-check не выдаёт права на вход. История искл
 Из чистого интеграционного checkout после `git fetch origin main` укажите полный SHA проверенного коммита. После штатного входа SDK выполните dry run и обновите приложения с тем же SHA.
 
 ```sh
-export AIRLOCK_URL='<mac-airlock-tunnel-from-sol-stand-report>'
+export AIRLOCK_URL='http://localhost:42080'
 export AIFENCE_DEPLOY_COMMIT='VERIFIED_COMMIT_SHA'
 (cd apps/market-watch && go tool air login "$AIRLOCK_URL")
 git merge-base --is-ancestor "$AIFENCE_DEPLOY_COMMIT" origin/main &&
