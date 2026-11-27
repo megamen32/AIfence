@@ -1,0 +1,494 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Панель Product Manager</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one right-side panel (Airlock app pane, ~720px), sticky header with tabs; each screen answers one question in 5 seconds, text only as captions. */
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --raise:#f0f2f5; --line:#dfe3e8; --ink:#1c2026; --muted:#5f6773; --faint:#8d95a1;
+  --accent:#2f6fd6; --bad:#d6453d; --bad-soft:#fbe4e2; --warn:#b7801c; --warn-soft:#f8eed8; --ok:#1f9a62; --ok-soft:#dcf2e7;
+  --ctrl:#7c8796; --gap:rgba(214,69,61,.16);
+  --f-ui:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-data:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#17181a; --panel:#1f2124; --raise:#27292d; --line:#34373c; --ink:#ececec; --muted:#a3a8b0; --faint:#7b818a;
+  --accent:#7fb2ff; --bad:#ff6f66; --bad-soft:#3a2323; --warn:#e7b558; --warn-soft:#3a3120; --ok:#4fcf8f; --ok-soft:#1d3529;
+  --ctrl:#8f9aa8; --gap:rgba(255,111,102,.18); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#17181a; --panel:#1f2124; --raise:#27292d; --line:#34373c; --ink:#ececec; --muted:#a3a8b0; --faint:#7b818a;
+  --accent:#7fb2ff; --bad:#ff6f66; --bad-soft:#3a2323; --warn:#e7b558; --warn-soft:#3a3120; --ok:#4fcf8f; --ok-soft:#1d3529;
+  --ctrl:#8f9aa8; --gap:rgba(255,111,102,.18); color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-ui);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+.num,.mono{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--f-data)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.panel{max-width:760px;margin-inline:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line)}
+.top h1{font-size:15px;font-weight:600;margin:0}
+.live{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;margin-left:auto}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.tabs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tabs button{border:0;background:none;padding:7px 12px;border-radius:8px;color:var(--muted);font-weight:500;white-space:nowrap}
+.tabs button[aria-selected="true"]{background:var(--raise);color:var(--ink)}
+.tabs button .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.screen{padding:18px;display:grid;gap:18px}
+.cap{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.sub{color:var(--muted);font-size:12.5px}
+
+/* status strip */
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.strip>div{background:var(--panel);padding:10px 12px;display:grid;gap:2px;min-width:0}
+.strip b{font-size:20px;font-weight:650;letter-spacing:-.02em}
+.strip .bad b{color:var(--bad)}
+.strip .warn b{color:var(--warn)}
+@media (max-width:560px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* treemap */
+.tm-head{display:flex;align-items:end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.legend{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.legend .bar{width:120px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--bad),var(--raise) 50%,var(--ok))}
+.treemap{position:relative;height:250px;border-radius:10px;overflow:hidden;background:var(--line)}
+.tile{position:absolute;padding:8px 9px;border:1px solid var(--panel);color:var(--ink);display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;text-align:left;transition:filter .15s}
+.tile:hover{filter:brightness(1.08)}
+.tile .n{font-weight:600;font-size:12.5px;line-height:1.2}
+.tile .d{font-family:var(--f-data);font-size:12px}
+.tile.big .d{font-size:22px;font-weight:500}
+.tile.hot{animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:inset 0 0 0 2px var(--bad)}}
+
+/* alerts */
+.alerts{display:grid;gap:8px}
+.alert{display:grid;grid-template-columns:4px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px 10px 0;background:var(--panel);text-align:left;width:100%}
+.alert:hover{background:var(--raise)}
+.alert .sev{align-self:stretch;border-radius:0 3px 3px 0}
+.alert .t{font-weight:600}
+.alert .m{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:2px}
+.alert .rub{text-align:right}
+.alert .rub b{font-size:16px;display:block}
+.alert .rub span{font-size:11px;color:var(--faint)}
+.spark{display:block}
+
+/* hypothesis */
+.hyp-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}
+.hyp-head h2{font-size:19px;line-height:1.25;margin:4px 0 0;letter-spacing:-.015em;text-wrap:balance}
+.cod{border-radius:10px;padding:10px 12px;background:var(--bad-soft);color:var(--bad);text-align:right;min-width:170px}
+.cod .big{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.cod .s{font-size:11px;opacity:.85}
+.cod.ok{background:var(--ok-soft);color:var(--ok)}
+@media (max-width:560px){.hyp-head{grid-template-columns:1fr}.cod{text-align:left}}
+
+.life{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
+.life div{display:grid;gap:5px;font-size:11px;color:var(--faint);min-width:0}
+.life div::before{content:"";height:6px;border-radius:3px;background:var(--line)}
+.life .done::before{background:var(--accent);opacity:.55}
+.life .now{color:var(--ink);font-weight:600}
+.life .now::before{background:var(--accent)}
+.life .green::before{background:var(--ok)}
+.life .green{color:var(--ok)}
+.life span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.chart-wrap{border:1px solid var(--line);border-radius:12px;padding:12px 12px 6px;display:grid;gap:6px}
+.chart-top{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12px;color:var(--muted)}
+.key{display:inline-flex;align-items:center;gap:6px}
+.key i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.chart-wrap svg{width:100%;height:auto;display:block;overflow:visible}
+.ax{fill:var(--faint);font:11px var(--f-data)}
+.grid{stroke:var(--line);stroke-width:1}
+.l-kes{fill:none;stroke:var(--bad);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.l-ctl{fill:none;stroke:var(--ctrl);stroke-width:2;stroke-linejoin:round}
+.l-cf{fill:none;stroke:var(--bad);stroke-width:1.5;stroke-dasharray:4 4;opacity:.7}
+.gap{fill:var(--gap)}
+.rel{stroke:var(--ink);stroke-width:1;stroke-dasharray:2 3;opacity:.6}
+.rel-l{fill:var(--ink);font:600 11px var(--f-ui)}
+.lbl{font:600 12px var(--f-data)}
+.draw{stroke-dasharray:var(--len);stroke-dashoffset:0;animation:draw 1.4s ease-out both}
+@keyframes draw{from{stroke-dashoffset:var(--len)}}
+.fade{animation:fade .8s 1s ease-out both}
+@keyframes fade{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.draw,.fade,.tile.hot{animation:none}}
+.pin{cursor:pointer}
+.pin circle{fill:var(--panel);stroke-width:2}
+.pin text{font:700 10px var(--f-ui);text-anchor:middle;dominant-baseline:central}
+.pin.on circle{stroke-width:3.5}
+
+.evi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.evi button{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:9px 10px;text-align:left;display:grid;gap:3px;min-width:0}
+.evi button[aria-pressed="true"]{border-color:var(--accent);background:var(--raise)}
+.evi .h{display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px}
+.evi .h i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font:700 10px var(--f-ui);font-style:normal;color:var(--panel)}
+.evi .x{font-size:12px;color:var(--muted)}
+.evi .src{font:11px var(--f-data);color:var(--faint);text-decoration:underline dotted}
+@media (max-width:620px){.evi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.row2{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px}
+@media (max-width:620px){.row2{grid-template-columns:1fr}}
+.box{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:8px;align-content:start}
+.meter{position:relative;height:10px;border-radius:5px;background:linear-gradient(90deg,var(--raise),var(--warn) 55%,var(--ok))}
+.meter i{position:absolute;top:-4px;width:4px;height:18px;border-radius:2px;background:var(--ink);transform:translateX(-50%);transition:left .8s}
+.meter-l{display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
+.checks{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:11.5px;padding:3px 8px;border-radius:999px;background:var(--raise);color:var(--muted);display:inline-flex;gap:5px;align-items:center}
+.chip.y{background:var(--ok-soft);color:var(--ok)}
+.chip.n{background:var(--warn-soft);color:var(--warn)}
+.task{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.task b{font-family:var(--f-data);font-weight:500}
+.tag{font-size:11px;padding:2px 7px;border-radius:5px;background:var(--raise);color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--raise);border-radius:8px;padding:7px 11px;font-weight:500}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+
+/* filmstrip */
+.film{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,1fr);gap:10px;overflow-x:auto;padding-bottom:6px}
+.shot{display:grid;gap:6px;text-align:left;border:0;background:none;padding:0}
+.frame{aspect-ratio:4/3;max-width:100%;border-radius:8px;border:1px solid var(--line);background:var(--raise);position:relative;overflow:hidden;padding:8px;display:grid;gap:5px;align-content:start}
+.frame .u{height:6px;border-radius:3px;background:var(--line)}
+.frame .bx{border-radius:4px;background:var(--line)}
+.frame .cta{height:12px;border-radius:3px;background:var(--accent);opacity:.8;width:55%}
+.shot.fail .frame{border:2px solid var(--bad);box-shadow:0 0 0 4px var(--bad-soft)}
+.shot.fail .cta{outline:2px dashed var(--bad);outline-offset:2px}
+.stamp{position:absolute;right:6px;top:6px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--panel)}
+.shot .lab{font-size:12px;font-weight:600;display:flex;gap:6px;align-items:baseline}
+.shot .lab span{font:11px var(--f-data);color:var(--faint);font-weight:400}
+.shot[aria-pressed="true"] .frame{outline:2px solid var(--accent);outline-offset:2px}
+.zoom{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:12px;padding:12px}
+@media (max-width:620px){.zoom{grid-template-columns:1fr}}
+.zoom .frame{aspect-ratio:16/10}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px}
+.kv dt{color:var(--faint)}
+.kv dd{margin:0}
+.kv .bad{color:var(--bad);font-weight:600}
+
+/* before/after */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.ba{grid-template-columns:1fr}}
+.ba .box b.big{font-size:30px;letter-spacing:-.02em;font-weight:700}
+.toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.toggle button{border:0;background:none;padding:6px 12px;color:var(--muted)}
+.toggle button[aria-pressed="true"]{background:var(--raise);color:var(--ink);font-weight:600}
+.note{font-size:11.5px;color:var(--faint)}
+.stack{display:grid;gap:8px}
+.green-card{border:1px solid var(--ok);border-radius:12px;padding:14px;background:linear-gradient(180deg,var(--ok-soft),var(--panel) 70%);display:grid;gap:12px}
+</style>
+
+<div class="panel" id="app">
+  <div class="top">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg>
+    <h1>Product Manager</h1>
+    <div class="live"><i></i>Синтетический пример</div>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Экраны">
+    <button role="tab" data-go="overview">Утро</button>
+    <button role="tab" data-go="hypothesis"><span class="dot" style="background:var(--bad)"></span>Гипотеза KES</button>
+    <button role="tab" data-go="path">Путь покупки</button>
+    <button role="tab" data-go="after"><span class="dot" style="background:var(--ok)"></span>После релиза</button>
+  </nav>
+
+  <!-- 1. MORNING OVERVIEW -->
+  <section class="screen" id="overview" hidden>
+    <div class="strip">
+      <div><span class="cap">Под наблюдением</span><b class="num" data-field="catalogCount"></b><span class="sub">товаров каталога</span></div>
+      <div class="bad"><span class="cap">Тревоги</span><b class="num">1</b><span class="sub">по заказам</span></div>
+      <div class="bad"><span class="cap">Под угрозой</span><b class="num" data-field="weeklyRub"></b><span class="sub">в неделю</span></div>
+      <div class="warn"><span class="cap">Данные</span><b class="num">1</b><span class="sub">пропуск событий</span></div>
+    </div>
+
+    <div class="stack">
+      <div class="tm-head">
+        <div><div class="cap">Каталог по группам</div><div class="sub">Площадь = выручка · цвет = отклонение от контроля</div></div>
+        <div class="legend"><span class="mono">−30%</span><span class="bar"></span><span class="mono">+30%</span></div>
+      </div>
+      <div class="treemap" id="treemap" role="group" aria-label="Карта каталога"></div>
+    </div>
+
+    <div class="stack">
+      <div class="cap">Что смотреть первым · по ₽ в неделю</div>
+      <div class="alerts">
+        <button class="alert" data-go="hypothesis">
+          <span class="sev" style="background:var(--bad)"></span>
+          <span><span class="t">Kaspersky Endpoint Security · самостоятельные заказы <span data-field="targetChange"></span></span>
+            <span class="m"><span>контроль Astra Linux <span data-field="controlChange"></span></span><span data-field="firstRelease"></span><span>два окна по 4 нед.</span></span></span>
+          <span class="rub"><b class="num" style="color:var(--bad)" data-field="weeklyRub"></b><span>в неделю</span></span>
+        </button>
+        <button class="alert" data-go="path">
+          <span class="sev" style="background:var(--warn)"></span>
+          <span><span class="t">Добавления в корзину не попадают в аналитику</span>
+            <span class="m"><span>событие не отправлено</span><span data-field="task"></span></span></span>
+          <span class="rub"><b class="num" style="color:var(--warn)">слепая зона</b><span>метрика</span></span>
+        </button>
+        <button class="alert" data-go="overview" aria-label="Kaspersky Small Office Security: наблюдение">
+          <span class="sev" style="background:var(--faint)"></span>
+          <span><span class="t">Kaspersky Small Office Security KL4141RCEFS · <span data-field="secondaryChange"></span></span>
+            <span class="m"><span>в пределах шума</span><span>наблюдаем</span></span></span>
+          <span class="rub"><b style="color:var(--muted)">без оценки</b></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2+3. HYPOTHESIS CARD -->
+  <section class="screen" id="hypothesis" hidden>
+    <div class="hyp-head">
+      <div>
+        <div class="cap">Гипотеза · Kaspersky Endpoint Security</div>
+        <h2>Самостоятельные заказы KES снизились после обновления витрины</h2>
+      </div>
+      <div class="cod" id="cod">
+        <div class="s">Цена задержки</div>
+        <div class="big num"><span data-field="weeklyRub"></span>/нед</div>
+        <div class="s num">оценка с обнаружения · <span id="codTick">—</span></div>
+      </div>
+    </div>
+
+    <div class="life" id="life" aria-label="Стадия гипотезы"></div>
+
+    <div class="chart-wrap">
+      <div class="chart-top">
+        <span class="key"><i style="background:var(--bad)"></i>KES, индекс заказов</span>
+        <span class="key"><i style="background:var(--ctrl)"></i>Astra Linux, контроль</span>
+        <span class="key"><i style="background:none;border-top:2px dashed var(--bad);height:0"></i>KES, если бы шёл как контроль</span>
+        <button class="btn" id="replay" style="margin-left:auto;padding:4px 9px;font-size:12px">↻ Проиграть</button>
+      </div>
+      <div id="chart"></div>
+    </div>
+
+    <div class="evi" id="evi"></div>
+
+    <div class="row2">
+      <div class="box">
+        <div class="cap">Уверенность</div>
+        <div class="meter"><i id="needle" style="left:68%"></i></div>
+        <div class="meter-l"><span>не доказано</span><span>вероятно</span><span>подтверждено</span></div>
+        <div class="checks">
+          <span class="chip y">✓ продажи</span><span class="chip y">✓ контроль</span><span class="chip y">✓ интервью</span><span class="chip y">✓ конкуренты</span><span class="chip n">○ путь покупки</span>
+        </div>
+      </div>
+      <div class="box">
+        <div class="cap">Задача в бэклоге</div>
+        <div class="task"><span><b data-field="task"></b> · Восстановить событие добавления в корзину KES</span></div>
+        <div class="checks"><span class="tag">сгенерирована ИИ-помощником</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-go="path">Проверить путь покупки</button><button class="btn" data-go="after">Что будет после</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. PATH CHECK FILMSTRIP -->
+  <section class="screen" id="path" hidden>
+    <div class="hyp-head">
+      <div><div class="cap">Проверка пути покупки · браузер</div><h2>Корзина открывается без события в аналитике</h2></div>
+      <div class="cod" style="background:var(--warn-soft);color:var(--warn)"><div class="s">Шаг 4 из 5</div><div class="big">add_to_cart</div><div class="s">событие не отправлено</div></div>
+    </div>
+    <div class="film" id="film"></div>
+    <div class="zoom" id="zoom"></div>
+    <div class="note">Кадры нарисованы для макета. Красным отмечен шаг с пропущенным событием.</div>
+  </section>
+
+  <!-- 5. BEFORE / AFTER -->
+  <section class="screen" id="after" hidden>
+    <div class="green-card">
+      <div class="hyp-head">
+        <div><div class="cap" style="color:var(--ok)">Повторный замер · <span data-field="fixRelease"></span></div><h2>Самостоятельные заказы KES вернулись к базовому уровню</h2></div>
+        <div class="cod ok"><div class="s">Цена задержки</div><div class="big"><span data-field="recoveredRub"></span>/нед</div><div class="s">разрыв закрыт</div></div>
+      </div>
+      <div class="life" id="life2"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="toggle" role="group" aria-label="Режим"><button aria-pressed="true" data-ba="split">До / после</button><button aria-pressed="false" data-ba="overlay">Наложить</button></div>
+      <span class="note">В примере восстановлены и событие, и заказы. Причина падения не установлена.</span>
+    </div>
+    <div class="ba" id="ba"></div>
+  </section>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const fmt=n=>n.toLocaleString('ru-RU',{maximumFractionDigits:0});
+const number=n=>n.toLocaleString('ru-RU',{maximumFractionDigits:2});
+const pct=n=>(n<0?'−':n>0?'+':'')+Math.abs(n).toLocaleString('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+const rub=n=>fmt(n)+' ₽';
+const mean=a=>a.reduce((sum,n)=>sum+n,0)/a.length;
+const change=(current,baseline)=>100*(current/baseline-1);
+
+const weeks=['−4','−3','−2','−1','+1','+2','+3','+4'];
+const kes=[154,146,152,148,115,109,111,109];
+const ctl=[119,121,122,118,117,118,119,114];
+const recovered=[141,149,153,157], recoveredControl=[119,120,121,120];
+const firstRelease='обновление витрины', fixRelease='исправление события', task='задача аналитики';
+const base=mean(kes.slice(0,4)), current=mean(kes.slice(4)), recovery=mean(recovered);
+const controlBase=mean(ctl.slice(0,4)), controlCurrent=mean(ctl.slice(4));
+const cf=ctl.map(v=>base*v/controlBase);
+const targetChange=change(current,base), controlChange=change(controlCurrent,controlBase);
+const secondaryChange=change(97,100);
+const ordersPerPoint=4, contributionPerOrder=2400;
+const weeklyCost=(actual,expected)=>Math.max(0,expected-actual)*ordersPerPoint*contributionPerOrder;
+const perWeek=weeklyCost(current,mean(cf.slice(4)));
+const recoveredCost=weeklyCost(recovery,base*mean(recoveredControl)/controlBase);
+
+/* ---------- routing ---------- */
+const screens=['overview','hypothesis','path','after'];
+function show(id){
+  if(!screens.includes(id)) id='overview';
+  screens.forEach(s=>{$('#'+s).hidden = s!==id});
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.go===id));
+  if(id==='hypothesis') drawChart();
+  if(id==='overview') drawTreemap();
+}
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]'); if(g){ if(location.hash==='#'+g.dataset.go) show(g.dataset.go); else location.hash=g.dataset.go; }});
+addEventListener('hashchange',()=>show(location.hash.slice(1)));
+
+/* ---------- treemap (squarified) ---------- */
+const vendors=[
+  {n:'Kaspersky Endpoint Security',v:28,count:560,change:targetChange,relative:change(current,mean(cf.slice(4))),hot:1},
+  {n:'Astra Linux',v:18,count:270,change:controlChange,relative:0,note:'контроль'},
+  {n:'Dr.Web',v:14,count:180,change:change(101,100)},
+  {n:'МойОфис',v:12,count:160,change:change(96,100)},
+  {n:'Kaspersky Small Office Security',v:9,count:140,change:secondaryChange},
+  {n:'КриптоПро CSP',v:8,count:90,change:change(98,100)},
+  {n:'Р7-Офис',v:6,count:60,change:change(102,100)},
+  {n:'Другие',v:5,count:272,rest:1},
+];
+const fields={catalogCount:fmt(vendors.reduce((sum,v)=>sum+v.count,0)),weeklyRub:rub(perWeek),
+  targetChange:pct(targetChange),controlChange:pct(controlChange),secondaryChange:pct(secondaryChange),
+  firstRelease,fixRelease,task,recoveredRub:rub(recoveredCost)};
+document.querySelectorAll('[data-field]').forEach(el=>{el.textContent=fields[el.dataset.field]});
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+function mix(a,b,t){const p=h=>h.replace('#','').match(/../g).map(x=>parseInt(x,16));const A=p(a),B=p(b);return 'rgb('+A.map((x,i)=>Math.round(x+(B[i]-x)*t)).join(',')+')'}
+function color(d){const base=css('--raise'),bad=css('--bad'),ok=css('--ok');const t=Math.min(Math.abs(d)/30,1);return d<0?mix(base,bad,.15+.85*t):mix(base,ok,.15+.85*t)}
+function squarify(items,x,y,w,h){
+  const out=[];const total=items.reduce((s,i)=>s+i.v,0);const scale=w*h/total;
+  let rest=items.map(i=>({...i,a:i.v*scale}));
+  while(rest.length){
+    const short=Math.min(w,h);let row=[],best=Infinity;
+    for(const it of rest){const r=[...row,it];const s=r.reduce((a,b)=>a+b.a,0);const worst=Math.max(...r.map(q=>Math.max(short*short*q.a/(s*s),(s*s)/(short*short*q.a))));if(worst<=best){row=r;best=worst}else break}
+    const s=row.reduce((a,b)=>a+b.a,0);
+    if(w>=h){const cw=s/h;let cy=y;row.forEach(q=>{const ch=q.a/cw;out.push({...q,x,y:cy,w:cw,h:ch});cy+=ch});x+=cw;w-=cw}
+    else{const ch=s/w;let cx=x;row.forEach(q=>{const cw=q.a/ch;out.push({...q,x:cx,y,w:cw,h:ch});cx+=cw});y+=ch;h-=ch}
+    rest=rest.slice(row.length);
+  }
+  return out;
+}
+function drawTreemap(){
+  const el=$('#treemap');const W=el.clientWidth,H=el.clientHeight;if(!W)return;
+  el.innerHTML='';
+  squarify(vendors,0,0,W,H).forEach(t=>{
+    const b=document.createElement('button');
+    b.className='tile'+(t.w>200?' big':'')+(t.hot?' hot':'');
+    const relative=t.relative??change(1+t.change/100,controlCurrent/controlBase);
+    Object.assign(b.style,{left:t.x+'px',top:t.y+'px',width:t.w+'px',height:t.h+'px',background:t.rest?css('--raise'):color(relative)});
+    if(Math.abs(relative)>15) b.style.color='#fff';
+    b.innerHTML=`<span class="n">${t.n}${t.note?` <span style="opacity:.7;font-weight:400">· ${t.note}</span>`:''}</span>`+(t.rest?'':`<span class="d">${pct(t.change)}</span>`);
+    b.setAttribute('aria-label',t.rest?t.n:t.n+' '+pct(t.change));
+    if(t.hot) b.dataset.go='hypothesis';
+    el.appendChild(b);
+  });
+}
+addEventListener('resize',()=>{if(!$('#overview').hidden)drawTreemap()});
+
+/* ---------- lifecycle ---------- */
+const stages=['найдено','исследуем','обосновано','в разработке','замеряем','подтверждено'];
+function life(el,cur,green){el.innerHTML=stages.map((s,i)=>`<div class="${green?'green':i<cur?'done':i===cur?'now':''}"><span>${s}</span></div>`).join('')}
+life($('#life'),3);life($('#life2'),5,true);
+
+/* ---------- cost of delay ---------- */
+const detected=Date.now()-7*86400e3+3600e3*5;
+function tick(){const lost=(Date.now()-detected)/(7*86400e3)*perWeek;$('#codTick').textContent=fmt(lost)+' ₽'}
+tick();setInterval(tick,1000);
+
+/* ---------- hypothesis chart ---------- */
+const evidence=[
+  {k:'П',name:'Продажи',w:4,txt:`Самостоятельные заказы KES ${pct(targetChange)}, контроль ${pct(controlChange)}`,src:'synthetic-sales · window-4w',c:'--bad'},
+  {k:'И',name:'Интервью',w:5,txt:'Покупатель просит менеджера после выбора срока лицензии',src:'synthetic-research · note-02',c:'--accent'},
+  {k:'К',name:'Конкуренты',w:6,txt:'Сравнительные цены близки к рыночному уровню',src:'synthetic-market · offers-04',c:'--warn'},
+  {k:'М',name:'Метрика',w:7,txt:'Событие добавления в корзину не отправлено',src:'synthetic-metrika · event-04',c:'--ok'},
+];
+let activePin=0;
+function drawChart(){
+  const W=680,H=270,L=40,R=64,T=28,B=26;
+  const x=i=>L+i*(W-L-R)/(weeks.length-1)+(i>=4?14:0)-(i<4?0:0);
+  const relX=(x(3)+x(4))/2;
+  const y=v=>T+(180-v)/(180-80)*(H-T-B);
+  const path=a=>a.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+','+y(v).toFixed(1)).join('');
+  const cf=ctl.map(v=>base*v/controlBase);
+  const gapPts=[...[4,5,6,7].map(i=>[x(i),y(cf[i])]),...[7,6,5,4].map(i=>[x(i),y(kes[i])])];
+  const gap='M'+gapPts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join('L')+'Z';
+  const ticks=[80,100,120,140,160,180];
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Синтетический индекс заказов KES снизился после обновления витрины, контроль Astra Linux изменился слабо">`;
+  ticks.forEach(t=>s+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}"/><text class="ax" x="${L-6}" y="${y(t)+4}" text-anchor="end">${t}</text>`);
+  weeks.forEach((w,i)=>s+=`<text class="ax" x="${x(i)}" y="${H-6}" text-anchor="middle">${w}</text>`);
+  s+=`<path class="gap fade" d="${gap}"/>`;
+  s+=`<line class="rel" x1="${relX}" x2="${relX}" y1="${T-8}" y2="${H-B}"/><text class="rel-l" x="${relX}" y="${T-12}" text-anchor="middle">обновление</text>`;
+  s+=`<path class="l-cf fade" d="${'M'+[3,4,5,6,7].map(i=>x(i)+','+y(i===3?kes[3]:cf[i])).join('L')}"/>`;
+  s+=`<path class="l-ctl draw" style="--len:800" d="${path(ctl)}"/>`;
+  s+=`<path class="l-kes draw" style="--len:900" d="${path(kes)}"/>`;
+  s+=`<text class="lbl fade" x="${W-R+6}" y="${y(current)+16}" style="fill:var(--bad)">${number(current)}</text>`;
+  s+=`<text class="lbl fade" x="${L+4}" y="${y(base)-10}" style="fill:var(--bad)">${number(base)}</text>`;
+  s+=`<text class="lbl fade" x="${W-R+6}" y="${y(ctl[7])+4}" style="fill:var(--ctrl)">${number(controlCurrent)}</text>`;
+  s+=`<text class="lbl fade" x="${W-R+6}" y="${y(cf[7])+4}" style="fill:var(--bad);opacity:.7">ожид.</text>`;
+  const midGap=(y(cf[6])+y(kes[6]))/2;
+  s+=`<text class="lbl fade" x="${x(6)-4}" y="${midGap+4}" text-anchor="end" style="fill:var(--bad)">${pct(targetChange)}</text>`;
+  evidence.forEach((e,i)=>{const px=x(e.w),py=y(kes[e.w])-(i%2?26:20);
+    s+=`<g class="pin fade${i===activePin?' on':''}" data-pin="${i}" tabindex="0" role="button" aria-label="${e.name}"><line x1="${px}" x2="${px}" y1="${py+8}" y2="${y(kes[e.w])-3}" stroke="var(${e.c})" stroke-width="1.5"/><circle cx="${px}" cy="${py}" r="9" stroke="var(${e.c})"/><text x="${px}" y="${py}" style="fill:var(${e.c})">${e.k}</text></g>`});
+  s+='</svg>';
+  $('#chart').innerHTML=s;
+  $('#chart').querySelectorAll('.pin').forEach(p=>{const f=()=>{activePin=+p.dataset.pin;drawEvi();$('#chart').querySelectorAll('.pin').forEach(q=>q.classList.toggle('on',q===p))};p.onclick=f;p.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();f()}}});
+}
+function drawEvi(){
+  $('#evi').innerHTML=evidence.map((e,i)=>`<button aria-pressed="${i===activePin}" data-e="${i}"><span class="h"><i style="background:var(${e.c})">${e.k}</i>${e.name}</span><span class="x">${e.txt}</span><span class="src">${e.src}</span></button>`).join('');
+  $('#evi').querySelectorAll('button').forEach(b=>b.onclick=()=>{activePin=+b.dataset.e;drawEvi();$('#chart').querySelectorAll('.pin').forEach(q=>q.classList.toggle('on',+q.dataset.pin===activePin))});
+}
+drawEvi();
+$('#replay').onclick=drawChart;
+
+/* ---------- filmstrip ---------- */
+const steps=[
+  {n:'Каталог',t:'0,9 с',ok:1,exp:'Карточка KES в выдаче',got:'Есть, 1-я позиция',kind:'grid'},
+  {n:'Карточка KES',t:'1,2 с',ok:1,exp:'Цена и кнопка «Выбрать»',got:'Есть',kind:'card'},
+  {n:'Конфигуратор',t:'1,6 с',ok:1,exp:'Выбор узлов и срока',got:'Работает',kind:'form'},
+  {n:'В корзину',t:'0,7 с',ok:0,exp:'Товар в корзине + событие add_to_cart в Метрике',got:'Товар в корзине, события нет',kind:'cart'},
+  {n:'Оформление',t:'1,1 с',ok:1,exp:'Форма заказа',got:'Открывается',kind:'form'},
+];
+function frame(k){
+  if(k==='grid')return '<div class="u" style="width:40%"></div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"><div class="bx" style="height:26px"></div><div class="bx" style="height:26px"></div><div class="bx" style="height:26px"></div><div class="bx" style="height:26px"></div><div class="bx" style="height:26px"></div><div class="bx" style="height:26px"></div></div>';
+  if(k==='card')return '<div style="display:grid;grid-template-columns:1fr 1.2fr;gap:6px"><div class="bx" style="height:46px"></div><div style="display:grid;gap:4px;align-content:start"><div class="u"></div><div class="u" style="width:60%"></div><div class="cta"></div></div></div>';
+  if(k==='form')return '<div class="u" style="width:50%"></div><div class="bx" style="height:12px"></div><div class="bx" style="height:12px"></div><div class="bx" style="height:12px;width:70%"></div><div class="cta"></div>';
+  return '<div class="u" style="width:35%"></div><div style="display:flex;gap:5px"><div class="bx" style="width:22px;height:22px"></div><div style="flex:1;display:grid;gap:4px"><div class="u"></div><div class="u" style="width:50%"></div></div></div><div class="cta" style="width:70%;margin-top:6px"></div>';
+}
+let sel=3;
+function drawFilm(){
+  $('#film').innerHTML=steps.map((s,i)=>`<button class="shot${s.ok?'':' fail'}" aria-pressed="${i===sel}" data-s="${i}"><div class="frame">${frame(s.kind)}<span class="stamp" style="background:var(${s.ok?'--ok':'--bad'})">${s.ok?'✓':'!'}</span></div><span class="lab">${i+1}. ${s.n}<span>${s.t}</span></span></button>`).join('');
+  $('#film').querySelectorAll('.shot').forEach(b=>b.onclick=()=>{sel=+b.dataset.s;drawFilm()});
+  const s=steps[sel];
+  $('#zoom').innerHTML=`<div class="shot${s.ok?'':' fail'}"><div class="frame">${frame(s.kind)}<span class="stamp" style="background:var(${s.ok?'--ok':'--bad'})">${s.ok?'✓':'!'}</span></div></div>
+  <dl class="kv"><dt>Шаг</dt><dd>${sel+1}. ${s.n} · Kaspersky Endpoint Security</dd><dt>Ждали</dt><dd>${s.exp}</dd><dt>Увидели</dt><dd class="${s.ok?'':'bad'}">${s.got}</dd><dt>Время</dt><dd class="mono">${s.t}</dd>${s.ok?'':'<dt>Задача</dt><dd><span class="tag">сгенерирована ИИ-помощником</span></dd>'}</dl>`;
+}
+drawFilm();
+
+/* ---------- before / after ---------- */
+function mini(vals,col,rel){
+  const W=300,H=110,L=6,R=6,T=10,B=10,x=i=>L+i*(W-L-R)/(vals.length-1),y=v=>T+(180-v)/(100)*(H-T-B);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><line class="grid" x1="0" x2="${W}" y1="${y(base)}" y2="${y(base)}" stroke-dasharray="3 3"/>${rel!=null?`<line class="rel" x1="${x(rel)}" x2="${x(rel)}" y1="0" y2="${H}"/>`:''}<path d="M${vals.map((v,i)=>x(i)+','+y(v)).join('L')}" fill="none" stroke="var(${col})" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
+}
+const before=[...kes.slice(0,4),current], after=[current,...recovered];
+function drawBA(mode){
+  if(mode==='overlay'){
+    $('#ba').style.gridTemplateColumns='1fr';
+    $('#ba').innerHTML=`<div class="box"><div class="cap">Индекс KES · до и после обновления</div>${mini([...before,...after.slice(1)],'--ok',4)}<div class="note">Пунктир: базовый уровень ${number(base)}</div></div>`;
+    return;
+  }
+  $('#ba').style.gridTemplateColumns='';
+  $('#ba').innerHTML=`<div class="box"><div class="cap">До · после обновления</div><b class="big num" style="color:var(--bad)">${number(current)}</b>${mini(before,'--bad',0)}<div class="note">${pct(targetChange)} к базе ${number(base)}</div></div>
+  <div class="box"><div class="cap">Повторный замер</div><b class="big num" style="color:var(--ok)">${number(recovery)}</b>${mini(after,'--ok',0)}<div class="note">разрыв закрыт, контроль сопоставим</div></div>`;
+}
+document.querySelectorAll('[data-ba]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-ba]').forEach(q=>q.setAttribute('aria-pressed',q===b));drawBA(b.dataset.ba)});
+drawBA('split');
+
+show(location.hash.slice(1)||'overview');
+</script>
