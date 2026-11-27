@@ -1,0 +1,43 @@
+package views
+
+templ releaseHistory(h *ReleaseHistory, product string) {
+ <section class="release-history" aria-label="Оформления по неделям">
+  <div class="release-heading"><span>МЕТРИКА · { product }</span><h3>Оформления на 100 добавлений в корзину</h3></div>
+  if h.Pivot != "" {
+   <div class="release-summary">
+    <div><small>4 недели до { h.Pivot } · { h.BeforeRange }</small><strong>{ h.BeforeRate }</strong><span>{ h.BeforeCount } оформлений в неделю</span></div>
+    <div><small>4 недели с { h.Pivot } · { h.AfterRange }</small><strong>{ h.AfterRate }</strong><span>{ h.AfterCount } оформлений в неделю</span></div>
+   </div>
+  }
+  <svg class="release-svg" viewBox="0 0 750 206" role="img" aria-label="Оформления на 100 добавлений по неделям. Отметки показывают даты выпущенных изменений.">
+   for _, g := range h.Grid {
+    <line x1="48" x2="708" y1={ g.Y } y2={ g.Y } class="release-grid"></line>
+    <text x="39" y={ g.Y } class="release-axis" text-anchor="end" dominant-baseline="middle">{ g.Label }</text>
+   }
+   for _, e := range h.Events {
+    <line x1={ e.X } x2={ e.X } y1="30" y2="176" class="release-mark"></line>
+    <text x={ e.X } y="20" class="release-code" text-anchor="middle">{ e.ID }</text>
+   }
+   <path d={ h.Path } class="release-line"></path>
+   for _, d := range h.Dots {
+    <g class="release-point" tabindex="0" aria-label={ d.Period + ", " + d.Value + " на 100. " + d.Detail }>
+     <circle cx={ d.X } cy={ d.Y } r="4.3" class="release-node"></circle><circle cx={ d.X } cy={ d.Y } r="13" fill="transparent"></circle>
+     <g class="release-tooltip">
+       <rect x="60" y="1" width="288" height="35" rx="7"></rect>
+       <text x="72" y="15">{ d.Period + " · " + d.Value + " на 100" }</text>
+       <text x="72" y="29">{ d.Detail }</text>
+     </g>
+    </g>
+   }
+   <text x="54" y="197" class="release-axis">{ h.First }</text><text x="704" y="197" text-anchor="end" class="release-axis">{ h.Last }</text>
+  </svg>
+  if len(h.Events)>0 {
+   <div class="release-events">
+    for _, e := range h.Events {
+ <div><b>{ e.ID }</b> <time>{ e.Date }</time> <span>{ e.Name }</span></div>
+ }
+   </div>
+  }
+  <p class="release-note">Периоды привязаны к датам выпусков. Влияние каждого изменения требует отдельной проверки.</p>
+ </section>
+}

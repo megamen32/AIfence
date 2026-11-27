@@ -403,7 +403,11 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		if err != nil {
 			return v, err
 		}
-		v.Card, err = h.cardInvestigation(ctx, rec, q.Get("orders"), q.Get("margin"))
+		var related []evidence.Summary
+		if q.Get("tab") == "after" {
+			related = index.Snapshots
+		}
+		v.Card, err = h.cardInvestigation(ctx, rec, q.Get("orders"), q.Get("margin"), related...)
 		if err != nil {
 			return v, err
 		}

@@ -55,13 +55,16 @@ type MonitorProduct struct {
 type MonitorCell struct{ Label, Tone string }
 
 type PulseItem struct {
-	Product, URL, Week, Detected, Change, Comparison, Origin                                     string
+	Product, URL, Week, Detected, Change, Comparison, Origin                                                  string
 	FirstDetected, Freshness, Weekly, WeeklyBasis, ProductKey, ControlKey, ControlName, Vendor, ControlVendor string
-	Amount, Delta                                                                                *float64
-	Coverage                                                                                     []CoverageItem
+	Amount, Delta                                                                                             *float64
+	Coverage                                                                                                  []CoverageItem
 }
 
 type Investigation struct {
+	ReleaseHistory                                            *ReleaseHistory
+	CorrectionStatus, MeasuredBeforeWidth, MeasuredAfterWidth string
+
 	Title, Mode, Status, Weekly, WeeklyBasis, FirstDetected                       string
 	Coverage                                                                      []CoverageItem
 	Magnitude                                                                     *SignalMagnitude
@@ -123,3 +126,13 @@ type CatalogTile struct {
 	X, Y, W, H, LX, LY            string
 	ShowLabel                     bool
 }
+
+type ReleaseHistory struct {
+	Path, First, Last, Pivot, BeforeRate, AfterRate, BeforeRange, AfterRange, BeforeCount, AfterCount string
+	Grid                                                                                              []ReleaseTick
+	Events                                                                                            []ReleaseMarker
+	Dots                                                                                              []ReleasePoint
+}
+type ReleasePoint struct{ X, Y, Value, Period, Detail string }
+type ReleaseTick struct{ Y, Label string }
+type ReleaseMarker struct{ X, ID, Name, Date string }

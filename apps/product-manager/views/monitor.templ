@@ -247,15 +247,26 @@ templ purchasePanel(v *Investigation) {
 templ afterPanel(v *Investigation, decision *Decision) {
 	<section class="dashboard-screen" aria-label="После релиза">
 		<div class="dashboard-heading"><h2>До и после релиза</h2><small>{ v.Product }</small></div>
-		if v.Before != "" && v.After != "" {
+		if v.ReleaseHistory != nil {
+   @releaseHistory(v.ReleaseHistory,v.Product)
+  } else if v.Chart.Target != "" {
+   @trend(v.Chart,v.Control)
+  }
+  if v.Before != "" && v.After != "" {
 			<dl class={ "monitor-compare", templ.KV("measurement-confirmed", v.Status == "supported") }>
 				<div><dt>До</dt><dd>{ v.Before }</dd></div>
 				<div><dt>После</dt><dd>{ v.After }</dd></div>
 			</dl>
 		}
-		if v.Assessment != "" {
+		if v.MeasuredBeforeWidth!="" && v.MeasuredAfterWidth!="" {
+   <div class="release-measured" aria-label="Сопоставимый замер исправления"><div class="release-bars"><div class="release-bar-track"><svg viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label={ "До: " + v.Before }><rect width={ v.MeasuredBeforeWidth } height="8" fill="#688394"></rect></svg></div><div class="release-bar-track"><svg viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label={ "После: " + v.After }><rect width={ v.MeasuredAfterWidth } height="8" fill="#167f70"></rect></svg></div></div></div>
+  }
+  if v.CorrectionStatus != "" {
+<p class="release-pending">{ v.CorrectionStatus }</p>
+}
+  if v.Assessment != "" {
 			<p>{ v.Assessment }</p>
-		} else {
+		} else if v.CorrectionStatus=="" && v.ReleaseHistory==nil {
 			<p class="dashboard-empty">После релиза нужна хотя бы одна полная неделя продаж. Результат появится здесь сам после следующего снимка.</p>
 		}
 		if decision != nil {
