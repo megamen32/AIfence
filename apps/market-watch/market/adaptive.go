@@ -452,6 +452,13 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 	// Prefer failed templates and include healthy training examples. Never
 	// give the model the independent holdout bodies, even on iteration two.
 	chosen := map[string]bool{}
+	seed := catalog.AdapterSpec{}
+	seedKeys := map[string]bool{}
+	if previous != nil {
+		seed = *previous
+		seed.Cases = append([]catalog.AdapterCase(nil), previous.Cases...)
+	}
+
 	add := func(r AdapterReceipt) error {
 		if r.Holdout || chosen[r.URL] || len(training.Pages) >= 9 {
 			return nil
@@ -462,6 +469,16 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 		}
 		chosen[r.URL] = true
 		training.Pages = append(training.Pages, catalog.TrainingPage(sample))
+		if c, ok := catalog.VisibleAdapterSeed(a.source(), sample); ok {
+			raw, _ := json.Marshal(c)
+			key := sampleHash(raw)
+			if !seedKeys[key] && len(seed.Cases) < 16 {
+				c.ID = "visible-" + key[:12]
+				seed.Cases = append(seed.Cases, c)
+				seedKeys[key] = true
+			}
+		}
+
 		return nil
 	}
 	ranked, e := s.rankedTrainingPages(ctx, *a, corpus)
@@ -476,6 +493,33 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 			break
 		}
 	}
+	if previous == nil && len(seed.Cases) > 0 {
+		// Restrict discovery to a common observed first catalog path segment.
+		// Never synthesize a concrete new endpoint.
+		var segment string
+		consistent := true
+		count := 0
+		for _, p := range training.Pages {
+			u, e := url.Parse(p.URL)
+			if e != nil {
+				continue
+			}
+			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+			if len(parts) < 2 {
+				continue
+			}
+			if segment == "" {
+				segment = parts[0]
+			} else if segment != parts[0] {
+				consistent = false
+			}
+			count++
+		}
+		if consistent && segment != "" && count >= 2 {
+			seed.Discovery = []catalog.DiscoveryRule{{Selector: "a[href]", PathPattern: "^/" + regexp.QuoteMeta(segment) + "(/|$)"}}
+		}
+		training.Current = &seed
+	}
 	if len(training.Pages) == 0 {
 		return false, fmt.Errorf("no training pages")
 	}
@@ -484,7 +528,7 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 		keys = append(keys, r.URL+"|"+r.Hash)
 	}
 	sort.Strings(keys)
-	key := sampleHash([]byte(a.ActiveVersion + "|" + strings.Join(keys, ";")))
+	key := sampleHash([]byte("visible-seed-v1|" + a.ActiveVersion + "|" + strings.Join(keys, ";")))
 	if a.Study == nil || a.Study.Key != key || a.Study.Round >= maxLearningRounds {
 		a.Study = &AdaptiveStudy{Key: key, Phase: "propose"}
 	}
@@ -513,7 +557,13 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 			if e = adaptiveProgress(ctx, "propose", fmt.Sprintf("Candidate round %d of %d", round+1, maxLearningRounds), int64(round), int64(maxLearningRounds)); e != nil {
 				return false, e
 			}
-			spec, e = s.adapterProposer(ctx, training)
+			if round == maxLearningRounds-1 && len(seed.Cases) > 0 && len(seedKeys) > 0 {
+				// A code-derived candidate is just another proposal. It is not
+				// approved by the LLM and must pass the same full-corpus gate.
+				spec = seed
+			} else {
+				spec, e = s.adapterProposer(ctx, training)
+			}
 		}
 		if e != nil {
 			var invalid *InvalidAdapterProposal

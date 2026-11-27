@@ -449,6 +449,10 @@ func AdapterLinks(s Source, spec AdapterSpec, page string, body []byte) []string
 		return nil
 	}
 	seen := map[string]bool{}
+	permitted := map[string]bool{}
+	for _, u := range PublishedLinks(s, page, body) {
+		permitted[u] = true
+	}
 	var out []string
 	for _, r := range spec.Discovery {
 		re, e := regexp.Compile(r.PathPattern)
@@ -458,7 +462,7 @@ func AdapterLinks(s Source, spec AdapterSpec, page string, body []byte) []string
 		doc.Find(r.Selector).EachWithBreak(func(_ int, n *goquery.Selection) bool {
 			raw, _ := n.Attr("href")
 			u, ok := seedLink(s, page, raw)
-			if ok && u != page && !seen[u] {
+			if ok && u != page && !seen[u] && permitted[u] {
 				p, e := url.Parse(u)
 				if e == nil && re.MatchString(p.Path) && PublicStoreURL(u) == nil {
 					seen[u] = true
