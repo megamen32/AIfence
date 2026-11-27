@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-11-27T03:23:55Z",
+  "ref": "google-trends",
+  "transport": "stdio",
+  "command": "/opt/homebrew/bin/node",
+  "args": [
+    "/Users/user/AIfence-worktrees/external-demand/apps/google-trends/scripts/raw-mcp.mjs"
+  ],
+  "working_directory_independent": true,
+  "process_state": "running",
+  "protocol_state": "ready",
+  "tools_count": 1,
+  "tool_names": [
+    "hasdata_google_trends_search_getTrendsData"
+  ],
+  "last_error": null,
+  "data_calls_during_registration": 0,
+  "recorded_from": "root operator observed ShellMCP registration receipt"
+}

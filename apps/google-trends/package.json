@@ -1,0 +1,16 @@
+{
+  "name": "aifence-google-trends-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "mcp": "node scripts/raw-mcp.mjs",
+    "test:mcp": "node --test mcp/*.test.mjs"
+  },
+  "dependencies": {
+    "mcp-remote": "0.1.43"
+  }
+}

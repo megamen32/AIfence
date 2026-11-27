@@ -1,0 +1,17 @@
+/.runtime/
+/.env
+/.env.local
+/.env.*
+!/.env.example
+/node_modules/
+/.airlock/
+/bin/
+/build/
+/dist/
+/google-trends
+*_templ.go
+views/static/app.css
+internal/db/*
+!internal/db/doc.go
+/agent
+/agent.exe
