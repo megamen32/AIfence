@@ -35,14 +35,15 @@ type Rule struct {
 	PriceBasis string `json:"price_basis"`
 }
 type Source struct {
-	Adapter        string   `json:"adapter,omitempty"`
-	ID             string   `json:"id"`
-	Host           string   `json:"host"`
-	Sitemap        string   `json:"sitemap"`
-	SitemapInclude string   `json:"sitemap_include,omitempty"`
-	PageInclude    string   `json:"page_include"`
-	Seeds          []string `json:"seeds"`
-	Rule           Rule     `json:"rule"`
+	Adapter        string       `json:"adapter,omitempty"`
+	Adaptive       *AdapterSpec `json:"adaptive,omitempty"`
+	ID             string       `json:"id"`
+	Host           string       `json:"host"`
+	Sitemap        string       `json:"sitemap"`
+	SitemapInclude string       `json:"sitemap_include,omitempty"`
+	PageInclude    string       `json:"page_include"`
+	Seeds          []string     `json:"seeds"`
+	Rule           Rule         `json:"rule"`
 }
 type Offer struct {
 	Source        string `json:"source"`
@@ -148,6 +149,14 @@ func Extract(s Source, page string, html io.Reader, at time.Time) ([]Offer, erro
 }
 
 func extractDoc(s Source, page string, doc *goquery.Document, at time.Time) ([]Offer, error) {
+	if s.Adaptive != nil {
+		body, e := doc.Html()
+		if e != nil {
+			return nil, e
+		}
+		r, e := ParseAdapter(s, *s.Adaptive, page, []byte(body), at)
+		return r.Offers, e
+	}
 	if s.Adapter == "allsoft_family" {
 		return allsoftFamily(s, page, doc, at)
 	}

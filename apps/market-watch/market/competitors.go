@@ -81,7 +81,11 @@ func (s *Service) configuredSources(ctx context.Context) ([]catalog.Source, erro
 			base = append(base, p)
 		}
 	}
-	return base, nil
+	dynamic, e := s.adaptiveSources(ctx)
+	if e != nil {
+		return nil, e
+	}
+	return append(base, dynamic...), nil
 }
 func (s *Service) enableCompetitors(ctx context.Context, in AddCompetitorsInput) ([]string, error) {
 	s.mu.Lock()

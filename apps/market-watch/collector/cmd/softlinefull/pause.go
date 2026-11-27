@@ -14,7 +14,15 @@ func (s *survey) recordPause(status *catalog.HTTPStatus) error {
 	if !until.After(time.Now()) {
 		until = time.Now().Add(3 * time.Hour)
 	}
-	return save(filepath.Join(s.out, "retry-after.json"), until.UTC())
+	path := filepath.Join(s.out, "retry-after.json")
+	var prior time.Time
+	if err := read(path, &prior); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if prior.After(until) {
+		until = prior
+	}
+	return save(path, until.UTC())
 }
 func resumeAllowed(out string, now time.Time) error {
 	var until time.Time

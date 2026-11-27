@@ -20,18 +20,19 @@ type Variant struct {
 }
 
 type PageResult struct {
-	URL          string    `json:"url"`
-	At           string    `json:"at"`
-	State        string    `json:"state"`
-	Title        string    `json:"title,omitempty"`
-	EvidenceURL  string    `json:"evidence_url,omitempty"`
-	Category     string    `json:"category,omitempty"`
-	CategoryURL  string    `json:"category_url,omitempty"`
-	ExcludedURLs []string  `json:"excluded_urls,omitempty"`
-	Offers       []Offer   `json:"offers,omitempty"`
-	Variants     []Variant `json:"variants,omitempty"`
-	Error        string    `json:"error,omitempty"`
-	Attempts     int       `json:"attempts,omitempty"`
+	URL            string    `json:"url"`
+	At             string    `json:"at"`
+	State          string    `json:"state"`
+	StatusEvidence string    `json:"status_evidence,omitempty"`
+	Title          string    `json:"title,omitempty"`
+	EvidenceURL    string    `json:"evidence_url,omitempty"`
+	Category       string    `json:"category,omitempty"`
+	CategoryURL    string    `json:"category_url,omitempty"`
+	ExcludedURLs   []string  `json:"excluded_urls,omitempty"`
+	Offers         []Offer   `json:"offers,omitempty"`
+	Variants       []Variant `json:"variants,omitempty"`
+	Error          string    `json:"error,omitempty"`
+	Attempts       int       `json:"attempts,omitempty"`
 }
 
 // InspectPage uses the same producer of prices as the native app and records
@@ -45,6 +46,13 @@ func InspectPage(s Source, page string, body io.Reader, at time.Time) (PageResul
 	return inspectDocument(s, page, doc, at)
 }
 func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time) (PageResult, error) {
+	p, e := inspectDocumentBase(s, page, doc, at)
+	if e == nil && s.ID == "softmagazin" {
+		classifySoftMagazinDisposition(page, doc, &p)
+	}
+	return p, e
+}
+func inspectDocumentBase(s Source, page string, doc *goquery.Document, at time.Time) (PageResult, error) {
 	p := PageResult{URL: page, At: at.UTC().Format(time.RFC3339), State: "unclassified"}
 	var err error
 	p.Title = strings.Join(strings.Fields(doc.Find("h1").First().Text()), " ")
@@ -74,6 +82,7 @@ func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time)
 		}
 	}
 	p.Offers, err = extractDoc(s, page, doc, at)
+	// Existing verified tier data wins over less-specific structured prices.
 	if len(p.Offers) == 0 && err == nil && (s.ID != "softmagazin" || p.Category == "software") {
 		if o := StructuredOffer(s, page, doc, at); o != nil {
 			p.Offers = []Offer{*o}
