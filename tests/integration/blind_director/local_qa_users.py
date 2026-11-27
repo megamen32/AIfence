@@ -56,7 +56,18 @@ def save(path, row):
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--origin',required=True);p.add_argument('--cases',nargs='+',default=['case-01','case-06'],choices=[f'case-{i:02d}' for i in range(1,12)]);args=p.parse_args()
+    global OUT
+    p=argparse.ArgumentParser();p.add_argument('--origin',required=True);p.add_argument('--cases',nargs='+',default=['case-01','case-06']);p.add_argument('--blind30',action='store_true');args=p.parse_args()
+    if args.blind30:
+        import blind30_score
+        package=ROOT/'.runtime/blind-director/blind30-sol-v2'
+        _, manifest=blind30_score.verify(package)
+        OUT=package/'local-inputs'
+        allowed={x['id'] for x in manifest['cases']}
+        if not (OUT/'manifest.json').is_file():raise RuntimeError('Prepared blind30 inputs missing')
+    else:
+        allowed={f'case-{i:02d}' for i in range(1,12)}
+    if not set(args.cases)<=allowed or len(set(args.cases))!=len(args.cases):raise RuntimeError('Unexpected or duplicate case')
     assert_local(args.origin)
     info=OPERATOR.stat()
     if info.st_uid!=os.getuid() or info.st_mode & 0o077:raise RuntimeError('Insecure QA operator file')
