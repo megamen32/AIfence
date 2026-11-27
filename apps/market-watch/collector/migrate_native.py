@@ -8,6 +8,7 @@ each digest-idempotent batch to the app-owned Postgres schema.
 import argparse
 import base64
 import concurrent.futures
+from contextlib import closing
 import datetime as dt
 import gzip
 import hashlib
@@ -45,10 +46,18 @@ def read_db(path):
 def prepare(catalog, directory):
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     snapshot = directory / "crawl.sqlite"
-    with read_db(catalog / "crawl.sqlite") as source, sqlite3.connect(snapshot) as target:
+    with closing(read_db(catalog / "crawl.sqlite")) as source, closing(sqlite3.connect(snapshot)) as target:
         source.backup(target, pages=2048, sleep=0.05)
         target.commit()
+        target.execute("PRAGMA journal_mode=DELETE").fetchone()
     snapshot.chmod(0o600)
+    seal(catalog, directory)
+
+
+def seal(catalog, directory):
+    snapshot = directory / "crawl.sqlite"
+    if (directory / "manifest.json").exists() or not snapshot.is_file():
+        raise RuntimeError("snapshot missing or already sealed")
     counts = {}
     with read_db(snapshot) as db:
         if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
@@ -198,7 +207,7 @@ def verify(directory, air, app):
 if __name__ == "__main__":
     os.umask(0o077)
     p = argparse.ArgumentParser()
-    p.add_argument("action", choices=["prepare", "stage", "verify"])
+    p.add_argument("action", choices=["prepare", "seal", "stage", "verify"])
     p.add_argument("--catalog", type=Path, required=True)
     p.add_argument("--directory", type=Path, required=True)
     p.add_argument("--air", type=Path, required=True)
@@ -206,6 +215,8 @@ if __name__ == "__main__":
     args = p.parse_args()
     if args.action == "prepare":
         prepare(args.catalog, args.directory)
+    elif args.action == "seal":
+        seal(args.catalog, args.directory)
     elif args.action == "stage":
         stage(args.directory, args.air, args.app)
     else:
