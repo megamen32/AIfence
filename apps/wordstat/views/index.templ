@@ -1,150 +1,235 @@
 package views
-
 import "github.com/airlockrun/agentsdk/lucide"
 
 templ Index(v HomeView) {
-    @Layout("Wordstat | Поисковый спрос") {
-        <header data-airlock-standalone-only class="mb-6 flex items-start gap-3">
-            @lucide.Icon("chart-no-axes-combined", "size-7 mt-1 shrink-0")
-            <div>
-                <h1 class="text-2xl font-semibold">Wordstat</h1>
-                <p class="text-base-content/70">Фразы, динамика и география поискового спроса</p>
-            </div>
-        </header>
-        <div class="alert alert-warning mb-5 items-start" role="note">
-            @lucide.Icon("calendar-clock", "size-5 shrink-0")
-            <div class="min-w-0">
-                <strong>Доступна только историческая статистика</strong>
-                <p class="mt-1 text-sm">После 7 октября 2026 года API не получает новые данные. Для сравнения полных месяцев выбирайте сентябрь 2026 или раньше.</p>
-            </div>
-        </div>
-        <form id="wordstat-form" class="space-y-4" method="post" action="/query" hx-post="/query" hx-trigger="submit" hx-target="#results" hx-swap="innerHTML" hx-disable="find button[type='submit']">
-            <label class="block">
-                <span class="mb-2 block font-medium">Поисковая фраза</span>
-                <input class="input w-full" type="text" name="phrase" id="phrase" list="phrase-examples" placeholder="Например, касперский для бизнеса" maxlength="400" required/>
-                <datalist id="phrase-examples">
-                    for _, phrase := range v.Presets {
-                        <option value={ phrase }></option>
-                    }
-                </datalist>
-            </label>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="block min-w-0">
-                    <span class="mb-2 block text-sm">Исследование</span>
-                    <select class="select w-full" name="kind">
-                        <option value="top">Запросы и похожие формулировки</option>
-                        <option value="dynamics">Динамика по месяцам</option>
-                        <option value="regions">Распределение по регионам</option>
-                    </select>
-                </label>
-                <label class="block min-w-0">
-                    <span class="mb-2 block text-sm">География для распределения</span>
-                    <select class="select w-full" name="region_mode">
-                        <option value="regions">Регионы</option>
-                        <option value="cities">Города</option>
-                        <option value="all">Все уровни</option>
-                    </select>
-                </label>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="block min-w-0">
-                    <span class="mb-2 block text-sm">Регион для фраз и динамики</span>
-                    <input class="input w-full" type="text" name="region_ids" value="225" inputmode="numeric"/>
-                    <span class="mt-1 block text-xs text-base-content/65">225: Россия. Пустое поле: без фильтра. Несколько кодов через запятую.</span>
-                </label>
-                <label class="block min-w-0">
-                    <span class="mb-2 block text-sm">Устройства для фраз и динамики</span>
-                    <select class="select w-full" name="device">
-                        <option value="all">Все устройства</option>
-                        <option value="desktop">Компьютеры</option>
-                        <option value="phone">Телефоны</option>
-                        <option value="tablet">Планшеты</option>
-                    </select>
-                </label>
-            </div>
-            <fieldset class="rounded-box border border-base-300 p-4">
-                <legend class="px-2 text-sm">Период для динамики</legend>
-                <p class="mb-3 text-xs text-base-content/65">Помесячная динамика поддерживает только оператор +. Для остальных операторов используйте исследование фраз.</p>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block min-w-0">
-                        <span class="mb-2 block text-sm">Первый месяц</span>
-                        <input class="input w-full" name="from_month" type="month" value="2025-10"/>
-                    </label>
-                    <label class="block min-w-0">
-                        <span class="mb-2 block text-sm">Последний месяц</span>
-                        <input class="input w-full" name="to_month" type="month" value="2026-09"/>
-                    </label>
-                </div>
-                <p class="mt-3 text-xs text-base-content/65">У запросов и распределения по регионам точное окно API не сообщается. Оно не зависит от выбранных здесь месяцев.</p>
-            </fieldset>
-            <button type="submit" class="btn btn-primary">
-                @ActionIcon("search")
-                <span>Исследовать спрос</span>
-            </button>
-        </form>
-        <section id="results" class="mt-6 min-w-0" aria-live="polite">
-            <p class="text-sm text-base-content/65">Введите фразу или выберите пример в поле поиска. Запрос запускается кнопкой.</p>
-        </section>
-        <footer class="mt-8 border-t border-base-300 pt-4 text-xs text-base-content/65">
-            <p>Частотность показывает поисковые запросы. Она не измеряет число покупателей, заказы или выручку. Частотности пересекающихся фраз нельзя складывать.</p>
-            <a class="link mt-2 inline-flex items-center gap-1" href="https://aistudio.yandex.ru/ru/docs/search-api/concepts/wordstat" target="_blank" rel="noopener noreferrer">
-                Документация источника
-                @lucide.Icon("external-link", "size-3")
-            </a>
-        </footer>
+ @Layout("Wordstat | Поисковый спрос") {
+  <header data-airlock-standalone-only class="explorer-heading">
+   <div class="heading-mark">@lucide.Icon("chart-no-axes-combined","size-5")</div>
+   <div><h1>Wordstat</h1><p>Что ищут, как меняется спрос и где он выше</p></div>
+  </header>
+  <form id="wordstat-form" class="research-form" data-research-form method="post" action="/query" hx-post="/query" hx-trigger="submit" hx-target="#results" hx-swap="innerHTML" hx-sync="this:drop" hx-disable="find input, find select, find button">
+   <div class="research-topline">
+    <fieldset class="analysis-modes">
+     <legend class="sr-only">Вид исследования</legend>
+     <label><input type="radio" name="kind" value="top" checked?={ v.Form.Kind=="top" }/><span>Фразы</span></label>
+     <label><input type="radio" name="kind" value="dynamics" checked?={ v.Form.Kind=="dynamics" }/><span>Динамика</span></label>
+     <label><input type="radio" name="kind" value="regions" checked?={ v.Form.Kind=="regions" }/><span>География</span></label>
+    </fieldset>
+    <span class="history-note" title="API не обновляет статистику после 7 октября 2026. Последний полный месяц: сентябрь 2026.">@lucide.Icon("calendar-clock","size-3.5")<span>История до 07.10.2026</span></span>
+   </div>
+   <div class="phrase-bar">
+    <label class="phrase-control"><span>Поисковая фраза</span><input name="phrase" id="phrase" value={ v.Form.Phrase } placeholder="Например, касперский для бизнеса" maxlength="400" required autocomplete="off"/></label>
+    <button type="submit" class="btn btn-primary submit-research" data-submit>@ActionIcon("search")<span>Исследовать спрос</span></button>
+   </div>
+   <div class="phrase-examples"><span>Попробуйте</span>
+    for _,phrase:=range v.Presets {
+     <button type="button" data-example={ phrase }>{ phrase }</button>
     }
-}
-
-templ Result(v ResultView) {
-    <div class="space-y-4 min-w-0">
-        if v.Status != "ok" {
-            <div class="alert items-start" role="status">
-                @lucide.Icon("circle-alert", "size-5 shrink-0")
-                <div class="min-w-0">
-                    <p>{ v.Message }</p>
-                    if v.Period != "" {
-                        <p class="mt-2 text-sm">Запрошен период: <strong>{ v.Period }</strong></p>
-                    }
-                </div>
-            </div>
-        } else {
-            <div>
-                <h2 class="text-lg font-semibold break-words">{ v.Phrase }</h2>
-                <p class="text-sm text-base-content/70">{ v.Message }</p>
-                if v.Period != "" {
-                    <p class="mt-1 text-sm">Запрошен период: { v.Period }</p>
-                }
-            </div>
-        }
-        if len(v.Rows) > 0 {
-            <div class="overflow-x-auto rounded-box border border-base-300">
-                <table class="table table-sm">
-                    <thead>
-                        <tr><th>Фраза, период или регион</th><th class="text-right">Запросы</th><th>Раздел</th></tr>
-                    </thead>
-                    <tbody>
-                        for _, row := range v.Rows {
-                            <tr>
-                                <td class="whitespace-normal break-words">{ row.Label }</td>
-                                <td class="text-right tabular-nums">{ row.Count }</td>
-                                <td class="text-xs">{ row.Group }</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-        if v.WindowNote != "" {
-            <p class="text-sm text-base-content/65">{ v.WindowNote }</p>
-        }
-        if v.Raw != "" {
-            <details class="rounded-box border border-base-300 p-3">
-                <summary class="cursor-pointer text-sm">Исходный ответ Wordstat</summary>
-                <pre class="mt-3 overflow-auto max-h-96 whitespace-pre-wrap break-all text-xs">{ v.Raw }</pre>
-            </details>
-        }
-        if v.CheckedAt != "" {
-            <p class="text-xs text-base-content/60">Время обращения: { v.CheckedAt }. Дата обращения не является датой данных.</p>
-        }
+   </div>
+   <div class="filter-bar">
+    <fieldset class="filter-control geo-control" data-mode-fields="top dynamics" hidden?={ v.Form.Kind=="regions" } disabled?={ v.Form.Kind=="regions" }>
+     <label for="geo-search">Регион</label>
+     <div class="geo-input-wrap">@lucide.Icon("map-pin","size-3.5")<input id="geo-search" data-geo-search value={ v.Form.RegionLabel } autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="geo-options" aria-expanded="false"/><span>@lucide.Icon("chevron-down","size-3.5")</span></div>
+     <input type="hidden" name="region_ids" value={ v.Form.RegionIDs }/>
+     <div class="geo-menu" data-geo-menu hidden><div id="geo-options" class="geo-options" role="listbox"></div><p class="geo-hint" data-geo-hint>Выберите название из списка</p></div>
+    </fieldset>
+    <fieldset class="filter-control" data-mode-fields="top dynamics" hidden?={ v.Form.Kind=="regions" } disabled?={ v.Form.Kind=="regions" }>
+     <label for="device">Устройства</label>
+     <select id="device" name="device">
+      <option value="all" selected?={ v.Form.Device=="all" }>Все устройства</option>
+      <option value="desktop" selected?={ v.Form.Device=="desktop" }>Компьютеры</option>
+      <option value="phone" selected?={ v.Form.Device=="phone" }>Телефоны</option>
+      <option value="tablet" selected?={ v.Form.Device=="tablet" }>Планшеты</option>
+     </select>
+    </fieldset>
+    <fieldset class="filter-control" data-mode-fields="dynamics" hidden?={ v.Form.Kind!="dynamics" } disabled?={ v.Form.Kind!="dynamics" }>
+     <label for="period-preset">Период</label>
+     <select id="period-preset" name="period_preset" data-period>
+      <option value="12" selected?={ v.Form.PeriodPreset=="12" }>12 доступных месяцев</option>
+      <option value="6" selected?={ v.Form.PeriodPreset=="6" }>6 доступных месяцев</option>
+      <option value="3" selected?={ v.Form.PeriodPreset=="3" }>3 доступных месяца</option>
+      <option value="2025" selected?={ v.Form.PeriodPreset=="2025" }>2025 год</option>
+      <option value="custom" selected?={ v.Form.PeriodPreset=="custom" }>Свой период</option>
+     </select>
+    </fieldset>
+    <fieldset class="filter-control" data-mode-fields="regions" hidden?={ v.Form.Kind!="regions" } disabled?={ v.Form.Kind!="regions" }>
+     <label for="region-mode">Показать</label>
+     <select id="region-mode" name="region_mode">
+      <option value="regions" selected?={ v.Form.RegionMode=="regions" }>Регионы</option>
+      <option value="cities" selected?={ v.Form.RegionMode=="cities" }>Города</option>
+      <option value="all" selected?={ v.Form.RegionMode=="all" }>Все уровни</option>
+     </select>
+    </fieldset>
+   </div>
+   <div class="secondary-filters">
+    <p data-mode-hint>Точное окно этой статистики API не сообщает.</p>
+    <button type="button" class="edit-dates" data-edit-dates hidden?={ v.Form.Kind!="dynamics" }>@lucide.Icon("sliders-horizontal","size-3")<span>Указать месяцы</span></button>
+   </div>
+   <fieldset class="custom-dates" data-custom-dates hidden disabled?={ v.Form.Kind!="dynamics" }>
+    <label><span>Первый месяц</span><input class="input input-sm" type="month" name="from_month" value={ v.Form.FromMonth }/></label>
+    <label><span>Последний месяц</span><input class="input input-sm" type="month" name="to_month" value={ v.Form.ToMonth }/></label>
+    <p>Доступны полные месяцы до сентября 2026. Более поздний период вернёт явную ошибку без замены дат.</p>
+   </fieldset>
+   <p class="form-error" data-form-error role="alert" hidden></p>
+  </form>
+  <div class="draft-notice" data-draft-notice hidden>@lucide.Icon("info","size-4")<span>Параметры изменены. На экране остаётся предыдущий результат. Нажмите «Обновить исследование».</span></div>
+  <div id="query-feedback" aria-live="polite"></div>
+  <section id="results" class="research-results" aria-label="Результат исследования">
+   if v.Result!=nil {
+    @Result(*v.Result)
+   } else {
+    <div class="empty-research">
+     <div class="empty-icon">@lucide.Icon("search","size-7")</div>
+     <h2>Начните с поисковой фразы</h2>
+     <p>Узнайте её частотность, откройте динамику по месяцам или найдите регионы с наибольшим числом запросов.</p>
+     <small>Запрос запускается только кнопкой. Частотности разных фраз не складываются.</small>
     </div>
+   }
+  </section>
+ }
+}
+templ Feedback(v ResultView) {
+ <div class="query-feedback query-feedback-error" data-query-error role="alert">
+  @lucide.Icon("circle-alert","size-5 shrink-0")
+  <div><strong>Не удалось обновить исследование</strong><p>{ v.Message }</p>
+   if v.Period!="" {
+ <p>Запрошенный период: { v.Period }</p>
+ }
+   <small>Предыдущий результат, если он был, остаётся на экране.</small>
+  </div>
+ </div>
+}
+templ Result(v ResultView) {
+ <div class="result-record" data-result data-request={ v.RequestJSON } data-status={ v.Status }>
+  <div class="result-heading">
+   <div><h2>{ v.Phrase }</h2><p>{ v.Context }</p></div>
+   <span class="stale-badge" data-result-stale hidden>Параметры изменены</span>
+  </div>
+  if v.Kind=="top" {
+   <div class="frequency-summary">
+    <div><span class="metric-label">Частотность исходной фразы</span>
+     if v.HasTotal {
+ <strong class="frequency-value">{ v.Total }<small>запросов</small></strong>
+ } else {
+ <strong class="frequency-missing">Не сообщена источником</strong>
+ }
+     <p>Точное историческое окно неизвестно. Это поисковые запросы, не покупатели.</p>
+    </div>
+    <div class="frequency-context">@lucide.Icon("messages-square","size-5")<p>Смотрите формулировки отдельно: их частотности могут пересекаться.</p></div>
+   </div>
+   <div class="phrase-panels">
+    @Ranked("Содержат исходную фразу", "Популярные уточнения запроса",v.Main,v.MainMax,true,false)
+    @Ranked("Похожие запросы", "Могут не содержать исходную фразу",v.Associated,v.AssociatedMax,true,false)
+   </div>
+  } else if v.Kind=="dynamics" {
+   if v.HasChart {
+ @DynamicsChart(v)
+ } else {
+ <div class="empty-result"><h3>Помесячные значения не получены</h3><p>Источник не вернул данные для графика. Исходный ответ доступен в подробностях.</p></div>
+ }
+  } else if v.Kind=="regions" {
+   <div class="geography-panel">
+    if v.RegionLookupMessage!="" {
+ <p class="lookup-warning">@lucide.Icon("info","size-4")<span>{ v.RegionLookupMessage }</span></p>
+ }
+    @Ranked("Где ищут эту фразу", "Число запросов по каждому региону, без сложения вложенных территорий",v.Regions,v.RegionMax,false,true)
+   </div>
+  }
+  <div class="result-footer">
+   <p>Яндекс Wordstat<span> • </span>Абсолютное число запросов<span> • </span>История до 07.10.2026</p>
+   <a href={ v.SourceURL } target="_blank" rel="noopener noreferrer">@lucide.Icon("external-link","size-3.5")<span>Об источнике</span></a>
+  </div>
+  <div class="result-details">
+   <details>
+    <summary><span>Таблица данных</span><span class="detail-count">{ Number(len(v.Rows)) } строк</span>@lucide.Icon("chevron-down","size-4")</summary>
+    <div class="data-table-scroll"><table class="table table-sm"><thead><tr><th>Фраза, месяц или регион</th><th class="text-right">Запросы</th><th>Раздел</th></tr></thead><tbody>
+     for _,row:=range v.Rows {
+ <tr><th>{ row.Label }<small>{ row.Detail }</small></th><td class="text-right tabular-nums">{ row.Count }</td><td>{ row.Group }</td></tr>
+ }
+    </tbody></table></div>
+   </details>
+   <details>
+    <summary><span>Период и ограничения источника</span>@lucide.Icon("chevron-down","size-4")</summary>
+    <div class="source-body"><p>{ v.WindowNote }</p><p>Частотность не измеряет покупателей, заказы или выручку. Пересекающиеся фразы и вложенные территории нельзя суммировать.</p><p>Обращение к источнику: { v.CheckedAt }. Это время запроса, не дата данных.</p><pre>{ v.Metadata }</pre></div>
+   </details>
+   if v.Raw!="" {
+ <details><summary><span>Исходный ответ Wordstat</span>@lucide.Icon("chevron-down","size-4")</summary><div class="source-body"><pre>{ v.Raw }</pre></div></details>
+ }
+  </div>
+ </div>
+}
+templ Ranked(title,subtitle string,rows []RankedRow,max string,choosePhrase,searchable bool) {
+ <section class="ranked-panel" data-ranking>
+  <div class="ranked-heading"><h3>{ title }</h3><span>{ Number(len(rows)) }</span></div>
+  <p class="ranked-caption">{ subtitle }</p>
+  if searchable && len(rows)>0 {
+ <label class="ranking-search">@lucide.Icon("search","size-4")<input type="search" data-rank-search placeholder="Найти регион в результате" aria-label="Найти регион в результате"/></label>
+ }
+  <div class="ranked-list">
+   for i,row:=range rows {
+    <div class="ranked-item" data-ranked-item data-label={ row.Label+" "+row.Detail } hidden?={ i>=10 }>
+     <div class="ranked-row">
+      if choosePhrase {
+ <button type="button" class="ranked-label" data-use-phrase={ row.Label } title="Подставить в поле поиска">{ row.Label }@lucide.Icon("arrow-up-right","size-3.5")</button>
+ } else {
+ <span class="ranked-label">{ row.Label }<small>{ row.Detail }</small></span>
+ }
+      <strong>{ row.Count }</strong>
+     </div>
+     if row.RawCount!=nil {
+ <progress class="ranked-bar" value={ row.BarValue } max={ max } aria-hidden="true"></progress>
+ }
+    </div>
+   }
+  </div>
+  if len(rows)==0 {
+ <p class="ranked-empty">Источник не вернул формулировок или значений для этого списка.</p>
+ }
+  <p class="ranked-empty" data-rank-empty hidden>В этом результате совпадений нет.</p>
+  if len(rows)>10 {
+ <button class="show-all" type="button" data-show-all>@lucide.Icon("chevron-down","size-3.5")<span>Показать все { Number(len(rows)) }</span></button>
+ }
+  if choosePhrase && len(rows)>0 {
+ <p class="ranking-help">Нажмите на фразу, чтобы подставить её в новое исследование.</p>
+ }
+ </section>
+}
+templ DynamicsChart(v ResultView) {
+ <div class="interactive-chart" data-chart={ v.ChartJSON }>
+  <div class="chart-metrics">
+   for _,m:=range v.Metrics {
+ <div><span>{ m.Label }</span><strong>{ m.Value }</strong><small>{ m.Detail }</small></div>
+ }
+  </div>
+  <div class="chart-label"><span class="series-dot"></span><strong>Запросы в месяц</strong><span>Абсолютная частотность</span></div>
+  <div class="chart-stage" data-chart-stage tabindex="0" role="group" aria-label="График запросов по месяцам. Используйте стрелки влево и вправо, Home и End.">
+   <div class="chart-y-axis" aria-hidden="true">
+    for _,label:=range v.Axis {
+ <span>{ label }</span>
+ }
+   </div>
+   <div class="chart-plot" data-chart-plot>
+    <svg class="chart-svg" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true">
+     <g class="chart-grid"><line x1="0" y1="0" x2="1000" y2="0"/><line x1="0" y1="75" x2="1000" y2="75"/><line x1="0" y1="150" x2="1000" y2="150"/><line x1="0" y1="225" x2="1000" y2="225"/><line x1="0" y1="300" x2="1000" y2="300"/></g>
+     for _,points:=range v.Segments {
+ <polyline class="chart-line" fill="none" points={ points } vector-effect="non-scaling-stroke"/>
+ }
+    </svg>
+    for _,dot:=range v.Dots {
+ <span class="chart-marker chart-singleton" style={ templ.SafeCSS("left:"+dot.Left+"%;top:"+dot.Top+"%") } aria-hidden="true"></span>
+ }
+    <div class="chart-crosshair" data-crosshair hidden></div><div class="chart-markers" data-chart-markers></div>
+    if v.ObservedCount==0 {
+ <p class="chart-no-data">Источник не вернул помесячных значений.<br/>Отсутствие данных не заменено нулями.</p>
+ }
+   </div>
+   <div class="chart-x-axis" data-x-axis aria-hidden="true"></div>
+   <div class="chart-tooltip" data-chart-tooltip hidden>
+    <div class="point-heading"><strong data-tooltip-date></strong><button type="button" class="icon-button" data-tooltip-close aria-label="Закрыть подсказку">@lucide.Icon("x","size-4")</button></div>
+    <p class="point-quality" data-tooltip-quality></p><div class="point-values" data-tooltip-values></div>
+   </div>
+  </div>
+  <div class="chart-bottomline"><p>{ Number(v.ObservedCount) } из { Number(v.PointCount) } месяцев с данными. Пропуски не соединены.</p><p>@lucide.Icon("move-horizontal","size-3.5")<span>Наведите, коснитесь или используйте ← →</span></p></div>
+  <div class="sr-only" data-chart-live aria-live="polite"></div>
+ </div>
 }
