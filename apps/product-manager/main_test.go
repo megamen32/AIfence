@@ -40,7 +40,7 @@ func TestAgentComposition(t *testing.T) {
 	if len(manifest.Routes) == 0 {
 		t.Fatal("app must declare its HTTP routes")
 	}
-	for _, name := range []string{"read_wordstat", "read_google_trends", "read_competitor_prices", "plan_competitor_research", "export_competitor_csv", "submit_answer", "review_sales_and_prices", "save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis", "get_product_focus", "set_product_focus", "rank_hypotheses", "set_review_estimate", "private_review_link", "get_catalog_overview", "import_catalog_overview"} {
+	for _, name := range []string{"read_wordstat", "read_google_trends", "read_competitor_prices", "submit_answer", "review_sales_and_prices", "save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis", "get_product_focus", "set_product_focus", "rank_hypotheses", "set_review_estimate", "private_review_link", "get_catalog_overview", "import_catalog_overview"} {
 		if !slices.ContainsFunc(manifest.Tools, func(tool wire.ToolDef) bool {
 			return tool.Name == name && tool.Access == wire.AccessUser && len(tool.InputSchema) > 0
 		}) {
@@ -53,14 +53,12 @@ func TestAgentComposition(t *testing.T) {
 		}
 	}
 
-	if len(manifest.SuggestedPrompts) != 4 {
+	if len(manifest.SuggestedPrompts) != 3 {
 		t.Fatalf("expected three suggested prompts, got %d", len(manifest.SuggestedPrompts))
 	}
 	for i, want := range []struct{ title, prompt string }{
 		{"Что требует внимания?", "Что сейчас требует внимания в продажах?"},
 		{"Что стоит проверить?", "Посмотри, где могло возникнуть изменение, и предложи, что проверить первым."},
-		{"Что изменилось после релиза?", "Что мы уже можем сказать об эффекте изменений?"},
-		{"Провести конкурентный анализ", "Я представляю такую-то компанию и продаю такой-то продукт. Найди моих основных конкурентов, проведи конкурентный анализ и прикрепи итоговую CSV-таблицу с источниками."},
 	} {
 		got := manifest.SuggestedPrompts[i]
 		if got.Title != want.title || got.Prompt != want.prompt {
