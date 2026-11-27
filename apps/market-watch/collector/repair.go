@@ -128,16 +128,7 @@ func directIdentity(s Source, page string, doc *goquery.Document) bool {
 	}
 	return false
 }
-func strictVisiblePrice(raw string) (int64, error) {
-	raw = strings.TrimSpace(raw)
-	for _, suffix := range []string{"₽", "руб.", "руб", "RUB"} {
-		if strings.HasSuffix(raw, suffix) {
-			raw = strings.TrimSpace(strings.TrimSuffix(raw, suffix))
-			break
-		}
-	}
-	return strictPrice(raw)
-}
+
 func proposalOffer(s Source, page string, doc *goquery.Document, at time.Time, r RuleProposal) *Offer {
 	if r.Source != s.ID || !directIdentity(s, page, doc) {
 		return nil

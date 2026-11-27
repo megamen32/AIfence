@@ -22,11 +22,13 @@ type Store interface {
 	ListDir(context.Context, string, agentsdk.ListOpts) ([]agentsdk.FileInfo, error)
 }
 type Service struct {
-	queries *db.Queries
-	store   Store
-	fetch   catalog.Fetch
-	now     func() time.Time
-	mu      sync.Mutex
+	queries         *db.Queries
+	store           Store
+	fetch           catalog.Fetch
+	adaptiveFetch   catalog.Fetch
+	adapterProposer AdapterProposer
+	now             func() time.Time
+	mu              sync.Mutex
 }
 
 func New(store Store) *Service {
@@ -156,7 +158,12 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (Evidence, error
 			}
 		}
 		count++
-		go func(src catalog.Source) { ch <- catalog.Collect(ctx, src, s.fetch, false, 10, at) }(src)
+		if src.Adaptive != nil {
+			// Native adaptive state is written under the existing service lock.
+			ch <- s.refreshAdaptive(ctx, src, at)
+		} else {
+			go func(src catalog.Source) { ch <- catalog.Collect(ctx, src, s.fetch, false, 10, at) }(src)
+		}
 	}
 	for range count {
 		r := <-ch

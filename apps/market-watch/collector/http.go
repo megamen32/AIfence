@@ -48,11 +48,14 @@ type hostState struct {
 	successes         int
 	transportFailures int
 	changed           chan struct{}
+	transport         http.RoundTripper
 }
 type HTTP struct {
-	mu      sync.Mutex
-	hosts   map[string]*hostState
-	journal *Journal
+	mu         sync.Mutex
+	hosts      map[string]*hostState
+	journal    *Journal
+	publicOnly bool
+	transport  http.RoundTripper
 }
 
 func NewHTTP() *HTTP                   { return NewArchivedHTTP(nil) }
@@ -61,7 +64,7 @@ func (h *HTTP) state(host string) *hostState {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.hosts[host] == nil {
-		h.hosts[host] = &hostState{capacity: 8, changed: make(chan struct{})}
+		h.hosts[host] = &hostState{capacity: 8, changed: make(chan struct{}), transport: h.transport}
 	}
 	return h.hosts[host]
 }
@@ -190,7 +193,7 @@ func (s *hostState) get(ctx context.Context, raw string, delay time.Duration, j 
 	if strings.HasSuffix(raw, ".xml") {
 		timeout = 3 * time.Minute
 	}
-	client := http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := http.Client{Transport: s.transport, Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	req, e := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if e != nil {
 		return response{}, e
@@ -264,6 +267,12 @@ func (s *hostState) policy(ctx context.Context, host, source string, j *Journal)
 	return s.group, nil
 }
 func (h *HTTP) Fetch(ctx context.Context, src Source, raw string) ([]byte, error) {
+	if h.publicOnly {
+		if e := PublicStoreURL(raw); e != nil {
+			return nil, e
+		}
+	}
+
 	if !Allowed(src, raw) {
 		return nil, fmt.Errorf("URL outside approved HTTPS host")
 	}
@@ -275,6 +284,11 @@ func (h *HTTP) Fetch(ctx context.Context, src Source, raw string) ([]byte, error
 	delay := max(time.Second, rules.CrawlDelay)
 	requested := raw
 	for i := 0; i < 5; i++ {
+		if h.publicOnly {
+			if e := PublicStoreURL(raw); e != nil {
+				return nil, e
+			}
+		}
 		if !Allowed(src, raw) {
 			return nil, fmt.Errorf("redirect outside approved HTTPS host")
 		}
