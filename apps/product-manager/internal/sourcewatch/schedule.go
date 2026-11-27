@@ -23,8 +23,9 @@ type JobInput struct {
 // Keep this type separate from Outcome so diagnostic fields can evolve in v2
 // without changing results for already queued v1 jobs.
 type LegacyOutcome struct {
-	Status        string `json:"status"`
-	AnalysisRunID string `json:"analysis_run_id,omitempty"`
+	Status        string   `json:"status"`
+	AnalysisRunID string   `json:"analysis_run_id,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
 }
 
 type WatchRef struct {
