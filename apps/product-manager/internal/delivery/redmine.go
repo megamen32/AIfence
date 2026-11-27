@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
 
 	"agent/internal/decision"
 	"agent/internal/evidence"
@@ -386,7 +388,9 @@ func relevant(it named, r decision.Record) bool {
 	sameTitle := title != "" && (strings.EqualFold(strings.TrimSpace(it.Subject), title) ||
 		strings.HasPrefix(it.Subject, "[ИИ] "+title+" ["))
 	sameAction := action != "" && strings.Contains(it.Description, action)
-	return product != "" && strings.Contains(it.Description, "*Продукт:* "+product+"\n") && (sameTitle || sameAction)
+	productMarker := "*Продукт:* " + product + "\n"
+	technicalMarker := "Продуктовый ключ: " + product + "\n"
+	return product != "" && (strings.Contains(it.Description, productMarker) || strings.Contains(it.Description, technicalMarker)) && (sameTitle || sameAction)
 }
 
 func evidenceMarker(r decision.Record) string {
@@ -517,78 +521,202 @@ func shortID(s string) string {
 	return string([]rune(s)[:40])
 }
 
-// Subject is the issue title: assistant mark, card title and signal marker.
+var displayProductNames = map[string]string{
+	"astra_linux":                     "Astra Linux",
+	"astra_linux_special_edition":     "Astra Linux Special Edition",
+	"dr_web_desktop_security_suite":   "Dr.Web",
+	"kaspersky_endpoint_security":     "Kaspersky Endpoint Security",
+	"kaspersky_small_office_security": "Kaspersky Small Office Security",
+	"microsoft_365_business_premium":  "Microsoft 365 Business Premium",
+	"myoffice_private_cloud":          "MyOffice Private Cloud",
+}
+
+var displayMetricNames = map[string]string{
+	"add_to_cart":                "добавления в корзину",
+	"family_orders_idx":          "заказы",
+	"orders":                     "заказы",
+	"orders.relative_change_pct": "заказы",
+	"orders_index":               "заказы",
+	"pageviews":                  "просмотры",
+	"purchase_conversion":        "конверсия в покупку",
+	"revenue":                    "выручка",
+	"users":                      "пользователи",
+	"visits":                     "посещения",
+}
+
+// Subject is a short human-readable title. The signal field remains the
+// durable idempotency key in Redmine custom fields.
 func Subject(r decision.Record, signal string) string {
-	title := strings.TrimSpace(r.Hypothesis.Title)
-	if title == "" {
-		title = "Проверить продуктовый сигнал"
+	product := displayProductName(r.Hypothesis.ProductKey)
+	metric := displayMetric(r.Hypothesis.SuccessCriterion.MetricKey)
+	change := "изменение не определено"
+	week := "за выбранный период"
+	if c := r.SignalContrast; c != nil {
+		change = humanPercent(c.RelativeChangePct)
+		week = "за неделю " + subjectWeek(c.Current)
 	}
-	if rs := []rune(title); len(rs) > 160 {
-		title = string(rs[:160]) + "…"
-	}
-	return "[ИИ] " + title + " " + marker(signal)
+	return product + ": " + metric + " " + change + " " + week
 }
 
 // Description renders the before/after numbers and evidence IDs in Redmine
 // textile. Numbers come from the verified signal contrast, never from prose.
 func Description(r decision.Record, signal string) string {
-	return DescriptionWithReview(r, signal, "")
+	return DescriptionItem(BacklogItem{Record: r}, signal)
 }
 
 func DescriptionWithReview(r decision.Record, signal, review string) string {
+	return DescriptionItem(BacklogItem{Record: r, ReviewText: review, ReviewHypothesis: reviewFirstLine(review)}, signal)
+}
+
+func DescriptionItem(item BacklogItem, signal string) string {
+	r := item.Record
 	h := r.Hypothesis
 	var b strings.Builder
-	fmt.Fprintf(&b, "_Черновик %s: фоновая проверка Product Manager нашла сигнал и не нашла по нему задачи._\n\n", AILabel)
-	fmt.Fprintf(&b, "*Продукт:* %s\n", nonEmpty(h.ProductKey, "не указан"))
-	fmt.Fprintf(&b, "*Сигнал:* @%s@\n", signal)
 	if c := r.SignalContrast; c != nil {
-		fmt.Fprintf(&b, "\n*Цифры до/после* (%s):\n", nonEmpty(c.Basis, "окно сигнала"))
-		label := contrastValueLabel(c)
-		fmt.Fprintf(&b, "* до: %s – %s, %s\n", c.Baseline.From, c.Baseline.To, contrastValue(label, c.BaselineMean))
-		fmt.Fprintf(&b, "* после: %s – %s, %s\n", c.Current.From, c.Current.To, contrastValue(label, c.CurrentMean))
-		fmt.Fprintf(&b, "* изменение: %s%%\n", signed(c.RelativeChangePct))
-		if c.ControlBaselineMean != 0 || c.ControlCurrentMean != 0 {
-			fmt.Fprintf(&b, "* контроль %s: %s → %s\n", nonEmpty(h.SuccessCriterion.ControlProductKey, ""), num(c.ControlBaselineMean), num(c.ControlCurrentMean))
+		if item.Synthetic {
+			b.WriteString("ДЕМО: синтетические данные\n\n")
 		}
+		fmt.Fprintf(&b, "%s снизились на %s за неделю %s. ", sentenceMetric(h.SuccessCriterion.MetricKey), humanPercent(c.RelativeChangePct), subjectWeek(c.Current))
 	} else {
-		b.WriteString("\n*Цифры до/после:* в снимке нет проверенного окна сигнала, смотрите доказательства.\n")
-	}
-	if a := strings.TrimSpace(h.ProposedAction); a != "" {
-		fmt.Fprintf(&b, "\n*Что сделать:* %s\n", a)
-	}
-	if c := h.SuccessCriterion; c.MetricKey != "" {
-		fmt.Fprintf(&b, "\n*Критерий успеха:* %s, %s, база %s – %s, наблюдать %d дн.\n", c.MetricKey, c.Rule, c.BaselineFrom, c.BaselineTo, c.ObservationDays)
-	}
-	ids := func(title string, list []string) {
-		if len(list) == 0 {
-			return
+		if item.Synthetic {
+			b.WriteString("ДЕМО: синтетические данные\n\n")
 		}
-		fmt.Fprintf(&b, "\n*%s:*\n", title)
-		for _, id := range list {
-			fmt.Fprintf(&b, "* @%s@\n", id)
-		}
+		fmt.Fprintf(&b, "%s изменились за выбранный период. ", sentenceMetric(h.SuccessCriterion.MetricKey))
 	}
-	ids("Evidence: сигнал", h.SignalIDs)
-	ids("Evidence: подтверждения", h.SupportIDs)
-	ids("Evidence: против", h.CounterIDs)
-	ids("Evidence: проверка пути покупки", h.BrowserEvidenceIDs)
+	if item.ReviewHypothesis != "" {
+		fmt.Fprintf(&b, "Вероятная причина по разбору помощника: %s.\n\n", item.ReviewHypothesis)
+	} else {
+		b.WriteString("Причина пока не установлена.\n\n")
+	}
+	actions := item.Actions
+	if len(actions) == 0 {
+		actions = defaultActions(r)
+	}
+	b.WriteString("Что сделать:\n")
+	for _, action := range actions {
+		fmt.Fprintf(&b, "- %s\n", action)
+	}
+	if c := r.SignalContrast; c != nil {
+		weeks := (h.SuccessCriterion.ObservationDays + 6) / 7
+		if weeks < 1 {
+			weeks = 1
+		}
+		fmt.Fprintf(&b, "\nКритерий успеха: %s вернутся к уровню %s в течение %d нед.\n", sentenceMetric(h.SuccessCriterion.MetricKey), num(c.BaselineMean), weeks)
+	} else {
+		b.WriteString("\nКритерий успеха: показатель стабилизируется в следующем сопоставимом окне.\n")
+	}
+	b.WriteString("\n{{collapse(Технические детали)\n")
+	fmt.Fprintf(&b, "Продуктовый ключ: %s\nСигнал: @%s@\nСнимок данных: @%s@\nЗадача PM: @%s@\n", nonEmpty(h.ProductKey, "не указан"), signal, r.EvidenceSnapshotID, taskID(r))
+	if control := strings.TrimSpace(h.SuccessCriterion.ControlProductKey); control != "" {
+		fmt.Fprintf(&b, "Контрольный продукт: %s\n", control)
+	}
+	if action := strings.TrimSpace(h.ProposedAction); action != "" {
+		fmt.Fprintf(&b, "Действие: %s\n", action)
+	}
+	if len(item.Actions) > 0 {
+		fmt.Fprintf(&b, "План действий: %s\n", strings.Join(item.Actions, " | "))
+	}
+	if c := r.SignalContrast; c != nil {
+		fmt.Fprintf(&b, "До/после: %s → %s\nИзменение: %s%%\n", num(c.BaselineMean), num(c.CurrentMean), signed(c.RelativeChangePct))
+	}
+	fmt.Fprintf(&b, "Evidence: %s\n", strings.Join(append(slices.Clone(h.SignalIDs), h.SupportIDs...), ", "))
+	if len(h.CounterIDs) > 0 {
+		fmt.Fprintf(&b, "Evidence против: %s\n", strings.Join(h.CounterIDs, ", "))
+	}
+	if len(h.BrowserEvidenceIDs) > 0 {
+		fmt.Fprintf(&b, "Evidence пути покупки: %s\n", strings.Join(h.BrowserEvidenceIDs, ", "))
+	}
 	if len(h.Unknowns) > 0 {
-		b.WriteString("\n*Не известно:*\n")
-		for _, u := range h.Unknowns {
-			fmt.Fprintf(&b, "* %s\n", u)
-		}
+		fmt.Fprintf(&b, "Неизвестно: %s\n", strings.Join(h.Unknowns, "; "))
 	}
-	fmt.Fprintf(&b, "\nСнимок данных: @%s@. Задача PM: @%s@.\n", r.EvidenceSnapshotID, taskID(r))
-	if r.CardURL != "" {
-		fmt.Fprintf(&b, "Карточка: %s\n", r.CardURL)
-	}
-	if review = strings.TrimSpace(review); review != "" {
-		fmt.Fprintf(&b, "\n*Разбор сигнала:*\n%s\n%s\n", review, reviewMarker(r, signal, review))
+	if item.ReviewText != "" {
+		fmt.Fprintf(&b, "Разбор: %s\n", item.ReviewText)
 	}
 	if Eligible(r) {
 		fmt.Fprintln(&b, evidenceMarker(r))
 	}
+	fmt.Fprintf(&b, "Разметка: %s\n", AILabel)
+	if item.ReviewText != "" {
+		fmt.Fprintf(&b, "%s\n", reviewMarker(r, signal, item.ReviewText))
+	}
+	b.WriteString("}}\n")
 	return b.String()
+}
+
+func defaultActions(r decision.Record) []string {
+	action := strings.TrimSpace(r.Hypothesis.ProposedAction)
+	if action != "" && !strings.Contains(action, "источник изменения метрики") {
+		return []string{action}
+	}
+	return []string{"Проверить путь от выбора лицензии до корзины.", "Проверить релизы и изменения за неделю сигнала."}
+}
+
+func reviewFirstLine(review string) string {
+	for _, line := range strings.Split(review, "\n") {
+		if strings.HasPrefix(line, "Гипотеза: ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Гипотеза: "))
+		}
+	}
+	return ""
+}
+
+func displayProductName(key string) string {
+	key = strings.TrimSpace(key)
+	if name, ok := displayProductNames[key]; ok {
+		return name
+	}
+	key = strings.NewReplacer("_", " ", "-", " ").Replace(key)
+	words := strings.Fields(key)
+	for i, word := range words {
+		runes := []rune(strings.ToLower(word))
+		if len(runes) > 0 {
+			runes[0] = unicode.ToUpper(runes[0])
+		}
+		words[i] = string(runes)
+	}
+	return nonEmpty(strings.Join(words, " "), "Продукт")
+}
+
+func displayMetric(key string) string {
+	if name, ok := displayMetricNames[key]; ok {
+		return name
+	}
+	return displayProductName(key)
+}
+
+func sentenceMetric(key string) string {
+	value := displayMetric(key)
+	if value == "" {
+		return value
+	}
+	runes := []rune(value)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
+
+func humanPercent(value float64) string {
+	s := strconv.FormatFloat(math.Round(value*10)/10, 'f', -1, 64)
+	s = strings.ReplaceAll(s, ".", ",")
+	if value < 0 {
+		return "−" + strings.TrimPrefix(s, "-") + "%"
+	}
+	if value > 0 {
+		return "+" + s + "%"
+	}
+	return s + "%"
+}
+
+func subjectWeek(period evidence.Period) string {
+	from, errFrom := time.Parse(time.DateOnly, period.From)
+	to, errTo := time.Parse(time.DateOnly, period.To)
+	if errFrom != nil || errTo != nil {
+		return humanPeriod(period.From, period.To)
+	}
+	months := [...]string{"янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"}
+	if from.Month() == to.Month() {
+		return fmt.Sprintf("%d–%d %s", from.Day(), to.Day(), months[from.Month()-1])
+	}
+	return fmt.Sprintf("%d %s–%d %s", from.Day(), months[from.Month()-1], to.Day(), months[to.Month()-1])
 }
 
 func contrastValueLabel(c *evidence.WindowContrast) string {

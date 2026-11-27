@@ -14,8 +14,11 @@ import (
 // is optional because a source-watch issue must be filed before its review run
 // is complete.
 type BacklogItem struct {
-	Record     decision.Record
-	ReviewText string
+	Record           decision.Record
+	ReviewText       string
+	ReviewHypothesis string
+	Actions          []string
+	Synthetic        bool
 }
 
 // SourceWatchItem converts a pinned source-watch occurrence into the same
@@ -68,13 +71,24 @@ func SourceWatchItem(in sourcewatch.DeliverySignal) (BacklogItem, error) {
 	}
 
 	reviewText := formatReview(in.Review)
+	actions := []string{"Проверить путь от выбора лицензии до корзины."}
+	if len(in.Signal.PriceFamilies) > 0 || in.Signal.ContextSKU != "" {
+		actions = append(actions, "Сравнить цены на ту же редакцию и срок лицензии.")
+	}
+	actions = append(actions, "Проверить релизы и изменения за неделю "+humanPeriod(in.Signal.CurrentFrom, in.Signal.CurrentTo)+".")
+	if len(actions) > 3 {
+		actions = actions[:3]
+	}
 	return BacklogItem{
 		Record: decision.Record{
 			SignalContrast:     contrast,
 			Hypothesis:         h,
 			EvidenceSnapshotID: "source-watch:" + signalID,
 		},
-		ReviewText: reviewText,
+		ReviewText:       reviewText,
+		ReviewHypothesis: reviewHypothesis(in.Review),
+		Actions:          actions,
+		Synthetic:        in.Signal.FamilyChange != nil && in.Signal.FamilyChange.Synthetic,
 	}, nil
 }
 
@@ -120,4 +134,18 @@ func formatReview(review *sourcewatch.ReviewOutput) string {
 	}
 	fmt.Fprintf(&b, "Следующая проверка: %s, порог %.1f%%, %d дн.", review.Test.Metric, review.Test.ThresholdPct, review.Test.Days)
 	return strings.TrimSpace(b.String())
+}
+
+func reviewHypothesis(review *sourcewatch.ReviewOutput) string {
+	if review == nil {
+		return ""
+	}
+	return strings.TrimSpace(review.Hypothesis)
+}
+
+func humanPeriod(from, to string) string {
+	if from == "" || to == "" {
+		return "выбранную неделю"
+	}
+	return from + " – " + to
 }
