@@ -23,10 +23,15 @@ func TestSourceWatchCheckAndBacklogDeliveryAcrossEightMondays(t *testing.T) {
 	rng := rand.New(rand.NewSource(20261127))
 	owner := "source-watch-owner"
 	pinned := make([]sourcewatch.DeliverySignal, 0, 8)
+	weekly := make([]string, 0, 8)
+	var foreignSnapshot string
+	t.Log("week | monday | occurrence | issue | human mutation | comment | retry | duplicate-safe | foreign")
+	t.Log("-----|--------|------------|-------|-----------------|---------|-------|---------------|--------")
 
 	for week := 0; week < 8; week++ {
+		humanMutation := "none"
 		if week > 0 {
-			syntheticHumanMutation(rm, rng, week)
+			humanMutation = syntheticHumanMutation(rm, rng, week)
 		}
 		monday := time.Date(2026, time.October, 5+7*week, 0, 0, 0, 0, time.UTC)
 		var signal sourcewatch.Signal
@@ -54,6 +59,8 @@ func TestSourceWatchCheckAndBacklogDeliveryAcrossEightMondays(t *testing.T) {
 		if err != nil {
 			t.Fatalf("week %d adapter: %v", week, err)
 		}
+		notesBefore := rm.notes
+		retry := "no"
 		if week == 4 {
 			// A failed remote call must leave this occurrence unreceipted so the
 			// next sync retries the same occurrence instead of losing it.
@@ -68,15 +75,43 @@ func TestSourceWatchCheckAndBacklogDeliveryAcrossEightMondays(t *testing.T) {
 			if len(retried.Errors) != 0 || len(retried.Issues) != 1 {
 				t.Fatalf("week %d retry result = %+v", week, retried)
 			}
-			continue
+			retry = "yes"
+		} else {
+			result := d.DeliverBatch(ctx, owner, []BacklogItem{item})
+			if len(result.Errors) != 0 || len(result.Issues) != 1 {
+				t.Fatalf("week %d delivery result = %+v", week, result)
+			}
 		}
-		result := d.DeliverBatch(ctx, owner, []BacklogItem{item})
-		if len(result.Errors) != 0 || len(result.Issues) != 1 {
-			t.Fatalf("week %d delivery result = %+v", week, result)
+		createsAfter := rm.creates
+		notesAfter := rm.notes
+		duplicate := d.DeliverBatch(ctx, owner, []BacklogItem{item})
+		if len(duplicate.Errors) != 0 || len(duplicate.Issues) != 1 || rm.creates != createsAfter || rm.notes != notesAfter {
+			t.Fatalf("week %d duplicate delivery changed Redmine state: result=%+v creates=%d notes=%d", week, duplicate, rm.creates, rm.notes)
+		}
+		comment := "no"
+		if notesAfter > notesBefore {
+			comment = "yes"
 		}
 		if week == 1 && (rm.creates != 1 || rm.notes == 0) {
 			t.Fatalf("an open renamed issue must receive a comment, creates=%d notes=%d", rm.creates, rm.notes)
 		}
+		foreign := findForeignIssue(rm)
+		foreignState := "-"
+		if foreign != nil {
+			if foreignSnapshot == "" {
+				foreignSnapshot = foreignIssueState(foreign)
+				foreignState = "seeded"
+			} else if foreignSnapshot == foreignIssueState(foreign) {
+				foreignState = "yes"
+			} else {
+				t.Fatalf("week %d modified foreign issue", week)
+			}
+		}
+		issue := duplicate.Issues[0].IssueID
+		weekly = append(weekly, fmt.Sprintf("%d | %s | %s | #%d | %s | %s | %s | yes | %s", week+1, monday.Format(time.DateOnly), signal.SignalID, issue, humanMutation, comment, retry, foreignState))
+	}
+	for _, row := range weekly {
+		t.Log(row)
 	}
 
 	foreign := findForeignIssue(rm)
@@ -160,9 +195,12 @@ func syntheticWatchRead(week int) sourcewatch.Read {
 	}
 }
 
-func syntheticHumanMutation(rm *fakeRedmine, rng *rand.Rand, week int) {
+func syntheticHumanMutation(rm *fakeRedmine, rng *rand.Rand, week int) string {
 	open := make([]map[string]any, 0)
 	for _, issue := range rm.issues {
+		if issue["id"] == 900 {
+			continue
+		}
 		if status, _ := issue["status_id"].(string); status == "" || status == "open" {
 			open = append(open, issue)
 		}
@@ -172,14 +210,27 @@ func syntheticHumanMutation(rm *fakeRedmine, rng *rand.Rand, week int) {
 	}
 	if week == 1 {
 		rm.issues = append(rm.issues, map[string]any{"id": 900, "subject": "Чужая задача", "description": "*Продукт:* Dr.Web\nручная задача", "fields": map[string]any{}, "status_id": "open"})
-		return
+		return "rename + create foreign"
 	}
+	action := "none"
 	if len(open) > 0 && rng.Intn(2) == 0 {
 		open[rng.Intn(len(open))]["status_id"] = "closed"
+		action = "close"
 	}
 	if len(open) > 0 && rng.Intn(2) == 0 {
 		open[rng.Intn(len(open))]["subject"] = fmt.Sprintf("Ручное имя недели %d", week)
+		if action == "none" {
+			action = "rename"
+		} else {
+			action += " + rename"
+		}
 	}
+	return action
+}
+
+func foreignIssueState(issue map[string]any) string {
+	raw, _ := json.Marshal(issue)
+	return string(raw)
 }
 
 func closeOpenSourceWatchIssues(rm *fakeRedmine) {
