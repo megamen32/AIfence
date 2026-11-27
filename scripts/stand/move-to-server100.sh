@@ -345,8 +345,8 @@ server {
 }
 EOF
   cat "$TMP/nginx.conf" | remote "sudo tee /etc/nginx/sites-available/aifence-move.bezrabotnyi.com >/dev/null && sudo ln -sfn /etc/nginx/sites-available/aifence-move.bezrabotnyi.com /etc/nginx/sites-enabled/aifence-move.bezrabotnyi.com && sudo nginx -t && sudo systemctl reload nginx"
-  remote "curl -kfsS --max-time 20 -H 'Host: $HOST' https://127.0.0.1/health >/dev/null"
-  remote "curl -kfsS --max-time 20 -H 'Host: $HOST' https://127.0.0.1/ >/dev/null"
+  remote "curl -fsS --max-time 20 -H 'Host: $HOST' http://127.0.0.1:$PORT/health >/dev/null"
+  remote "curl -fsS --max-time 20 -H 'Host: $HOST' http://127.0.0.1:$PORT/ >/dev/null"
   remote "printf '%s\n' 'source_aifence_sha=$AIFENCE_SHA' 'source_airlock_sha=$AIRLOCK_SHA' 'release_core_sha=$CORE_SHA' 'public_host=$HOST' 'caddy_loopback_port=$PORT' > '$ROOT/MOVE_RECEIPT'"
   mark health
 fi
