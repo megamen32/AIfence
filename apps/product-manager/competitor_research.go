@@ -37,17 +37,17 @@ type competitorResearchCriterion struct {
 	Description string  `json:"description"`
 }
 type competitorResearchPlan struct {
-	StudyID     string   `json:"study_id"`
-	CreatedAt   string   `json:"created_at"`
-	Brief       string   `json:"brief"`
-	TargetSite  string   `json:"target_site"`
-	Market      string   `json:"market,omitempty"`
-	Competitors []string `json:"competitors,omitempty"`
-	Products    []string `json:"products,omitempty"`
-	Criteria    []competitorResearchCriterion
-	NextActions []string `json:"next_actions"`
-	CSVColumns  []string `json:"csv_columns"`
-	Limitations []string `json:"limitations"`
+	StudyID     string                        `json:"study_id"`
+	CreatedAt   string                        `json:"created_at"`
+	Brief       string                        `json:"brief"`
+	TargetSite  string                        `json:"target_site"`
+	Market      string                        `json:"market,omitempty"`
+	Competitors []string                      `json:"competitors,omitempty"`
+	Products    []string                      `json:"products,omitempty"`
+	Criteria    []competitorResearchCriterion `json:"criteria"`
+	NextActions []string                      `json:"next_actions"`
+	CSVColumns  []string                      `json:"csv_columns"`
+	Limitations []string                      `json:"limitations"`
 }
 type competitorObservation struct {
 	Competitor string   `json:"competitor"`
