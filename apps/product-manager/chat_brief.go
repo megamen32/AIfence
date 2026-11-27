@@ -22,7 +22,7 @@ func salesReviewTool(a *agentsdk.Agent, h *handlers.Handler) tool.Tool {
 		Description: "Temporary review evidence for the conversation that requested it.",
 	})
 	t := tool.Typed[handlers.BriefQuery, handlers.SalesBrief]("review_sales_and_prices").
-		Description("Read the signed-in user’s active sales alerts and imported SKU quotes from the panel. Includes periods, control, source references and license terms. Read-only. Hosted run_js code: return await apps.product_manager.tools.review_sales_and_prices({summary:true});").
+		Description("Read the signed-in user’s active sales alerts and imported SKU quotes from the panel. Includes periods, control, source references and license terms. Read-only. Hosted run_js code: return await apps.product_manager.tools.review_sales_and_prices({summary:true,director:true});").
 		Execute(h.SalesBrief).Build()
 	read := t.Execute
 	t.Execute = func(ctx context.Context, args json.RawMessage, opts tool.CallOptions) (tool.Result, error) {
@@ -31,15 +31,7 @@ func salesReviewTool(a *agentsdk.Agent, h *handlers.Handler) tool.Tool {
 		if _, ok := caller.User(); err != nil || !ok || caller.Origin().Interface != agentsdk.InterfaceChat || result.Output == "" || len(result.Output) > 24*1024 {
 			return result, err
 		}
-		var query handlers.BriefQuery
-		if json.Unmarshal(args, &query) != nil {
-			return result, err
-		}
 		attachment := reviewAttachment(result.Output)
-		if query.Director {
-			attachment = directorReview(result.Output)
-			result.Output = attachment
-		}
 		logical := fmt.Sprintf("%s/%x.txt", chatBriefDirectory, sha256.Sum256([]byte(attachment)))
 		path, err := a.ResolveFilePath(ctx, logical, agentsdk.FileOperationWrite)
 		// A trusted write must use the conversation-scoped path from the SDK.
@@ -62,10 +54,19 @@ func salesReviewTool(a *agentsdk.Agent, h *handlers.Handler) tool.Tool {
 // expression has no return. Keep the source locators with the measured facts.
 func reviewAttachment(output string) string {
 	var review handlers.SalesBrief
-	if err := json.Unmarshal([]byte(output), &review); err != nil || len(review.Readings) == 0 {
+	if err := json.Unmarshal([]byte(output), &review); err != nil {
 		return output
 	}
 	var b strings.Builder
+	if len(review.Replies) > 0 {
+		for _, r := range review.Replies {
+			fmt.Fprintf(&b, "%s\n%s\n%s Источник: %s.\n", r.PriceDecision, r.SalesAndControl, r.WeeklyImpact, r.Source)
+		}
+		return b.String()
+	}
+	if len(review.Readings) == 0 {
+		return output
+	}
 	for _, r := range review.Readings {
 		c := r.Comparison
 		if c.Control.Name != "" || c.Target.Name != "" {
@@ -83,22 +84,6 @@ func reviewAttachment(output string) string {
 	}
 	if review.NextOffset != nil {
 		fmt.Fprintf(&b, "Следующая страница: %d.\n", *review.NextOffset)
-	}
-	return b.String()
-}
-
-func directorReview(output string) string {
-	var review handlers.SalesBrief
-	if err := json.Unmarshal([]byte(output), &review); err != nil || len(review.Readings) == 0 {
-		return output
-	}
-	var b strings.Builder
-	for _, r := range review.Readings {
-		c := r.Comparison
-		fmt.Fprintf(&b, "Окна %s–%s к %s–%s (%d недели): %s %.1f%%; %s %.1f%%.\n",
-			c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.WeeksPerWindow, c.Control.Name, c.Control.Percent, c.Target.Name, c.Target.Percent)
-		fmt.Fprintf(&b, "Сопоставимость цен: %s (%d из %d артикулов).\n", priceStatus(r), r.ComparableSKUs, r.CheckedSKUs)
-		fmt.Fprintf(&b, "Недельный ущерб: %s. Источник: %s.\n", r.Weekly, r.Source)
 	}
 	return b.String()
 }

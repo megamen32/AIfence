@@ -29,24 +29,12 @@ func TestStandaloneReviewAttachmentKeepsControlAndSource(t *testing.T) {
 	}
 }
 
-func TestDirectorReviewIsCompactAndKeepsPlainDates(t *testing.T) {
-	r := handlers.ProductReading{Product: "Measured family", PriceEvidenceStatus: "insufficient_comparable_quotes", CheckedSKUs: 4, ComparableSKUs: 0, Source: "sales, row 4", Weekly: "нужны заказы и вклад",
-		Comparison: handlers.SalesComparison{Control: handlers.SeriesChange{Name: "Control family", Percent: -4.5}, Target: handlers.SeriesChange{Name: "Measured family", Percent: -31.2}, Current: evidence.Period{From: "2026-09-28", To: "2026-10-25"}, Baseline: evidence.Period{From: "2026-08-31", To: "2026-09-27"}, WeeksPerWindow: 4},
-		OfferExample: []handlers.BriefFact{{Locator: "https://example.invalid/offer", Fact: "full offer details"}}}
-	data, _ := json.Marshal(handlers.SalesBrief{Readings: []handlers.ProductReading{r}})
-	doc := directorReview(string(data))
-	if lines := strings.Split(strings.TrimSpace(doc), "\n"); len(lines) != 3 {
-		t.Fatalf("director review must have three lines, got %d: %s", len(lines), doc)
-	}
-	for _, forbidden := range []string{"https://example.invalid/offer", "full offer details", "$", "\\text"} {
-		if strings.Contains(doc, forbidden) {
-			t.Fatalf("director review contains detailed or formatted output %q: %s", forbidden, doc)
-		}
-	}
-	for _, want := range []string{"2026-09-28–2026-10-25", "2026-08-31–2026-09-27", "Control family -4.5%", "Measured family -31.2%", "сопоставимая пара не подтверждена", "нужны заказы и вклад"} {
-		if !strings.Contains(doc, want) {
-			t.Errorf("director review missing %q: %s", want, doc)
-		}
+func TestDirectorReplyUsesDecisionThenPairedFacts(t *testing.T) {
+	r := handlers.DirectorReply{PriceDecision: "Цена остаётся прежней.", SalesAndControl: "Первый ряд −12,3%, контроль 1,2%.", WeeklyImpact: "Нужны заказы и вклад.", Source: "synthetic/sales"}
+	data, _ := json.Marshal(handlers.SalesBrief{Replies: []handlers.DirectorReply{r}})
+	lines := strings.Split(strings.TrimSpace(reviewAttachment(string(data))), "\n")
+	if len(lines) != 3 || lines[0] != r.PriceDecision || lines[1] != r.SalesAndControl || !strings.Contains(lines[2], r.Source) {
+		t.Fatal(lines)
 	}
 }
 
