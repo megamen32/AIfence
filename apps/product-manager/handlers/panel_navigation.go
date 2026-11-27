@@ -45,7 +45,7 @@ func setupPanel(v *views.HomeView, q url.Values, demo, hasSelection bool) {
 	v.Tab, v.Mode = tab, mode
 	v.RealURL, v.DemoURL = href("tab", "overview", "mode", "real"), href("tab", "overview", "mode", "demo")
 	for _, t := range []struct{ key, label string }{
-		{"overview", "Обзор"}, {"hypothesis", "Гипотеза"}, {"path", "Путь покупки"}, {"after", "После релиза"},
+		{"overview", "Утро"}, {"hypothesis", "Гипотеза KES"}, {"path", "Путь покупки"}, {"after", "После релиза"},
 	} {
 		link := href("tab", t.key, "mode", mode, "id", q.Get("id"), "monitor", q.Get("monitor"),
 			"snapshot", q.Get("snapshot"), "alert", q.Get("alert"))

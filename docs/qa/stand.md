@@ -2,9 +2,9 @@
 
 ## Current service
 
-The contest Airlock uses the dedicated `aifence-stand` rootless Docker daemon, its own database and object storage, and the locked Airlock v0.8.15 / SDK v0.11.0. The public origin is <https://aifence.bezrabotnyi.com/>. The current HTTPS vhost forwards the apex, app subdomains and S3 subdomain to the stand's loopback Caddy proxy; it preserves Airlock login and does not use the personal Airlock.
+The contest Airlock for the jury is the owner's Mac stand at `http://localhost:42080`, using its own database and object storage with the locked Airlock v0.8.15 / SDK v0.11.0. Access is shared through the owner's tunnel or workspace invitation. The excluded public deployment is not a jury route.
 
-On 26 November, an external TLS-verified request to `/chat` returned 200; the Product Manager subdomain returned 401 without authentication. The handoff [stand-public-handoff.md](../submission/stand-public-handoff.md) records the scoped cutover and health checks. No authenticated end-to-end app flow or external S3 operation is asserted by these checks. DNS resolution from this Mac may require separate diagnosis; the external check used a verified DNS answer with an explicit address.
+The handoff [stand-public-handoff.md](../submission/stand-public-handoff.md) records historical deployment notes. It is not an access link for the jury. No external authenticated end-to-end app flow or external S3 operation is asserted here.
 
 The active default execution model is `gemma4:aifence-64k`; the separate build default is `gemma4:latest`. The model runtime reports a 65536-token context for the execution profile. A previous synthetic canary passed on the earlier model; this document does not assert a fresh execution canary for the 64K profile. Use authorized data and configured provider policies; do not copy personal settings or credentials.
 

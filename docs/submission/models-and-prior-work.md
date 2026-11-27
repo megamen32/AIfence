@@ -9,7 +9,7 @@ Airlock-исходники и ключи в репозиторий не вход
 
 | Компонент | Где используется | Лицензия и статус для подачи |
 | --- | --- | --- |
-| **Terra fast** | Единственная заявленная продуктовая модель исполнения Product Manager в конкурсной версии; actual execution ID и route read-back приведены ниже | Checkpoint весов, карточка и текст лицензии ещё должны быть подтверждены для финального релиза. Допуск конкурса: open weights, локальный запуск и лицензия, разрешающая использование; неподтверждённый артефакт нельзя объявлять лицензированным. |
+| **Terra fast** | Заявленная продуктовая модель исполнения Product Manager в конкурсной версии; actual execution ID и route read-back приведены ниже | В слотах Airlock виден только route alias. Точный checkpoint и лицензия пока не установлены, поэтому Terra не объявляется допущенной open-weight моделью до чтения этой пары из конфигурации. |
 | Airlock Enterprise v0.8.15 | Аутентификация, чат, слоты моделей, storage, jobs, native app bindings и каталог файлов | Проприетарная Enterprise-лицензия и условия владельца платформы; это предыдущая наработка и закрытая зависимость, её исходники не публикуются. Версия зафиксирована в [`platform/airlock.lock.json`](../../platform/airlock.lock.json). |
 | AIfence | Три приложения, контракты, workflow, синтетические fixtures и документация | Собственный код команды/владельца, заявляемый как собственная предыдущая наработка. В корне репозитория нет `LICENSE`; публичную лицензию или условия передачи конкурсной версии должен выбрать владелец. |
 
@@ -39,6 +39,19 @@ fast следует называть primary execution model, а fallback — о
 checkpoint Terra и checkpoint fallback с их лицензиями. В этой конфигурации эти
 артефакты не раскрыты и не должны быть придуманы.
 
+## Проверенные open-weight лицензии
+
+| Модель или семейство | Что проверено | Лицензия и ссылка |
+| --- | --- | --- |
+| **Qwen3** | Официальный репозиторий Qwen3 прямо указывает Apache 2.0 для open-weight моделей. Карточки Qwen3-8B и Qwen3-32B также содержат `apache-2.0`. | Apache License 2.0. [Официальный репозиторий Qwen3](https://github.com/QwenLM/Qwen3) · [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) · [Qwen3-32B](https://huggingface.co/Qwen/Qwen3-32B) |
+| **Gemma** | Исторические QA-файлы проверяли Gemma. Google распространяет веса по отдельным Gemma Terms of Use с обязательным notice и ограничениями использования. | Это открытые веса с custom terms, а не Apache 2.0. [Gemma Terms of Use](https://ai.google.dev/gemma/terms) |
+
+Qwen3 является проверенным open-weight кандидатом для конкурсной конфигурации.
+Он не подменяет фактический read-back Terra fast. В текущем слоте Airlock не
+раскрыты имена и лицензии underlying checkpoint Terra и MiniMax fallback. До
+их сверки в заявку можно включать только проверенную лицензионную информацию,
+а не предположение о соответствии route alias.
+
 ## API и внешние сервисы
 
 | API или сервис | Назначение | Лицензия/условия |
@@ -67,10 +80,9 @@ checkpoint Terra и checkpoint fallback с их лицензиями. В это�
 | `github.com/google/jsonschema-go` | v0.4.3 | MIT |
 | `github.com/modelcontextprotocol/go-sdk` | v1.8.0, транзитивный | Apache-2.0 и сохранившиеся MIT-вклады; документация вне спецификаций CC BY-4.0 |
 
-Версии взяты из `go.mod` приложений. `PuerkitoBio/goquery` и
-`temoto/robotstxt` реально импортируются Market Watch, но в текущем
-сгенерированном notice Market Watch их блоков нет; перед публикацией нужно
-перегенерировать уведомления и проверить итоговый бинарник.
+Версии взяты из `go.mod` приложений. Notices Market Watch дополнены блоками
+BSD-3-Clause для goquery и MIT для robotstxt. Остальные notices остаются
+сгенерированными pinned SDK-скриптом.
 
 ## Node-мосты и UI
 

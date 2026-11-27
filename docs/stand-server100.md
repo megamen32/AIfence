@@ -1,12 +1,12 @@
 # Server-100 personal stand copy
 
-This track keeps an exact, reproducible copy of the Mac personal stand (\`colima-aifence\`, owner port 42080) on server-100. The public copy is isolated at:
+This track keeps an exact, reproducible copy of the Mac personal stand (\`colima-aifence\`, owner port 42080) on server-100. The copy is an operator-managed migration and is not a jury route.
 
-- Dashboard: https://move.aifence.bezrabotnyi.com
+- Dashboard: use the approved private hostname from protected operator runtime
 - Caddy loopback: 127.0.0.1:44380
 - Data root: /home/roomhacker/aifence-move
 
-The route uses the existing server-100 Nginx TLS edge and the Airlock Caddy proxy profile behind it. It does not bind 80/443 and does not change the existing \`aifence.bezrabotnyi.com\` stand.
+The route uses the existing server-100 Nginx TLS edge and the Airlock Caddy proxy profile behind it. The hostname and certificate lineage stay in protected operator runtime.
 
 ## One-command redeploy
 
@@ -36,8 +36,8 @@ The live database volumes are transferred byte-for-byte to preserve the working 
 The script runs:
 
 \`\`\`sh
-curl -kfsS -H 'Host: move.aifence.bezrabotnyi.com' https://127.0.0.1/health
-curl -kfsS -H 'Host: move.aifence.bezrabotnyi.com' https://127.0.0.1/
+curl -kfsS -H 'Host: $PUBLIC_HOST' https://127.0.0.1/health
+curl -kfsS -H 'Host: $PUBLIC_HOST' https://127.0.0.1/
 docker ps
 \`\`\`
 

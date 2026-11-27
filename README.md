@@ -9,11 +9,9 @@ private customer files stay outside the repository.
 
 ## Jury links and delivery status
 
-- **Jury stand:** TODO — after
-  `/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md` appears, put
-  the exact Mac Airlock tunnel URL here. Until that report is available, no
-  jury URL is claimed; access requires an invitation to the demonstration
-  workspace.
+- **Jury stand:** owner's Mac Airlock at `http://localhost:42080`. The jury
+  receives the owner's tunnel or workspace invitation separately. No public
+  stand URL is part of the submission package.
 - **Health check:** [stand and deployment notes](docs/submission/deployment.md).
   An anonymous HTTP check is only a service check; it does not grant access to
   the applications.
@@ -41,6 +39,26 @@ the cited evidence.
 The Terra fast row refers to the coordinator QA record `terra-dev30-prompt-v4`;
 that record is not committed in this checkout and must be attached to the final
 submission evidence package.
+
+## Product Manager demo panel
+
+The video shows the right-hand Product Manager panel following one director
+question across four tabs, «Утро», «Гипотеза KES», «Путь покупки» and «После
+релиза». The left Airlock chat remains the place for the conversation. The
+panel carries the signal, evidence, purchase-path check and before/after view.
+
+The demo uses seeded **ДЕМО** data. Metrics and prices are synthetic so the
+video can be reproduced without customer files. Product names and SKUs come
+from the public catalog, while every synthetic observation keeps its origin
+label and source locator.
+
+The background loop reads the owner-bound sources, pins a signal, prepares the
+Product Manager card and ends with the idempotent Redmine issue **#8**. The
+panel frame is [the KES hypothesis baseline](docs/qa/pm-panel-27-11/01-hypothesis-kes-baseline.png).
+The video scenes cover [data collection](docs/qa/scenes-27-11/01-data-collection.png),
+[competitor prices](docs/qa/scenes-27-11/02-competitor-prices.png),
+[the Product Manager card](docs/qa/scenes-27-11/03-product-manager-card.png),
+[delivery](docs/qa/scenes-27-11/07-delivery.png) and [Redmine issue #8](docs/qa/scenes-27-11/08-redmine-issue.png).
 
 ## Architecture in ten lines
 
@@ -127,7 +145,7 @@ pinned SDK/Sol cache and then deploy the exact verified commit:
 export AIFENCE_PERSONAL_CACHE="$HOME/AIfence-worktrees/personal-integration/.runtime/personal-release"
 export GOPROXY=off
 /opt/homebrew/bin/python3 scripts/personal-build-apps.py --commit <sha> --output <private-output-directory>
-export AIRLOCK_URL=<mac-airlock-tunnel-from-sol-stand-report>
+export AIRLOCK_URL=http://localhost:42080
 export AIFENCE_DEPLOY_COMMIT=<verified-main-sha>
 ./scripts/deploy-apps --dry-run
 ```
