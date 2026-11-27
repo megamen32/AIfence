@@ -97,17 +97,41 @@ def make_sales() -> list[dict]:
         "source_refs": [{"id": "demo-r09-kes-baseline", "source_ref": ref("metrika-demo", "ДЕМО:R-09/add_to_cart/KES/baseline")},
                         {"id": "demo-r09-kes-current", "source_ref": ref("metrika-demo", "ДЕМО:R-09/add_to_cart/KES/current")}],
     }
-    row = obs("sales", KES, "watchdog.alert", True, "boolean", "2026-11-08", "2026-11-08",
+    row = obs("sales", KES, "watchdog.alert", True, "boolean", "2026-11-02", "2026-11-08",
               "ДЕМО:R-09/watchdog/2026-11-08", kind="metric", details=details, source_id="aifence-watchdog")
-    return [row]
+    def weekly_contrast(product: str, baseline: float, current: float, change: float, label: str) -> dict:
+        return obs(
+            "sales", product, "family_orders_idx.relative_change_pct", round(change, 3), "percent",
+            CURRENT_FROM, CURRENT_TO, f"ДЕМО:R-09/orders/{label}/full_weeks", details={
+                "variant": "full_weeks",
+                "baseline_mean": baseline,
+                "current_mean": current,
+                "baseline_weeks": 4,
+                "current_weeks": 4,
+                "baseline_from": BASELINE_FROM,
+                "baseline_to": BASELINE_TO,
+                "current_from": CURRENT_FROM,
+                "current_to": CURRENT_TO,
+                "release_id": "R-09",
+                "control_product_key": ASTRA,
+            })
+
+    target = weekly_contrast(KES, baseline_mean, current_mean, change, "KES")
+    control = weekly_contrast(ASTRA, control_baseline, control_current, control_change, "Astra")
+    row["details"]["evidence_ids"] = [target["id"], control["id"]]
+    row["details"]["source_refs"] = [
+        {"id": target["id"], "source_ref": target["source_ref"]},
+        {"id": control["id"], "source_ref": control["source_ref"]},
+    ]
+    return [row, target, control]
 
 
 def make_research() -> list[dict]:
     rows: list[dict] = []
-    products = [(KES, "Kaspersky Endpoint Security", [12800, 12400, 11900, 11600, 11000, 9800, 9100, 8600]),
-                (ASTRA, "Astra Linux Special Edition", [7600, 7500, 7480, 7440, 7400, 7380, 7360, 7340]),
-                (DRWEB, "Dr.Web Desktop Security Suite", [6200, 6300, 6250, 6180, 6100, 6050, 5980, 5900]),
-                (KSOS, "Kaspersky Small Office Security", [8400, 8320, 8250, 8180, 8100, 8040, 7980, 7920])]
+    products = [(KES, "Kaspersky Endpoint Security", [12800, 12700, 12900, 12600, 12750, 12850, 12650, 12750]),
+                (ASTRA, "Astra Linux Special Edition", [7600, 7550, 7620, 7580, 7540, 7610, 7570, 7590]),
+                (DRWEB, "Dr.Web Desktop Security Suite", [6200, 6210, 6190, 6220, 6200, 6180, 6210, 6200]),
+                (KSOS, "Kaspersky Small Office Security", [8400, 8380, 8420, 8390, 8410, 8370, 8400, 8390])]
     starts = [date(2026, 9, 7) + timedelta(days=7 * i) for i in range(8)]
     for product, label, values in products:
         for i, value in enumerate(values):
@@ -116,6 +140,17 @@ def make_research() -> list[dict]:
                              f"ДЕМО:Wordstat/{label}/{start}", source_id="wordstat",
                              details={"query": label, "geo": "ALL", "normalization": "weekly_count_all_devices",
                                       "product_label": label, "source_name": "Wordstat", "release_id": "R-09"}))
+    trends = [(KES, "Kaspersky Endpoint Security", [52, 51, 50, 52, 51, 50, 52, 51]),
+              (ASTRA, "Astra Linux Special Edition", [49, 50, 48, 49, 50, 49, 48, 50]),
+              (DRWEB, "Dr.Web Desktop Security Suite", [41, 42, 41, 40, 42, 41, 40, 41]),
+              (KSOS, "Kaspersky Small Office Security", [46, 45, 47, 46, 45, 46, 47, 46])]
+    for product, label, values in trends:
+        for i, value in enumerate(values):
+            start = starts[i].isoformat(); end = (starts[i] + timedelta(days=6)).isoformat()
+            rows.append(obs("research", product, "search_interest", value, "index", start, end,
+                             f"ДЕМО:Google Trends/{label}/{start}", source_id="google_trends",
+                             details={"query": label, "geo": "RU", "property": "web", "normalization": "weekly_index_0_100",
+                                      "product_label": label, "source_name": "Google Trends", "release_id": "R-09"}))
     interviews = [
         (KES, "Покупатель просит сразу показать состав лицензии и ожидает добавить KES в корзину с карточки.", "ДЕМО:Интервью/KES/01"),
         (KES, "После выбора редакции посетитель возвращается к цене и не видит понятного подтверждения шага корзины.", "ДЕМО:Интервью/KES/02"),
@@ -195,6 +230,10 @@ def main() -> int:
     (args.out / "metrika-context-demo-r09.json").write_text(json.dumps(context, ensure_ascii=False, indent=2) + "\n")
     print(f"Wrote DEMO payloads to {args.out}")
     print(f"PM observations: {sum(len(b['observations']) for b in document['batches'])}")
+    print("Wordstat KES: 12800 -> 12750 (-0.3906%)")
+    print("Wordstat Astra Linux: 7600 -> 7590 (-0.1316%)")
+    print("Google Trends KES: 52 -> 51 (-1.9231%)")
+    print("Google Trends Astra Linux: 49 -> 50 (+2.0408%)")
     print("KES add_to_cart: 1100 -> 740 (-32.7273%)")
     print("Astra Linux add_to_cart: 1000 -> 974 (-2.6%)")
     print("Release: R-09 on 2026-10-05")
