@@ -5,9 +5,11 @@ import (
 	"agent/internal/db"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/airlockrun/agentsdk"
@@ -38,6 +40,7 @@ func (s *Service) RepairAdaptiveJobResult(ctx context.Context, j agentsdk.JobCon
 }
 
 type adaptiveProgressKey struct{}
+type adaptiveOneSourceKey struct{}
 type AdaptiveTickResult struct {
 	Advanced int    `json:"advanced"`
 	Status   string `json:"status"`
@@ -85,7 +88,7 @@ func (s *Service) RollbackAdaptiveOwned(ctx context.Context, in AdapterRollbackI
 	return s.withAdaptiveLease(ctx, in.ID, uuid.NewString(), 1, func(c context.Context) (AdaptiveStoreView, error) { return s.RollbackAdaptiveStore(c, in) })
 }
 func (s *Service) dueAdaptive(ctx context.Context, a AdaptiveStore, at time.Time) ([]AdapterTask, error) {
-	rows, e := s.queries.DueAdaptiveTasks(ctx, db.DueAdaptiveTasksParams{StoreID: a.ID, AsOf: at, MaxRows: 12})
+	rows, e := s.queries.DueAdaptiveTasks(ctx, db.DueAdaptiveTasksParams{StoreID: a.ID, AsOf: at, MaxRows: nativeWindowSize})
 	if e != nil {
 		return nil, e
 	}
@@ -105,6 +108,9 @@ func (s *Service) dueAdaptive(ctx context.Context, a AdaptiveStore, at time.Time
 func (s *Service) AdvanceAdaptiveJob(ctx context.Context, j agentsdk.JobContext, _ struct{}) (AdaptiveTickResult, error) {
 	ctx = context.WithValue(ctx, adaptiveProgressKey{}, j)
 	ids, e := s.readAdaptiveIDs(ctx)
+	if one, ok := ctx.Value(adaptiveOneSourceKey{}).(string); ok {
+		ids = []string{one}
+	}
 	if e != nil {
 		return AdaptiveTickResult{}, e
 	}
@@ -136,6 +142,25 @@ func (s *Service) AdvanceAdaptiveJob(ctx context.Context, j agentsdk.JobContext,
 			return AdaptiveTickResult{}, e
 		}
 		if len(due) == 0 && !a.ReplayPending {
+			clusters := map[string]int{}
+			for _, t := range a.Tasks {
+				if t.State == "repair" {
+					clusters[t.Template]++
+				}
+			}
+			repeated := false
+			for _, n := range clusters {
+				if n >= 3 {
+					repeated = true
+				}
+			}
+			if repeated && studyKey(a) != a.LastStudyKey && s.now().Sub(a.LastStudy) >= time.Hour {
+				_, e = s.RepairAdaptiveJob(ctx, j, AdapterActionInput{ID: id})
+				if e != nil {
+					return AdaptiveTickResult{}, e
+				}
+				return AdaptiveTickResult{Advanced: 1, Status: "repair_step"}, nil
+			}
 			continue
 		}
 		_, e = s.withAdaptiveLease(ctx, id, j.ID, j.Attempt, func(c context.Context) (AdaptiveStoreView, error) {
@@ -179,4 +204,53 @@ func (s *Service) AdvanceAdaptiveJob(ctx context.Context, j agentsdk.JobContext,
 		return AdaptiveTickResult{Advanced: 1, Status: "bounded_step"}, nil
 	}
 	return AdaptiveTickResult{Status: "idle"}, nil
+}
+
+// Version 2 uses one native Job for parallel independent source windows.
+// Store-level SQL leases protect against overlapping old v1 deliveries.
+func (s *Service) AdvanceAdaptiveJobV2(ctx context.Context, j agentsdk.JobContext, _ struct{}) (AdaptiveTickResult, error) {
+	ids, e := s.readAdaptiveIDs(ctx)
+	if e != nil {
+		return AdaptiveTickResult{}, e
+	}
+	if len(ids) == 0 {
+		return AdaptiveTickResult{Status: "idle"}, nil
+	}
+	type result struct {
+		v AdaptiveTickResult
+		e error
+	}
+	ch := make(chan result, len(ids))
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		id := id
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				ch <- result{e: ctx.Err()}
+				return
+			}
+			defer func() { <-sem }()
+			v, e := s.AdvanceAdaptiveJob(context.WithValue(ctx, adaptiveOneSourceKey{}, id), j, struct{}{})
+			ch <- result{v, e}
+		}()
+	}
+	wg.Wait()
+	close(ch)
+	out := AdaptiveTickResult{Status: "idle"}
+	var errs []error
+	for r := range ch {
+		out.Advanced += r.v.Advanced
+		if r.e != nil {
+			errs = append(errs, r.e)
+		}
+	}
+	if out.Advanced > 0 {
+		out.Status = "bounded_parallel_steps"
+	}
+	return out, errors.Join(errs...)
 }

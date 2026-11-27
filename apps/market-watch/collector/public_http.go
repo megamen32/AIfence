@@ -88,8 +88,9 @@ func publicTransport() *http.Transport {
 	}
 	return t
 }
-func NewPublicHTTP() *HTTP {
-	h := NewHTTP()
+func NewPublicHTTP() *HTTP { return NewPublicArchivedHTTP(nil) }
+func NewPublicArchivedHTTP(archive HTTPArchive) *HTTP {
+	h := newHTTPWithArchive(archive)
 	h.publicOnly = true
 	h.transport = publicTransport()
 	return h

@@ -13,6 +13,7 @@ type StudyEvidenceRow struct {
 	Holdout         bool                 `json:"holdout"`
 	Signals         catalog.StudySignals `json:"signals"`
 	TrainingExcerpt string               `json:"training_excerpt,omitempty"`
+	Candidate       *catalog.AdapterCase `json:"candidate,omitempty"`
 }
 type StudyEvidence struct {
 	Store            string             `json:"store"`
@@ -49,6 +50,11 @@ func (s *Service) InspectAdaptiveStudy(ctx context.Context, in AdapterActionInpu
 		row := StudyEvidenceRow{URL: r.URL, Holdout: r.Holdout, Signals: sig}
 		// The model's independent evaluation pages remain out of prompt/debug
 		// excerpts. Only aggregated signals for holdouts are returned.
+		if !r.Holdout {
+			if c, ok := catalog.VisibleAdapterSeed(a.source(), sample); ok {
+				row.Candidate = &c
+			}
+		}
 		if !r.Holdout && count < 4 {
 			text := catalog.TrainingPage(sample).HTML
 			rs := []rune(text)
@@ -125,6 +131,9 @@ func (s *Service) expandInitialStudy(ctx context.Context, a *AdaptiveStore) erro
 			hints[u] = max(hints[u], score)
 			a.enqueue(u)
 		}
+	}
+	if train >= 3 && hold >= 2 {
+		return adaptiveProgress(ctx, "study_samples", catalog.StudySummary(train, hold)+"; use existing archive", 0, 0)
 	}
 	var urls []string
 	for u, t := range a.Tasks {

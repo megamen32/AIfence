@@ -52,11 +52,19 @@ type AdapterVersionRecord struct {
 	ArchiveCount int                     `json:"archive_count"`
 }
 type AdapterReceipt struct {
-	URL     string    `json:"url"`
-	At      time.Time `json:"at"`
-	Hash    string    `json:"sha256"`
-	Holdout bool      `json:"holdout"`
-	HTML    bool      `json:"html"`
+	URL           string    `json:"url"`
+	At            time.Time `json:"at"`
+	Hash          string    `json:"sha256"`
+	Holdout       bool      `json:"holdout"`
+	HTML          bool      `json:"html"`
+	ArchivePath   string    `json:"archive_path,omitempty"`
+	ArchiveOffset int64     `json:"archive_offset,omitempty"`
+	ArchiveLength int64     `json:"archive_length,omitempty"`
+	HTTPStatus    int       `json:"http_status,omitempty"`
+	ResponseURL   string    `json:"response_url,omitempty"`
+	Location      string    `json:"location,omitempty"`
+	Bytes         int64     `json:"bytes,omitempty"`
+	ArchiveState  string    `json:"archive_state,omitempty"`
 }
 type AdapterTask struct {
 	URL         string    `json:"url"`
@@ -368,14 +376,29 @@ func (s *Service) captureAdaptive(ctx context.Context, a *AdaptiveStore, sample 
 	if !found && html {
 		hold = count%3 == 2
 	}
-	a.Samples = append(a.Samples, AdapterReceipt{sample.URL, sample.CapturedAt, hash, hold, html})
+	a.Samples = append(a.Samples, AdapterReceipt{URL: sample.URL, At: sample.CapturedAt, Hash: hash, Holdout: hold, HTML: html})
 	return s.saveAdaptive(ctx, a)
 }
 func (s *Service) loadSample(ctx context.Context, a AdaptiveStore, r AdapterReceipt) (catalog.AdapterSample, error) {
 	if !validHash(r.Hash) || !catalog.Allowed(a.source(), r.URL) {
 		return catalog.AdapterSample{}, fmt.Errorf("invalid archived receipt")
 	}
-	b, e := s.store.ReadFile(ctx, adapterPath(a.ID)+"/raw/"+r.Hash+".gz")
+	path := adapterPath(a.ID) + "/raw/" + r.Hash + ".gz"
+	if r.ArchivePath != "" {
+		prefix := adapterPath(a.ID) + "/legacy/"
+		base := strings.TrimSuffix(strings.TrimPrefix(r.ArchivePath, prefix), ".tar")
+		if !strings.HasPrefix(r.ArchivePath, prefix) || !strings.HasSuffix(r.ArchivePath, ".tar") || !validHash(base) {
+			return catalog.AdapterSample{}, fmt.Errorf("invalid archive bundle path")
+		}
+		path = r.ArchivePath
+	}
+	b, e := s.store.ReadFile(ctx, path)
+	if e == nil && r.ArchivePath != "" {
+		if r.ArchiveOffset < 0 || r.ArchiveLength <= 0 || r.ArchiveOffset > int64(len(b)) || r.ArchiveLength > int64(len(b))-r.ArchiveOffset {
+			return catalog.AdapterSample{}, fmt.Errorf("invalid archive offset")
+		}
+		b = b[r.ArchiveOffset : r.ArchiveOffset+r.ArchiveLength]
+	}
 	if e != nil {
 		return catalog.AdapterSample{}, e
 	}
@@ -434,6 +457,13 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 	// Prefer failed templates and include healthy training examples. Never
 	// give the model the independent holdout bodies, even on iteration two.
 	chosen := map[string]bool{}
+	seed := catalog.AdapterSpec{}
+	seedKeys := map[string]bool{}
+	if previous != nil {
+		seed = *previous
+		seed.Cases = append([]catalog.AdapterCase(nil), previous.Cases...)
+	}
+
 	add := func(r AdapterReceipt) error {
 		if r.Holdout || chosen[r.URL] || len(training.Pages) >= 9 {
 			return nil
@@ -444,6 +474,16 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 		}
 		chosen[r.URL] = true
 		training.Pages = append(training.Pages, catalog.TrainingPage(sample))
+		if c, ok := catalog.VisibleAdapterSeed(a.source(), sample); ok {
+			raw, _ := json.Marshal(c)
+			key := sampleHash(raw)
+			if !seedKeys[key] && len(seed.Cases) < 16 {
+				c.ID = "visible-" + key[:12]
+				seed.Cases = append(seed.Cases, c)
+				seedKeys[key] = true
+			}
+		}
+
 		return nil
 	}
 	ranked, e := s.rankedTrainingPages(ctx, *a, corpus)
@@ -458,6 +498,33 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 			break
 		}
 	}
+	if previous == nil && len(seed.Cases) > 0 {
+		// Restrict discovery to a common observed first catalog path segment.
+		// Never synthesize a concrete new endpoint.
+		var segment string
+		consistent := true
+		count := 0
+		for _, p := range training.Pages {
+			u, e := url.Parse(p.URL)
+			if e != nil {
+				continue
+			}
+			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+			if len(parts) < 2 {
+				continue
+			}
+			if segment == "" {
+				segment = parts[0]
+			} else if segment != parts[0] {
+				consistent = false
+			}
+			count++
+		}
+		if consistent && segment != "" && count >= 2 {
+			seed.Discovery = []catalog.DiscoveryRule{{Selector: "a[href]", PathPattern: "^/" + regexp.QuoteMeta(segment) + "(/|$)"}}
+		}
+		training.Current = &seed
+	}
 	if len(training.Pages) == 0 {
 		return false, fmt.Errorf("no training pages")
 	}
@@ -466,7 +533,7 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 		keys = append(keys, r.URL+"|"+r.Hash)
 	}
 	sort.Strings(keys)
-	key := sampleHash([]byte(a.ActiveVersion + "|" + strings.Join(keys, ";")))
+	key := sampleHash([]byte("visible-seed-v1|" + a.ActiveVersion + "|" + strings.Join(keys, ";")))
 	if a.Study == nil || a.Study.Key != key || a.Study.Round >= maxLearningRounds {
 		a.Study = &AdaptiveStudy{Key: key, Phase: "propose"}
 	}
@@ -495,7 +562,13 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 			if e = adaptiveProgress(ctx, "propose", fmt.Sprintf("Candidate round %d of %d", round+1, maxLearningRounds), int64(round), int64(maxLearningRounds)); e != nil {
 				return false, e
 			}
-			spec, e = s.adapterProposer(ctx, training)
+			if round == maxLearningRounds-1 && len(seed.Cases) > 0 && len(seedKeys) > 0 {
+				// A code-derived candidate is just another proposal. It is not
+				// approved by the LLM and must pass the same full-corpus gate.
+				spec = seed
+			} else {
+				spec, e = s.adapterProposer(ctx, training)
+			}
 		}
 		if e != nil {
 			var invalid *InvalidAdapterProposal
@@ -886,6 +959,9 @@ func (s *Service) refreshAdaptive(ctx context.Context, src catalog.Source, at ti
 	if a.PauseUntil.After(s.now()) {
 		r.Errors = []string{"source paused until " + a.PauseUntil.Format(time.RFC3339)}
 		return r
+	}
+	if s.conn != nil {
+		return s.refreshAdaptiveNative(ctx, src, a, at)
 	}
 	// Process independent due URLs, rather than restarting discovery.
 	var ready []AdapterTask

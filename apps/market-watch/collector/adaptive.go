@@ -32,6 +32,7 @@ type AdapterCase struct {
 	Link         Field  `json:"link"`
 	Price        Field  `json:"price"`
 	ConfirmPrice Field  `json:"confirm_price"`
+	PriceScope   string `json:"price_scope,omitempty"`
 	Currency     Field  `json:"currency"`
 	Quantity     Field  `json:"quantity"`
 	MaxQuantity  Field  `json:"max_quantity"`
@@ -161,6 +162,15 @@ func ValidateAdapter(spec AdapterSpec) error {
 		if c.ConfirmPrice.Selector != "" && c.ConfirmPrice == c.Price {
 			return fmt.Errorf("confirmation must be independent")
 		}
+		if c.PriceScope != "" {
+			if c.Kind != "product" || c.Basis != "displayed_total" || c.Price.Attr != "" {
+				return fmt.Errorf("visible price scope requires standalone displayed-total text")
+			}
+			if e := validateSelector(c.PriceScope); e != nil {
+				return e
+			}
+		}
+
 	}
 	for _, r := range spec.Discovery {
 		if e := validateSelector(r.Selector); e != nil {
@@ -258,8 +268,8 @@ func sameQuote(a, b Offer) bool {
 	return a.Source == b.Source && a.URL == b.URL && a.SKU == b.SKU && a.PriceMinor == b.PriceMinor && a.Currency == b.Currency && a.PriceBasis == b.PriceBasis && ptr(a.Quantity) == ptr(b.Quantity) && ptr(a.MaxQuantity) == ptr(b.MaxQuantity) && ptr(a.OldPriceMinor) == ptr(b.OldPriceMinor)
 }
 func adaptiveRow(s Source, page string, doc *goquery.Document, row *goquery.Selection, c AdapterCase, at time.Time) (*Offer, Variant, bool) {
-	name, _ := fieldOne(row, c.Name)
-	sku, _ := fieldOne(row, c.SKU)
+	name, nameNode := fieldOne(row, c.Name)
+	sku, skuNode := fieldOne(row, c.SKU)
 	sku = strings.ToUpper(strings.TrimSpace(sku))
 	if name == "" || sku == "" || len(name) > 10000 || len(sku) > 300 {
 		return nil, Variant{}, false
@@ -294,7 +304,10 @@ func adaptiveRow(s Source, page string, doc *goquery.Document, row *goquery.Sele
 	if explicitDisposition(status) != "" {
 		return nil, v, false
 	}
-	if !priceNode(node) {
+	if node == nil {
+		return nil, v, false
+	}
+	if !priceNode(node) && c.PriceScope == "" {
 		return nil, v, false
 	}
 	price, e := strictVisiblePrice(raw)
@@ -302,7 +315,7 @@ func adaptiveRow(s Source, page string, doc *goquery.Document, row *goquery.Sele
 		return nil, v, false
 	}
 	currency, _ := fieldOne(row, c.Currency)
-	if !moneyRUB(currency) {
+	if !moneyRUB(currency) && !(currency == raw && func() bool { _, ok := rubleAmount(raw); return ok }()) {
 		return nil, v, false
 	}
 	var qty, maxQty *int64
@@ -338,6 +351,12 @@ func adaptiveRow(s Source, page string, doc *goquery.Document, row *goquery.Sele
 		if o := StructuredOffer(s, page, doc, at); o != nil && o.SKU == sku && o.PriceMinor == price {
 			corroborated = true
 		}
+	}
+	if c.PriceScope != "" {
+		_, scope := fieldOne(row, Field{Selector: c.PriceScope})
+		// If a scope was declared, its proof is mandatory, even if a different
+		// extraction method happens to return a coincidentally matching value.
+		corroborated = uniqueVisibleCurrentPrice(row, scope, node, nameNode, skuNode, doc, price)
 	}
 	if !corroborated {
 		return nil, v, false
@@ -430,6 +449,10 @@ func AdapterLinks(s Source, spec AdapterSpec, page string, body []byte) []string
 		return nil
 	}
 	seen := map[string]bool{}
+	permitted := map[string]bool{}
+	for _, u := range PublishedLinks(s, page, body) {
+		permitted[u] = true
+	}
 	var out []string
 	for _, r := range spec.Discovery {
 		re, e := regexp.Compile(r.PathPattern)
@@ -439,7 +462,7 @@ func AdapterLinks(s Source, spec AdapterSpec, page string, body []byte) []string
 		doc.Find(r.Selector).EachWithBreak(func(_ int, n *goquery.Selection) bool {
 			raw, _ := n.Attr("href")
 			u, ok := seedLink(s, page, raw)
-			if ok && u != page && !seen[u] {
+			if ok && u != page && !seen[u] && permitted[u] {
 				p, e := url.Parse(u)
 				if e == nil && re.MatchString(p.Path) && PublicStoreURL(u) == nil {
 					seen[u] = true
@@ -579,7 +602,7 @@ func TrainingPage(sample AdapterSample) AdapterTrainingPage {
 		}
 	}
 	doc.Find("script,style,iframe,form,noscript").Remove()
-	doc.Find("h1,link[rel=canonical],[itemprop],[class*=price],[class*=sku],[class*=articul],[class*=license],[class*=edition],[class*=currency],[class*=pagination],a[rel=next]").EachWithBreak(func(_ int, n *goquery.Selection) bool {
+	doc.Find("h1,link[rel=canonical],[class*=price],[class*=sku],[class*=articul],[class*=currency],[itemprop=price],[itemprop=sku],[itemprop=priceCurrency]").EachWithBreak(func(_ int, n *goquery.Selection) bool {
 		if len(parts) >= 35 {
 			return false
 		}

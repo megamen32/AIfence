@@ -21,7 +21,11 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterDirectory("adapter-state", agentsdk.DirectoryOpts{Read: agentsdk.AccessInternal, List: agentsdk.AccessInternal, Write: agentsdk.AccessInternal, Description: "Private versioned adaptive store rules and captured HTML evidence"})
 	s := market.NewWithCatalog(a, a.DB())
 	s.SetAdapterProposer(proposeStoreAdapter(a))
+	a.RegisterTool(tool.Typed[market.LegacyAuditInput, market.LegacyAuditResult]("audit_legacy_archive").Description("Read-only verification of migrated source HTML and exact specialized parsing. No HTTP requests to stores and no activation.").Execute(s.AuditLegacyArchive).Build(), agentsdk.AccessAdmin)
+
 	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/migration/stage", Handler: s.StageLegacyMigration, Access: agentsdk.AccessAdmin, Description: "Stage an idempotent verified batch of legacy task metadata; no network collection or activation"})
+	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/migration/archive", Handler: s.StageLegacyArchive, Access: agentsdk.AccessAdmin, Description: "Transfer only raw gzip objects belonging to the verified staged snapshot; verify storage and update offsets without activating a crawler"})
+
 	a.RegisterTool(tool.Typed[struct{}, []db.LegacyMigrationCountsRow]("legacy_migration_status").Description("Count staged legacy task/failure/response metadata and pending raw archive objects. Staging never enables a crawler.").Execute(s.LegacyMigrationStatus).Build(), agentsdk.AccessAdmin)
 
 	a.RegisterTool(tool.Typed[market.AdapterActionInput, market.StudyEvidence]("inspect_store_study").Description("Inspect archived training evidence and held-out price-evidence counts. Does not fetch or activate a store.").Execute(s.InspectAdaptiveStudy).Build(), agentsdk.AccessAdmin)
@@ -32,7 +36,8 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterTool(tool.Typed[market.AdapterRollbackInput, market.AdaptiveStoreView]("rollback_store_adapter").Description("Restore a previously validated adapter version without rewriting historical price observations.").Execute(s.RollbackAdaptiveOwned).Build(), agentsdk.AccessAdmin)
 	a.RegisterTool(tool.Typed[collector.AdapterTraining, collector.AdapterSpec]("propose_store_adapter").Description("Internal admin diagnostic: propose declarative store adapter from provided training markup; this tool neither activates a store nor decides acceptance.").Execute(proposeStoreAdapter(a)).Build(), agentsdk.AccessAdmin)
 
-	tick := agentsdk.RegisterJob(a, &agentsdk.Job[struct{}, market.AdaptiveTickResult]{Name: "advance_adaptive_stores", Version: 1, Description: "Advance one adaptive store in a bounded leased window", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.AdvanceAdaptiveJob})
+	_ = agentsdk.RegisterJob(a, &agentsdk.Job[struct{}, market.AdaptiveTickResult]{Name: "advance_adaptive_stores", Version: 1, Description: "Advance one adaptive store in a bounded leased window", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.AdvanceAdaptiveJob})
+	tick := agentsdk.RegisterJob(a, &agentsdk.Job[struct{}, market.AdaptiveTickResult]{Name: "advance_adaptive_stores", Version: 2, Description: "Advance independent stores with bounded parallel fetch/parse windows", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.AdvanceAdaptiveJobV2})
 	tick.Cron(&agentsdk.JobCron[struct{}]{Slug: "advance_adaptive_stores", Schedule: "*/3 * * * *", Description: "Advance due URL tasks using the app database"})
 	configuredCatalog := a.RegisterEnvVar(&agentsdk.EnvVar{
 		Slug: "baserow_catalog_url", Description: "Authenticated native Baserow price matrix URL for this deployment",
