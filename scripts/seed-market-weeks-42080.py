@@ -28,9 +28,9 @@ BASELINE_WEEK = "2026-11-09"
 CURRENT_WEEK = "2026-11-16"
 SKU = "KL4863RAKFS"
 
-# Small, deterministic moves make the seed repeatable. The first series is the
-# KES price signal requested for the stand and is exactly -32.7%.
-MOVES = (-0.327, 0.018, -0.021, 0.009, -0.032, 0.014, -0.012, 0.026)
+# Small, deterministic moves make the seed repeatable. The -32.7% KES value
+# belongs to add_to_cart in the story, so the price channel moves only -3.0%.
+MOVES = (-0.030, 0.018, -0.021, 0.009, -0.032, 0.014, -0.012, 0.026)
 
 
 def excel_date(value: str) -> str:
