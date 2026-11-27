@@ -85,7 +85,7 @@ func TestSourceWatchComposition(t *testing.T) {
 	if !slices.ContainsFunc(m.JobHandlers, func(h wire.JobHandlerDef) bool { return h.Name == "check_source_watch" && h.Version == 1 }) {
 		t.Fatal("missing source watch job")
 	}
-	for _, name := range []string{"start_source_watch", "stop_source_watch", "list_source_watches", "review_source_watch", "approve_source_signal"} {
+	for _, name := range []string{"start_source_watch", "stop_source_watch", "list_source_watches", "review_source_watch"} {
 		if !slices.ContainsFunc(m.Tools, func(t wire.ToolDef) bool { return t.Name == name && t.Access == wire.AccessUser }) {
 			t.Errorf("missing user tool %s", name)
 		}
@@ -97,5 +97,15 @@ func TestSourceWatchComposition(t *testing.T) {
 	}
 	if sourcewatch.HostSupportsAppRead {
 		t.Fatal("pinned SDK v0.11.0 must report owner-scoped job reads as unsupported")
+	}
+	for _, tool := range m.Tools {
+		if tool.Name == "approve_source_signal" {
+			t.Fatal("the Redmine draft is deferred to the 16:00 checkpoint and must not ship as a mutating tool")
+		}
+	}
+	for _, route := range m.Routes {
+		if route.Path == "/source-watch/approve" {
+			t.Fatal("the deferred Redmine draft must not ship as an HTTP action")
+		}
 	}
 }

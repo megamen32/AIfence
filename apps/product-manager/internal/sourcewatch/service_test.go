@@ -3,6 +3,7 @@ package sourcewatch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"reflect"
 	"strings"
@@ -151,6 +152,16 @@ func TestCheckReportsUnsupportedHostWithoutFakeRead(t *testing.T) {
 	}
 	if HostSupportsAppRead {
 		t.Fatal("pinned SDK v0.11.0 has no JobContext.ReadAppTool")
+	}
+}
+
+func TestUnsupportedIsADistinctTypedLimit(t *testing.T) {
+	// The journal must tell a host limitation apart from an ordinary failure.
+	if !errors.Is(unsupportedRead(context.Background(), metBinding, nil, nil), ErrUnsupported) {
+		t.Fatal("unsupported read must wrap ErrUnsupported")
+	}
+	if errors.Is(errors.New("binding revoked"), ErrUnsupported) {
+		t.Fatal("an unrelated read error must not be classified as unsupported")
 	}
 }
 

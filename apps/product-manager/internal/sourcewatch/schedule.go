@@ -131,16 +131,20 @@ func state(row db.PmSourceWatch) (WatchState, error) {
 	return out, err
 }
 
-// unsupportedRead is the pinned-SDK v0.11.0 host adapter. JobContext has no
-// ReadAppTool there, so cross-app owner-scoped reads are impossible and the
-// job reports that honestly instead of borrowing another identity.
-func unsupportedRead(context.Context, string, any, any) error {
-	return errors.New("unsupported: this Airlock host does not expose owner-scoped app tool reads to jobs")
-}
+// ErrUnsupported reports that this Airlock host cannot call bound app
+// operations from a job. JobContext in the pinned SDK v0.11.0 has no
+// ReadAppTool, so this is a host limitation and not a transient read failure.
+var ErrUnsupported = errors.New("unsupported: this Airlock host does not expose owner-scoped app tool reads to jobs")
 
 // HostSupportsAppRead reports whether the build can call bound app operations
 // from a job. It is a build-time constant so the UI and tools state the truth.
 const HostSupportsAppRead = false
+
+// unsupportedRead is the pinned-SDK v0.11.0 host adapter. It never borrows
+// another identity or falls back to a manual read.
+func unsupportedRead(context.Context, string, any, any) error {
+	return ErrUnsupported
+}
 
 func (s *Service) List(ctx context.Context, _ struct{}) (WatchList, error) {
 	owner, err := human(ctx)
@@ -295,6 +299,11 @@ func (s *Service) run(ctx context.Context, job agentsdk.JobContext, in JobInput)
 	label := outcome.Status
 	if err != nil {
 		label = "failed"
+	}
+	// A host limitation is a stable journal status, not a retryable failure.
+	if errors.Is(err, ErrUnsupported) {
+		label, outcome = "unsupported", Outcome{Status: "unsupported"}
+		err = nil
 	}
 	reportErr := s.queries.ReportSourceWatch(ctx, db.ReportSourceWatchParams{OwnerID: owner, WatchID: in.WatchID, LastMonday: in.Monday, LastStatus: label, AnalysisRunID: outcome.AnalysisRunID})
 	if reportErr != nil {
