@@ -47,6 +47,9 @@ func TestCheckTriggersOnObservedStoreDropWithPriceDelta(t *testing.T) {
 		calls = append(calls, binding)
 		switch binding {
 		case metBinding:
+			if input.(map[string]any)["source_mode"] != "live" {
+				t.Fatal("store watch must pin live source independently of the dashboard")
+			}
 			*output.(*batch) = storeBatch(-21, "observed")
 		case marketBinding:
 			args, _ := json.Marshal(input)
@@ -216,5 +219,50 @@ func TestScopedIDsAreStable(t *testing.T) {
 	in.Monday = "2026-11-30"
 	if id == ID("alice", "delivery", in) {
 		t.Fatal("weeks must have different idempotency keys")
+	}
+}
+
+func TestIncompleteCheckKeepsSourceDiagnostics(t *testing.T) {
+	w := Window{MetrikaBinding: metBinding, MarketBinding: marketBinding, SKU: "KL4141RCEFS", Metric: "visits", Monday: "2026-11-23", DropPct: 20}
+	read := func(_ context.Context, binding string, input, output any) error {
+		if binding == metBinding {
+			b := storeBatch(0, "missing")
+			b.Status = "partial"
+			b.Warnings = []string{"Counter has no baseline history."}
+			b.Observations[0].Value = nil
+			b.Observations[0].Caveats = []string{"Zero baseline: percentage undefined."}
+			*output.(*batch) = b
+		} else {
+			*output.(*weekDelta) = deltaEnvelope(false, 0)
+		}
+		return nil
+	}
+	out, err := Check(t.Context(), w, true, read, func(context.Context, Signal) (string, error) {
+		t.Fatal("missing baseline must not launch review")
+		return "", nil
+	})
+	if err != nil || out.Status != "incomplete" {
+		t.Fatalf("%+v %v", out, err)
+	}
+	text := strings.Join(out.Warnings, "\n")
+	for _, required := range []string{"Counter has no baseline history", "Zero baseline", "2026-11-09..2026-11-15", "2026-11-16..2026-11-22"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("lost %q in %q", required, text)
+		}
+	}
+}
+
+func TestReviewWithoutAnalysisExplainsSettledCheck(t *testing.T) {
+	for _, status := range []string{"incomplete", "quiet", "model_route_unapproved", "failed", "schedule_failed"} {
+		out := reviewWithoutAnalysis(true, status)
+		if out.Status != status || out.Result != nil || out.Message == "" {
+			t.Fatalf("%s: %+v", status, out)
+		}
+	}
+	if out := reviewWithoutAnalysis(true, ""); out.Status != "scheduled" {
+		t.Fatalf("%+v", out)
+	}
+	if out := reviewWithoutAnalysis(false, ""); out.Status != "stopped" {
+		t.Fatalf("%+v", out)
 	}
 }

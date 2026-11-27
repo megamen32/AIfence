@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -102,5 +103,51 @@ func TestBoxLabComparison(t *testing.T) {
 	b, e := s.Compare(context.Background(), Compare{ProductKey: "store", MetricKeys: []string{"purchase_conversion"}, BaselineFrom: "2026-01-01", BaselineTo: "2026-01-07", CurrentFrom: "2026-01-08", CurrentTo: "2026-01-14"})
 	if e != nil || calls != 1 || b.Status != "ok" || len(b.Observations) != 4 || *b.Observations[0].Value != .04 || *b.Observations[1].Value != .03 || b.Observations[2].Unit != "pp" || *b.Observations[2].Value != -1 || *b.Observations[3].Value != -25 {
 		t.Fatalf("%+v %v", b, e)
+	}
+}
+
+func TestLiveComparisonDoesNotFollowDashboardEvidence(t *testing.T) {
+	for _, counter := range []int64{42, 0} {
+		t.Run(fmt.Sprint(counter), func(t *testing.T) {
+			calls := 0
+			s := Service{
+				config: func(context.Context) Settings { return Settings{Counter: counter, EvidencePath: "dashboard.json"} },
+				read: func(context.Context, string) ([]byte, error) {
+					t.Fatal("live comparison read dashboard fixture")
+					return nil, nil
+				},
+				call: func(_ context.Context, name string, args any) (json.RawMessage, error) {
+					calls++
+					if name != "run_comparison" || args.(map[string]any)["counterId"] != counter {
+						t.Fatalf("unexpected live call: %s %#v", name, args)
+					}
+					return json.RawMessage(`{"totals":{"ym:s:visits":{"a":100,"b":80,"delta":-20,"delta_pct":-20}},"meta":{"sampled":false}}`), nil
+				},
+			}
+			b, err := s.Compare(t.Context(), Compare{SourceMode: "live", ProductKey: "store", MetricKeys: []string{"visits"}, BaselineFrom: "2026-01-01", BaselineTo: "2026-01-07", CurrentFrom: "2026-01-08", CurrentTo: "2026-01-14"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if counter == 0 {
+				if calls != 0 || b.Status != "unavailable" {
+					t.Fatalf("missing counter fell back: %+v, calls=%d", b, calls)
+				}
+			} else if calls != 1 || b.Status != "ok" || b.Observations[3].SourceRef.SourceID != "yandex-metrika:42" || *b.Observations[3].Value != -20 {
+				t.Fatalf("wrong source or comparison: %+v, calls=%d", b, calls)
+			}
+		})
+	}
+}
+
+func TestLiveComparisonRejectsAmbiguousSource(t *testing.T) {
+	s := Service{config: func(context.Context) Settings { return Settings{Counter: 42} }}
+	for _, in := range []Compare{
+		{SourceMode: "live", SourcePath: "explicit.json"},
+		{SourceMode: "live", ProductKey: "product-family"},
+		{SourceMode: "unknown"},
+	} {
+		if _, err := s.Compare(t.Context(), in); err == nil {
+			t.Fatalf("accepted ambiguous source: %+v", in)
+		}
 	}
 }

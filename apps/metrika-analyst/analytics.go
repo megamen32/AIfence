@@ -60,6 +60,8 @@ type Query struct {
 	SourcePath string   `json:"source_path,omitempty"`
 }
 type Compare struct {
+	// SourceMode=live pins the counter independently of the dashboard file selection.
+	SourceMode        string   `json:"source_mode,omitempty" jsonschema:"enum=live,description=Use live to compare the configured counter even when a historical dashboard file is selected. Omit to use the configured source."`
 	IncludeIncomplete bool     `json:"include_incomplete,omitempty"`
 	ProductKey        string   `json:"product_key"`
 	MetricKeys        []string `json:"metric_keys"`
@@ -354,6 +356,16 @@ func observed(o Observation, value *float64, scale float64, meta reportMeta) Obs
 }
 func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
 	cfg := s.config(ctx)
+	switch in.SourceMode {
+	case "":
+	case "live":
+		if in.SourcePath != "" || (in.ProductKey != "" && in.ProductKey != "store") {
+			return Batch{}, fmt.Errorf("live source requires store metrics and no historical source_path")
+		}
+		cfg.EvidencePath = ""
+	default:
+		return Batch{}, fmt.Errorf("source_mode must be live or omitted")
+	}
 	path := chosen(in.SourcePath, cfg.EvidencePath)
 	weekly := path != "" && len(in.MetricKeys) == 1 && strings.TrimSpace(in.MetricKeys[0]) == "orders_index"
 	if weekly && in.Segment == "" {

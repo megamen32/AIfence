@@ -84,6 +84,23 @@ button{font:inherit;font-weight:640;padding:8px 14px;border:0;border-radius:8px;
 @keyframes pulse{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(3.2)}}
 @media(max-width:640px){form{grid-template-columns:1fr 1fr}form button{grid-column:1/-1}.cmp-row{grid-template-columns:1fr auto}.cmp-row .bars{grid-column:1/-1;grid-row:2}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important}.pulse{display:none}}
+
+.compare-layout{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:12px;padding:0 16px 16px}
+.compare-main{min-width:0}
+.compare-main form{padding:0;margin:0;grid-template-columns:repeat(4,minmax(0,1fr)) auto}
+.history-panel{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.history-head{display:flex;align-items:start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.history-head h3{font-size:12px;margin:0}
+.history-head p{font-size:10px;color:var(--muted);margin:3px 0 0}
+.history-clear{border:0;background:transparent;color:var(--muted);font-size:10px;padding:2px 0;cursor:pointer}
+.history-clear:hover{color:var(--coral)}
+.history-list{display:grid;gap:6px}
+.history-empty{color:var(--muted);font-size:11px;line-height:1.35}
+.history-item{display:block;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--surface);text-decoration:none;transition:background .18s,border-color .18s}
+.history-item:hover,.history-item.current{background:#78a9ff12;border-color:#78a9ff77}
+.history-item strong{display:block;font-size:11px}
+.history-item span{display:block;color:var(--muted);font-size:10px;margin-top:2px}
+@media(max-width:760px){.compare-layout{grid-template-columns:1fr}.compare-main form{grid-template-columns:repeat(2,minmax(0,1fr))}.compare-main form button{grid-column:1/-1;width:100%}}
 </style>
 </head>
 <body>
@@ -149,34 +166,99 @@ button{font:inherit;font-weight:640;padding:8px 14px;border:0;border-radius:8px;
 </section>
 {{end}}
 
-<details{{if .Compare}} open{{end}}>
+<details open>
   <summary>Сравнить другие периоды</summary>
-  {{with .Compare}}
-  <div class="card" style="margin:0 16px 14px">
-    <div class="card-head"><h2>{{.Title}}</h2><small class="foot">{{.Period}}</small></div>
-    {{if .Error}}<p class="err">{{.Error}}</p>{{else}}
-    <div class="cmp">
-    {{range .Rows}}
-      <div class="cmp-row">
-        <div><b>{{.Title}}</b><br><small>{{.Before}} → {{.After}}</small></div>
-        <div class="bars"><div class="bar" style="width:{{printf "%.1f" .BeforePct}}%"></div><div class="bar after {{.Tone}}" style="width:{{printf "%.1f" .AfterPct}}%"></div></div>
-        <div class="delta tone-{{.Tone}}">{{if .Delta}}{{.Delta}}{{else}}—{{end}}</div>
+  <div class="compare-layout">
+    <div class="compare-main">
+      {{with .Compare}}
+      <div class="card" style="margin:0 0 14px">
+        <div class="card-head"><h2>{{.Title}}</h2><small class="foot">{{.Period}}</small></div>
+        {{if .Error}}<p class="err">{{.Error}}</p>{{else}}
+        <div class="cmp">
+        {{range .Rows}}
+          <div class="cmp-row">
+            <div><b>{{.Title}}</b><br><small>{{.Before}} → {{.After}}</small></div>
+            <div class="bars"><div class="bar" style="width:{{printf "%.1f" .BeforePct}}%"></div><div class="bar after {{.Tone}}" style="width:{{printf "%.1f" .AfterPct}}%"></div></div>
+            <div class="delta tone-{{.Tone}}">{{if .Delta}}{{.Delta}}{{else}}—{{end}}</div>
+          </div>
+        {{end}}
+        </div>
+        <p class="foot">Совпадение по времени не доказывает причину: проверьте дни недели, сезонность и разрывы сбора.</p>
+        {{end}}
       </div>
-    {{end}}
+      {{end}}
+      <form method="get" data-history-form>
+        <label>База с<input type="date" name="from" value="{{.FormFrom}}" required></label>
+        <label>База по<input type="date" name="to" value="{{.FormTo}}" required></label>
+        <label>После с<input type="date" name="current_from" value="{{.FormCurFrom}}" required></label>
+        <label>После по<input type="date" name="current_to" value="{{.FormCur}}" required></label>
+        <button type="submit">Сравнить</button>
+      </form>
     </div>
-    <p class="foot">Совпадение по времени не доказывает причину: проверьте дни недели, сезонность и разрывы сбора.</p>
-    {{end}}
+    <aside class="history-panel" data-history-panel>
+      <div class="history-head"><div><h3>История периодов</h3><p>Сохраняется в этом браузере</p></div><button class="history-clear" type="button" data-clear-history>Очистить</button></div>
+      <div class="history-list" data-history-list><div class="history-empty">Здесь появятся быстрые ссылки на заданные даты.</div></div>
+    </aside>
   </div>
-  {{end}}
-  <form method="get">
-    <label>База с<input type="date" name="from" value="{{.FormFrom}}" required></label>
-    <label>База по<input type="date" name="to" value="{{.FormTo}}" required></label>
-    <label>После с<input type="date" name="current_from" value="{{.FormCurFrom}}" required></label>
-    <label>После по<input type="date" name="current_to" value="{{.FormCur}}" required></label>
-    <button type="submit">Сравнить</button>
-  </form>
 </details>
 <p class="foot">Для причин и оценки релиза спросите в чате приложения. Факт изменения не равен причине.</p>
 </main>
+<script>
+(() => {
+  const form = document.querySelector("[data-history-form]");
+  const list = document.querySelector("[data-history-list]");
+  const clear = document.querySelector("[data-clear-history]");
+  const key = "aifence.metrika.period-history.v1";
+  const names = ["from", "to", "current_from", "current_to"];
+  if (!form || !list) return;
+  const read = () => {
+    const entry = {};
+    names.forEach(name => { const field = form.elements.namedItem(name); entry[name] = field ? field.value : ""; });
+    return entry;
+  };
+  const load = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || "[]");
+      return Array.isArray(value) ? value : [];
+    } catch (_) { return []; }
+  };
+  const same = (a, b) => names.every(name => a[name] === b[name]);
+  const urlFor = entry => {
+    const params = new URLSearchParams();
+    names.forEach(name => { if (entry[name]) params.set(name, entry[name]); });
+    return window.location.pathname + "?" + params.toString();
+  };
+  const render = () => {
+    const entries = load();
+    list.innerHTML = "";
+    if (!entries.length) {
+      list.innerHTML = '<div class="history-empty">Здесь появятся быстрые ссылки на заданные даты.</div>';
+      return;
+    }
+    const current = read();
+    entries.forEach(entry => {
+      const link = document.createElement("a");
+      link.className = "history-item" + (same(entry, current) ? " current" : "");
+      link.href = urlFor(entry);
+      const title = document.createElement("strong");
+      title.textContent = entry.from + " → " + entry.current_from;
+      const details = document.createElement("span");
+      details.textContent = entry.to + " / " + entry.current_to;
+      link.append(title, details);
+      list.appendChild(link);
+    });
+  };
+  const save = entry => {
+    if (!entry.from || !entry.to || !entry.current_from || !entry.current_to) return;
+    const next = load().filter(item => !same(item, entry));
+    next.unshift(entry);
+    try { localStorage.setItem(key, JSON.stringify(next.slice(0, 8))); } catch (_) {}
+    render();
+  };
+  form.addEventListener("submit", () => save(read()));
+  clear?.addEventListener("click", () => { try { localStorage.removeItem(key); } catch (_) {} render(); });
+  save(read());
+})();
+</script>
 </body>
 </html>
