@@ -56,19 +56,12 @@ templ Panel(v HomeView) {
 	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
 		<header class="dashboard-top">
 			<strong>Product Manager</strong>
-			<nav class="dashboard-modes" aria-label="Режим данных">
-				<a href={ v.RealURL } aria-current={ active(v.Mode == "real") }>Рабочий</a>
-				<a href={ v.DemoURL } aria-current={ active(v.Mode == "demo") }>Деморежим</a>
-			</nav>
 		</header>
 		<nav class="dashboard-tabs" aria-label="Экраны">
 			for _, tab := range v.Tabs {
 				<a href={ tab.URL } aria-current={ active(tab.Active) }>{ tab.Label }</a>
 			}
 		</nav>
-		if v.Mode == "demo" {
-			<p class="dashboard-mode-note">Деморежим · синтетические сигналы</p>
-		}
 		<div class="dashboard-body">
 			if v.Tab == "overview" && v.Monitor != nil {
 				@MonitorPanel(v.Monitor)
@@ -77,7 +70,7 @@ templ Panel(v HomeView) {
 			} else if v.Monitor != nil && v.Monitor.Selected != nil {
 				@caseScreen(v.Tab, v.Monitor.Selected, nil)
 			} else {
-				<p class="dashboard-empty">Выберите открытое исключение в обзоре.</p>
+				<p class="dashboard-empty">Гипотез пока нет. Откройте отклонение на вкладке «Обзор» или спросите в чате «Что требует внимания?».</p>
 			}
 			if v.Monitor != nil && len(v.Monitor.Records) > 0 && v.Tab == "overview" {
 				<details class="dashboard-history">
@@ -185,10 +178,10 @@ templ catalogPanel(m *Monitor) {
 			<button class="btn btn-sm" type="submit" name="tab" value="overview">Фильтр карты</button>
 		</form>
 		if m.Catalog == nil {
-			<p class="dashboard-empty">Ожидается полный снимок Market Watch.</p>
+			<p class="dashboard-empty">Карта каталога строится по снимку Market Watch, а его ещё не загружали. Спросите в чате «Обнови каталог из Market Watch», агент загрузит снимок, и здесь появятся вендоры и отклонения.</p>
 		} else if len(m.Catalog.Tiles) == 0 {
 			if m.Catalog.Partial {
-				<p class="dashboard-empty">Разбивка полного каталога пока недоступна.</p>
+				<p class="dashboard-empty">В загруженном снимке Market Watch нет разбивки по вендорам. Попросите в чате обновить каталог целиком.</p>
 			} else {
 				<p class="dashboard-empty">По этому фильтру нет групп каталога.</p>
 			}

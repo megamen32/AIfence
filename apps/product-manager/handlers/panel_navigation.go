@@ -52,3 +52,7 @@ func setupPanel(v *views.HomeView, q url.Values, demo, hasSelection bool) {
 		v.Tabs = append(v.Tabs, views.Link{Label: t.label, URL: link, Active: t.key == tab})
 	}
 }
+
+func monitorEmpty(m *views.Monitor) bool {
+	return m == nil || (len(m.Pulse) == 0 && len(m.Products) == 0 && m.Selected == nil)
+}

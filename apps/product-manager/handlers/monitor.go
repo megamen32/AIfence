@@ -42,9 +42,13 @@ type monitorDetails struct {
 	ControlVendor string `json:"control_vendor"`
 }
 
+// preparedOrigin labels a snapshot loaded from a prepared file. The panel shows
+// where the numbers came from, never a demo or synthetic mode.
+const preparedOrigin = "Набор из файла"
+
 func originText(d monitorDetails) string {
 	if d.Synthetic || d.Origin == "synthetic_fixture" {
-		return "Синтетические данные"
+		return preparedOrigin
 	}
 	if d.Origin == "imported_historical" {
 		return "Исторические данные"
@@ -54,7 +58,7 @@ func originText(d monitorDetails) string {
 
 func observationOrigin(row monitorObservation) string {
 	if educationalObservation(row.Row, row.details) {
-		return "Синтетические данные"
+		return preparedOrigin
 	}
 	return originText(row.details)
 }

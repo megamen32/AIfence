@@ -1,6 +1,8 @@
 package views
 
 import (
+	"strconv"
+
 	"github.com/airlockrun/agentsdk"
 	"github.com/airlockrun/agentsdk/lucide"
 )
@@ -65,6 +67,9 @@ templ Screen(p Page) {
 								</a>
 							</details>
 						</div>
+					}
+					if p.Tab == "catalog" && p.Overview != nil {
+						@overview(*p.Overview)
 					}
 					if p.Tab != "sources" && p.Tab != "compare" {
 						@filters(p)
@@ -332,4 +337,61 @@ templ pagination(p Page) {
 			}
 		</nav>
 	}
+}
+
+templ overview(o Overview) {
+	<section class="overview" aria-label="Обзор рынка">
+		<div class="ov-tiles">
+			for i, t := range o.Tiles {
+				<div class="ov-tile" data-tone={ t.Tone } style={ "--i:" + strconv.Itoa(i) }>
+					<span class="ov-cap">{ t.Label }</span>
+					<strong>{ t.Value }</strong>
+					if t.Note != "" {
+						<small>{ t.Note }</small>
+					}
+				</div>
+			}
+		</div>
+		<div class="ov-grid">
+			<article class="ov-card">
+				<h2>Предложения по магазинам</h2>
+				<svg class="ov-bars" viewBox={ "0 0 380 " + strconv.Itoa(o.BarsHeight) } role="img" aria-label="Число предложений с ценой по магазинам">
+					for _, b := range o.Bars {
+						<text x="0" y={ b.TextY } class="ov-label">{ b.Label }</text>
+						<rect x="104" y={ b.Y } width={ b.Width } height="22" rx="4" class="ov-bar" style={ "animation-delay:" + b.Delay }></rect>
+						<text x={ b.CountX } y={ b.TextY } class="ov-count">{ b.Count }</text>
+					}
+				</svg>
+			</article>
+			if o.ShowChanges {
+				<article class="ov-card">
+					<h2>Изменения цен за неделю</h2>
+					if len(o.Changes) > 0 {
+						<ul class="ov-changes">
+							for _, c := range o.Changes {
+								<li>
+									<a href={ templ.SafeURL(c.URL) } data-tone={ c.Tone }>
+										<span class="ov-name">
+											<strong>{ c.Name }</strong>
+											<small><code>{ c.SKU }</code> · { c.Store }</small>
+										</span>
+										<span class="ov-price">
+											<span>{ c.Old } → { c.New }</span>
+											<b>{ c.Percent }</b>
+										</span>
+									</a>
+								</li>
+							}
+						</ul>
+					} else {
+						<div class="ov-empty">
+							<strong>За 7 дней цены не менялись</strong>
+							<p>Изменение появится здесь, когда очередной сбор цен зафиксирует у магазина новую цену на уже известную лицензию.</p>
+						</div>
+					}
+				</article>
+			}
+		</div>
+		<p class="ov-source">{ o.Source }</p>
+	</section>
 }

@@ -36,6 +36,7 @@ type Page struct {
 	Licenses                                                 []Option
 	Rows                                                     []Row
 	Groups                                                   []Group
+	Overview                                                 *Overview
 }
 
 // Chart contains observations with the same price basis and matching license conditions.
@@ -51,4 +52,27 @@ type TierSchedule struct {
 type TierStep struct {
 	Range, Amount, URL string
 	Active             bool
+}
+
+// Overview is the block above the catalog search: status tiles, offers per store and the week's price moves.
+type Overview struct {
+	Tiles       []Tile
+	Bars        []Bar
+	BarsHeight  int
+	Changes     []ChangeRow
+	ShowChanges bool
+	Source      string
+}
+
+type Tile struct {
+	Label, Value, Note, Tone string
+}
+
+type Bar struct {
+	Label, Count, Y, Width, CountX, TextY string
+	Delay                                 string
+}
+
+type ChangeRow struct {
+	Name, SKU, Store, Old, New, Percent, Tone, URL string
 }
