@@ -18,17 +18,21 @@ import (
 // Window is one owner-configured weekly check. The store metric is required;
 // the optional sources add demand and comparable price evidence to the signal.
 type Window struct {
-	MetrikaBinding  string  `json:"metrika_binding"`
-	MarketBinding   string  `json:"market_binding,omitempty"`
-	WordstatBinding string  `json:"wordstat_binding,omitempty"`
-	TrendsBinding   string  `json:"trends_binding,omitempty"`
-	TrendsGeo       string  `json:"trends_geo,omitempty"`
-	Phrase          string  `json:"phrase,omitempty"`
-	DemandDropPct   float64 `json:"demand_drop_pct,omitempty"`
-	SKU             string  `json:"sku,omitempty"`
-	Metric          string  `json:"metric"`
-	DropPct         float64 `json:"drop_pct"`
-	Monday          string  `json:"monday"`
+	MetrikaBinding  string `json:"metrika_binding"`
+	MarketBinding   string `json:"market_binding,omitempty"`
+	WordstatBinding string `json:"wordstat_binding,omitempty"`
+	TrendsBinding   string `json:"trends_binding,omitempty"`
+	TrendsGeo       string `json:"trends_geo,omitempty"`
+	Phrase          string `json:"phrase,omitempty"`
+	// ProductKey selects an explicitly labelled product family snapshot. Empty
+	// keeps the live store-level path. A product is never relabelled as store.
+	ProductKey    string  `json:"product_key,omitempty"`
+	Segment       string  `json:"segment,omitempty"`
+	DemandDropPct float64 `json:"demand_drop_pct,omitempty"`
+	SKU           string  `json:"sku,omitempty"`
+	Metric        string  `json:"metric"`
+	DropPct       float64 `json:"drop_pct"`
+	Monday        string  `json:"monday"`
 }
 
 func (w Window) Validate() (time.Time, error) {
@@ -56,6 +60,12 @@ func (w Window) Validate() (time.Time, error) {
 		w.TrendsGeo = "RU"
 	}
 	usesPhrase := w.WordstatBinding != "" || w.TrendsBinding != ""
+	if w.ProductKey != "" && (!bounded(w.ProductKey, 128) || strings.TrimSpace(w.ProductKey) != w.ProductKey) {
+		return time.Time{}, errors.New("product_key must be an exact family key without outer whitespace")
+	}
+	if w.Segment != "" && (!bounded(w.Segment, 64) || strings.TrimSpace(w.Segment) != w.Segment) {
+		return time.Time{}, errors.New("segment must not have outer whitespace")
+	}
 	if (usesPhrase && (!bounded(w.Phrase, 256) || strings.TrimSpace(w.Phrase) != w.Phrase)) || (!usesPhrase && (w.Phrase != "" || w.DemandDropPct != 0)) {
 		return time.Time{}, errors.New("set a search phrase with the demand binding")
 	}
@@ -95,28 +105,20 @@ type sourceRef struct {
 	SourceID string `json:"source_id"`
 	Locator  string `json:"locator"`
 	URL      string `json:"url,omitempty"`
-}
-type offerDetails struct {
-	MatchStatus string   `json:"match_status"`
-	CapturedAt  string   `json:"captured_at"`
-	PriceBasis  string   `json:"price_basis"`
-	Seller      string   `json:"seller"`
-	Name        string   `json:"name"`
-	Quantity    *int64   `json:"quantity"`
-	MaxQuantity *int64   `json:"max_quantity"`
-	OldPrice    *float64 `json:"old_price,omitempty"`
+	Revision string `json:"revision,omitempty"`
 }
 type observation struct {
-	ID         string       `json:"id"`
-	Kind       string       `json:"kind"`
-	ProductKey string       `json:"product_key"`
-	MetricKey  string       `json:"metric_key"`
-	Status     string       `json:"status"`
-	Unit       string       `json:"unit"`
-	Value      *float64     `json:"value"`
-	Period     period       `json:"period"`
-	SourceRef  sourceRef    `json:"source_ref"`
-	Details    offerDetails `json:"details"`
+	ID         string         `json:"id"`
+	Kind       string         `json:"kind"`
+	ProductKey string         `json:"product_key"`
+	MetricKey  string         `json:"metric_key"`
+	Status     string         `json:"status"`
+	Unit       string         `json:"unit"`
+	Value      *float64       `json:"value"`
+	Period     period         `json:"period"`
+	Segment    string         `json:"segment,omitempty"`
+	SourceRef  sourceRef      `json:"source_ref"`
+	Details    map[string]any `json:"details,omitempty"`
 }
 type batch struct {
 	AsOf          string        `json:"as_of"`
@@ -216,6 +218,9 @@ type Signal struct {
 	ContextSKU     string          `json:"market_sku,omitempty"`
 	PriceFamilies  []PriceFamily   `json:"price_families,omitempty"`
 	MissingPeriods []missingPeriod `json:"missing_periods,omitempty"`
+	ProductKey     string          `json:"product_key,omitempty"`
+	Segment        string          `json:"segment,omitempty"`
+	FamilyChange   *FamilyChange   `json:"family_change,omitempty"`
 }
 
 type Outcome struct {
@@ -243,9 +248,17 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	var metrika, wordstat, trends batch
 	var market weekDelta
 	// Fixed source parameters keep filesystem selection and arbitrary connector calls out of this job.
-	err = read(ctx, w.MetrikaBinding, map[string]any{"product_key": "store", "metric_keys": []string{w.Metric}, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &metrika)
+	target := w.ProductKey
+	if target == "" {
+		target = "store"
+	}
+	query := map[string]any{"product_key": target, "metric_keys": []string{w.Metric}, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}
+	if w.Segment != "" {
+		query["segment"] = w.Segment
+	}
+	err = read(ctx, w.MetrikaBinding, query, &metrika)
 	if err != nil {
-		return Outcome{}, fmt.Errorf("read store comparison: %w", err)
+		return Outcome{}, fmt.Errorf("read %s comparison: %w", target, err)
 	}
 	if metrika.SchemaVersion != "aifence.v1" || metrika.Source != "metrika" {
 		return Outcome{}, errors.New("Metrika binding returned an unexpected contract")
@@ -298,12 +311,32 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	if metrika.Status != "ok" || (w.MarketBinding != "" && market.Status != "ok" && market.Status != "partial") {
 		return Outcome{Status: "incomplete"}, nil
 	}
-	delta := metrikaDelta(metrika, w.Metric, current)
-	if delta == nil {
+	var delta *observation
+	var computed *FamilyChange
+	if w.ProductKey == "" {
+		delta = metrikaDelta(metrika, w.Metric, current)
+	} else {
+		// Prefer a change Metrika already computed for the exact product and
+		// window. Only a snapshot without that row falls back to the two raw
+		// weeks, and then the signal records both source observations.
+		delta = productDelta(metrika, w.ProductKey, w.Segment, w.Metric, current)
+		if delta == nil {
+			computed = familyChange(metrika, w.ProductKey, w.Segment, w.Metric, before, current)
+		}
+	}
+	if delta == nil && computed == nil {
 		return Outcome{Status: "incomplete"}, nil
 	}
+	changePct, observationID, observationRef := 0.0, "", ""
+	if delta != nil {
+		changePct, observationID, observationRef = *delta.Value, delta.ID, delta.SourceRef.Locator
+	} else if computed.ChangePct == nil {
+		return Outcome{Status: "incomplete"}, nil
+	} else {
+		changePct, observationID, observationRef = *computed.ChangePct, computed.CurrentID, computed.CurrentRef
+	}
 	trigger := ""
-	if *delta.Value <= -w.DropPct {
+	if changePct <= -w.DropPct {
 		trigger = "metrika"
 	}
 	if demand != nil && w.DemandDropPct > 0 && demand.ChangePct != nil && *demand.ChangePct <= -w.DemandDropPct {
@@ -335,8 +368,9 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		return Outcome{Status: "model_route_unapproved"}, nil
 	}
 	sig := Signal{
-		Trigger: trigger, Metric: w.Metric, ChangePct: *delta.Value, BaselineFrom: before.From, BaselineTo: before.To,
-		CurrentFrom: current.From, CurrentTo: current.To, ObservationID: delta.ID, ObservationRef: delta.SourceRef.Locator,
+		Trigger: trigger, Metric: w.Metric, ChangePct: changePct, BaselineFrom: before.From, BaselineTo: before.To,
+		CurrentFrom: current.From, CurrentTo: current.To, ObservationID: observationID, ObservationRef: observationRef,
+		ProductKey: w.ProductKey, Segment: w.Segment, FamilyChange: computed,
 		Demand: demand, Trends: trendsObs, TrendsStatus: trends.Status, WordstatStatus: wordstat.Status,
 		ContextSKU: w.SKU, MarketStatus: market.Status,
 		MissingPeriods: market.MissingPeriods,

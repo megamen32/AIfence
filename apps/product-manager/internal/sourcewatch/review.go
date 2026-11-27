@@ -42,6 +42,9 @@ func ReviewSignalIDs(s Signal) []string {
 	if s.Trends != nil {
 		ids = append(ids, s.Trends.BaselineID, s.Trends.CurrentID)
 	}
+	if s.FamilyChange != nil {
+		ids = append(ids, s.FamilyChange.BaselineID, s.FamilyChange.CurrentID)
+	}
 	for _, f := range s.PriceFamilies {
 		ids = append(ids, f.BaselineID, f.CurrentID)
 	}
