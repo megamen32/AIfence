@@ -30,7 +30,7 @@ type wordstatRequest struct {
 	FromDate  string   `json:"fromDate"`
 	ToDate    string   `json:"toDate"`
 	Devices   []string `json:"devices"`
-	RegionIDs []string `json:"regionIds,omitempty"`
+	RegionIDs []string `json:"regions,omitempty"`
 	FolderID  string   `json:"folderId"`
 }
 

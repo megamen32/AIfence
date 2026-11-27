@@ -174,10 +174,18 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 		out.Warnings = append(out.Warnings, "The selected series reports incomplete coverage.")
 	}
 
+	for _, cause := range blindCauses(measures, cutoff, releases) {
+		cause.ID = hash([]any{out.DatasetID, cause.ProductKey, cause.Kind, cause.CauseType, cause.Period})
+		cause.SourceRefCount = len(cause.SourceRefs)
+		hits = append(hits, blindHit{cause, blindPeerKey{}})
+	}
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, b := hits[i].candidate, hits[j].candidate
 		if blindRank(a.Kind) != blindRank(b.Kind) {
 			return blindRank(a.Kind) < blindRank(b.Kind)
+		}
+		if a.CauseStrength != b.CauseStrength {
+			return a.CauseStrength > b.CauseStrength
 		}
 		if a.ConfirmedWindows != b.ConfirmedWindows {
 			return a.ConfirmedWindows > b.ConfirmedWindows
@@ -219,7 +227,7 @@ func (d blindDataset) scanMeasures(ctx context.Context, measures []*blindMeasure
 	out.CandidateCount = len(out.Candidates)
 	if len(out.Candidates) > 0 {
 		switch out.Candidates[0].Kind {
-		case "controlled_decline":
+		case "controlled_decline", causeKind:
 			out.Status = "alert"
 		case "measurement_break":
 			out.Status = "measurement_issue"
@@ -247,6 +255,8 @@ func blindConfirmationRefs(target, control []Observation, cutoff string) []Ref {
 
 func blindRank(kind string) int {
 	switch kind {
+	case causeKind:
+		return -1
 	case "controlled_decline":
 		return 0
 	case "measurement_break":

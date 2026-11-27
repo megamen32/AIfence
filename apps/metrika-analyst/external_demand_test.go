@@ -15,6 +15,9 @@ func TestExternalDemandManifest(t *testing.T) {
 		if !want[definition.Name] {
 			continue
 		}
+		if readOnly, supported := manifestReadOnly(definition); supported && !readOnly {
+			t.Fatalf("expected read-only declaration for %s", definition.Name)
+		}
 		if len(definition.InputSchema) == 0 || !strings.Contains(string(definition.OutputSchema), "normalization") {
 			t.Fatalf("expected typed provenance for %s", definition.Name)
 		}
@@ -162,6 +165,56 @@ func TestExternalDemandImports(t *testing.T) {
 				}
 			} else if len(out.Observations) != 0 {
 				t.Fatalf("returned incomparable evidence: %+v", out)
+			}
+		})
+	}
+}
+
+// The provider REST schema calls this field "regions"; "regionIds" loses
+// geographic filtering even though the Go request still holds a region ID.
+func TestWordstatDynamicsRequestRegions(t *testing.T) {
+	now := time.Date(2026, 11, 27, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct{ geo, region string }{
+		{geo: "ALL"},
+		{geo: "RU", region: "225"},
+		{geo: "213", region: "213"},
+	} {
+		t.Run(tc.geo, func(t *testing.T) {
+			calls := 0
+			in := demandInput{ProductKey: "kaspersky_endpoint_security", Query: "Kaspersky Endpoint Security", Geo: tc.geo, Monday: "2026-09-28"}
+			out, err := readDemand(t.Context(), in, wordstatSpec, "research", now, nil, func(_ context.Context, req wordstatRequest) ([]byte, error) {
+				calls++
+				encoded, err := json.Marshal(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var body map[string]json.RawMessage
+				if err := json.Unmarshal(encoded, &body); err != nil {
+					t.Fatal(err)
+				}
+				if _, exists := body["regionIds"]; exists {
+					t.Fatal("unsupported regionIds field sent to Wordstat")
+				}
+				raw, exists := body["regions"]
+				if tc.region == "" {
+					if exists {
+						t.Fatalf("ALL must omit regions: %s", encoded)
+					}
+				} else {
+					var regions []string
+					if !exists || json.Unmarshal(raw, &regions) != nil || len(regions) != 1 || regions[0] != tc.region {
+						t.Fatalf("wrong provider region filter: %s", encoded)
+					}
+				}
+				return []byte(`{"results":[{"date":"2026-09-14T00:00:00Z","count":"10"},{"date":"2026-09-21T00:00:00Z","count":"12"}]}`), nil
+			})
+			if err != nil || calls != 1 || out.Status != "ok" || len(out.Observations) != 2 {
+				t.Fatalf("Wordstat result %+v, calls %d, error %v", out, calls, err)
+			}
+			for _, observation := range out.Observations {
+				if observation.Details.Geo != tc.geo {
+					t.Fatalf("lost source geography: %+v", observation)
+				}
 			}
 		})
 	}

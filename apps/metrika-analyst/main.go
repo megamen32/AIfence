@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed INSTRUCTIONS.md index.html fixtures/*.json
@@ -97,7 +98,7 @@ func chartLabel(o Observation) string {
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
 	a := agentsdk.New(agentsdk.Config{Description: "В текущем чате самостоятельно исследует выбранный пользователем набор через инструменты Airlock. Находит доступные измерения, изменения и ссылки на источники даже по общему вопросу. Пользователю не нужно переходить в другое приложение, уточнять путь, метрику или даты.", Icon: "📊"})
-	m := a.RegisterMCP(&agentsdk.MCP{Slug: "yandex_metrika", Name: "Yandex Metrika (BoxLab, read-only MCP)", URL: "http://metrika-mcp:8000/mcp", AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared})
+	m := a.RegisterMCP(&agentsdk.MCP{Slug: "yandex_metrika", Name: "Yandex Metrika (BoxLab, read-only MCP)", URL: "http://127.0.0.1:8000/mcp", AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared})
 	counter := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "counter_id", Description: "ID счётчика магазина", Pattern: "^[0-9]+$"})
 	ec := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "ecommerce_confirmed", Description: "Подтверждена непрерывная инструментация e-commerce за анализируемые периоды", Default: "false", Pattern: "^(true|false)$"})
 	file := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "evidence_path", Description: "Необязательный путь к явно выбранному evidence-v1 JSON в файлах Airlock; пусто — live MCP"})
@@ -181,39 +182,17 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Что изменилось?", Prompt: "Сравни две последние полные недели. Покажи источники, отклонения и ограничения."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Оценить релиз", Prompt: "Помоги оценить результат релиза: уточни дату, критерий успеха и сопоставимые периоды."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Проверить источник", Prompt: "Проверь подключение Метрики или выбранную выгрузку."})
-	page := template.Must(template.New("index.html").Funcs(template.FuncMap{
-		"metricValue":  metricValue,
-		"metricStatus": metricStatus,
-		"metricTone":   metricTone,
-		"chartX":       chartX,
-		"chartHeight":  chartHeight,
-		"chartY":       chartY,
-		"chartLabel":   chartLabel,
-		"add":          func(a, b int) int { return a + b },
-	}).ParseFS(assets, "index.html"))
-	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Description: "Сравнение показателей", Handler: func(w http.ResponseWriter, r *http.Request) error {
-		data := struct {
-			Batch      *Batch
-			Error      string
-			CounterID  int64
-			SourcePath string
-		}{CounterID: 114698578}
+	page := template.Must(template.ParseFS(assets, "index.html"))
+	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Description: "Неделя магазина по данным Метрики", Handler: func(w http.ResponseWriter, r *http.Request) error {
+		data := s.dashboard(r.Context(), time.Now().UTC())
 		q := r.URL.Query()
-		data.SourcePath = q.Get("source_path")
-		if rawCounter := q.Get("counter_id"); rawCounter != "" {
-			parsed, e := strconv.ParseInt(rawCounter, 10, 64)
-			if e != nil || parsed < 0 {
-				data.Error = "Выберите корректный счётчик"
+		if q.Get("from") != "" {
+			in := Compare{ProductKey: data.ProductKey, MetricKeys: strings.Split(data.Metrics, ","), BaselineFrom: q.Get("from"), BaselineTo: q.Get("to"), CurrentFrom: q.Get("current_from"), CurrentTo: q.Get("current_to"), Segment: "all"}
+			data.FormFrom, data.FormTo, data.FormCurFrom, data.FormCur = in.BaselineFrom, in.BaselineTo, in.CurrentFrom, in.CurrentTo
+			if b, e := s.Compare(r.Context(), in); e != nil {
+				data.Compare = &compareView{Title: "Ваше сравнение", Error: "Сравнение не выполнено: " + e.Error()}
 			} else {
-				data.CounterID = parsed
-			}
-		}
-		if q.Get("from") != "" && data.Error == "" {
-			b, e := s.Compare(r.Context(), Compare{ProductKey: q.Get("product"), MetricKeys: strings.Split(q.Get("metrics"), ","), BaselineFrom: q.Get("from"), BaselineTo: q.Get("to"), CurrentFrom: q.Get("current_from"), CurrentTo: q.Get("current_to"), Segment: q.Get("segment"), SourcePath: q.Get("source_path"), CounterID: data.CounterID})
-			if e != nil {
-				data.Error = e.Error()
-			} else {
-				data.Batch = &b
+				data.Compare = compareFromBatch(b, in)
 			}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

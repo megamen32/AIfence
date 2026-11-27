@@ -68,6 +68,10 @@ type BlindCandidate struct {
 	LastConfirmedWeek    *Period               `json:"last_confirmed_week,omitempty"`
 	LastConfirmationRefs []Ref                 `json:"last_confirmation_refs,omitempty"`
 	SourceRefCount       int                   `json:"source_ref_count"`
+	CauseType            string                `json:"cause_type,omitempty"`
+	CauseStrength        float64               `json:"cause_strength,omitempty"`
+	CauseEvidence        []BlindCauseMetric    `json:"cause_evidence,omitempty"`
+	CauseRelease         *ContextFact          `json:"cause_release,omitempty"`
 }
 
 type BlindScan struct {
@@ -163,15 +167,19 @@ func (s *privateWatch) registerBlindTools(a *agentsdk.Agent) {
 			}
 			return result, err
 		}).Build()), agentsdk.AccessUser)
-	a.RegisterTool(tool.Typed[BlindCaseInput, WatchCaseResult]("collect_selected_watchdog_case").
-		Description("Collect a controlled-decline case from scan_watchdog_series using its dataset_id and candidate_id. Pass document directly to Product Manager.").
+	a.RegisterTool(blindCollectTool(load), agentsdk.AccessUser)
+}
+
+func blindCollectTool(load func(context.Context) (blindDataset, error)) tool.Tool {
+	return tool.Typed[BlindCaseInput, WatchCaseResult]("collect_selected_watchdog_case").
+		Description("Collect a controlled decline or a measured cause signal from scan_watchdog_series using its dataset_id and candidate_id. Pass document directly to Product Manager.").
 		Execute(func(ctx context.Context, in BlindCaseInput) (WatchCaseResult, error) {
 			dataset, err := load(ctx)
 			if err != nil {
 				return WatchCaseResult{}, err
 			}
 			return dataset.collect(ctx, in)
-		}).Build(), agentsdk.AccessUser)
+		}).Build()
 }
 
 func (s *privateWatch) loadBlind(ctx context.Context, approved bool) (blindDataset, error) {
@@ -336,10 +344,16 @@ func (d blindDataset) collect(ctx context.Context, in BlindCaseInput) (WatchCase
 		return WatchCaseResult{}, err
 	}
 	hit, ok := hits[in.CandidateID]
-	if !ok || hit.candidate.Kind != "controlled_decline" {
-		return WatchCaseResult{}, errors.New("select a controlled decline from the active scan")
+	if !ok {
+		return WatchCaseResult{}, errors.New("select a candidate from the active scan")
 	}
 	c := hit.candidate
+	if c.Kind == causeKind {
+		return d.collectBlindCause(c), nil
+	}
+	if c.Kind != "controlled_decline" {
+		return WatchCaseResult{}, errors.New("select a controlled decline or a measured cause signal from the active scan")
+	}
 	src := d.series
 	src.Observations = []Observation{}
 	for _, o := range d.series.Observations {
@@ -367,4 +381,90 @@ func (d blindDataset) collect(ctx context.Context, in BlindCaseInput) (WatchCase
 		ProductKey: c.ProductKey, ControlProductKey: c.Control, MetricKey: c.MetricKey, Segment: c.Segment,
 		From: c.Period.From, To: c.Period.To, SourcePath: privateSeries, ContextPath: privateContext,
 	}, Keywords: in.Keywords})
+}
+
+func (d blindDataset) collectBlindCause(c BlindCandidate) WatchCaseResult {
+	origin := d.origin()
+	synthetic := origin == "synthetic_fixture"
+	if c.CauseRelease != nil {
+		labelled, _ := c.CauseRelease.Details["synthetic"].(bool)
+		synthetic = synthetic && labelled
+	}
+	warnings := []string{}
+	var ref Ref
+	for _, source := range c.SourceRefs {
+		if source.SourceID != "" && source.Locator != "" && (c.CauseRelease == nil || source != c.CauseRelease.SourceRef) {
+			ref = source
+			break
+		}
+	}
+	details := map[string]any{
+		"kind": "cause_hint", "confirmation": "candidate", "cause_type": c.CauseType,
+		"cause_strength": c.CauseStrength, "cause_evidence": c.CauseEvidence, "cause_release": c.CauseRelease,
+		"source_refs": c.SourceRefs, "reason": c.Reason, "origin": origin, "synthetic": synthetic,
+	}
+	segment := c.Segment
+	proofs, cautions := d.blindCauseMeasurementProvenance(c)
+	warnings = append(warnings, cautions...)
+	if len(proofs) > 0 {
+		var rawRefs []Ref
+		seen := map[Ref]bool{}
+		add := func(ref Ref) {
+			if !seen[ref] {
+				rawRefs = append(rawRefs, ref)
+				seen[ref] = true
+			}
+		}
+		// Start with onset locators so a bounded preview can cite both metrics.
+		for _, proof := range proofs {
+			for _, row := range proof.Current.Rows {
+				if row.Period == c.Period {
+					add(row.SourceRef)
+				}
+			}
+		}
+		for _, proof := range proofs {
+			for _, window := range []blindCauseSourceWindow{proof.Current, proof.Baseline} {
+				for _, row := range window.Rows {
+					add(row.SourceRef)
+				}
+			}
+		}
+		ref = rawRefs[0]
+		details["measurement_provenance"] = proofs
+		if len(proofs) == 2 {
+			if ratio := blindCheckoutRatio(proofs[0], proofs[1]); ratio != nil {
+				segment = proofs[0].Segment
+				details["checkout_per_visit"] = ratio
+			}
+		}
+		details["native_source_refs"] = c.SourceRefs
+		for _, source := range c.SourceRefs {
+			add(source)
+		}
+		details["source_refs"] = rawRefs
+	}
+	if ref.SourceID == "" {
+		ref = Ref{SourceID: "metrika-analyst", Locator: "scan_watchdog_series/" + d.id.String() + "/" + c.ID}
+		warnings = append(warnings, "The primary locator identifies the computed candidate. No original measurement locators were verified.")
+	}
+	if c.CauseType == "taxonomy_migration" {
+		if onset := d.blindMigrationSourceOnset(c); onset != nil {
+			details["migration_onset"] = onset
+		}
+	}
+	row := Observation{
+		ID: c.ID, Kind: "metric", ProductKey: c.ProductKey, MetricKey: c.CauseType,
+		Segment: segment, Period: c.Period, Status: "observed", Value: &c.CauseStrength, Unit: "score", SourceRef: ref,
+		Details: details,
+	}
+	batch := caseBatch(Batch{
+		SchemaVersion: "aifence.v1", Source: "metrika", AsOf: d.series.AsOf, Status: "ok",
+		Observations: []Observation{row}, Warnings: warnings,
+	})
+	doc := &WatchCaseDocument{SchemaVersion: "aifence.case.v1", AsOf: d.series.AsOf, Batches: []CaseBatch{batch}, Warnings: warnings}
+	if !synthetic {
+		doc.SourcePolicy = "local_project_only"
+	}
+	return WatchCaseResult{Status: causeKind, Document: doc, Timeline: []WatchCaseWeek{}, Warnings: warnings}
 }

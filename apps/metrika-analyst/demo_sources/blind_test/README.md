@@ -17,28 +17,48 @@ python3 blind_test_generator.py generate \
 
 Use a new output directory for each run. The generator refuses to replace an
 existing dataset. Visible product names and SKU fields identify verified Market
-Watch offers. Seven independently configured profiles cover Kaspersky Small Office
-Security (`KL4141RCEFR`), Astra Linux Special Edition (`OS2304ELB81BOX000WS01-SO36`),
-Microsoft 365 Business Premium (`CFQ7TTC0LCHC-0002-P1YY`), Red Hat Enterprise Linux Server, Premium
-(`RH00003`), Kaspersky Endpoint Security (`KL4210RAKDE`), Dr.Web Desktop
-Security Suite (`LBW-BC-12M-100-A3`) and МойОфис Частное облако
-(`X2-CLD-NB-3NUNL-A`). Every SKU is accompanied by its exact offer URL.
-The Astra link identifies an OS licence for the specified hardware variant.
-The generated observations and prices are synthetic. The taxonomy case changes an observed
-catalog key from the canonical family to its genuine SKU alias.
+Watch offers; list prices are the real offers captured on 2026-11-26
+(`PRICE_CAPTURED`), e.g. Kaspersky Small Office Security 4 718.70 ₽ at Softline
+and 4 719 ₽ at Softmap. Volumes, conversion (≈1–2% visit→order) and weekly
+movements are synthetic. Weeks run from 2026-05-11 to 2026-11-22.
+
+Design rules (audit 27.11, `notes/blind-cases-quality-2026-11-27.md`):
+
+- planted changes hit a Kaspersky family (`--family-pool kaspersky`, default;
+  `all` restores the old random choice) because the director question is about
+  Kaspersky, and they land in the last 4–6 weeks (S13: last 2 weeks);
+- Metrika undercount is one stable share per series (10–25%), weekly noise is
+  small, seasonality follows the calendar; a clean S0 never shows a 4-week
+  orders drop deeper than −12% per family or −15% per family × device (test);
+- inputs carry no answer fields (`bot_share_estimate`, `traffic_quality`,
+  `canonical_product_key`, `available_on`, `alias_*`, `experiment_id`, …) and
+  no prices in releases; every dataset has four or more specific-looking decoy
+  releases, so the planted release is not the only unusual one;
+- `details.synthetic` / `origin: synthetic_fixture` stay on every row as
+  platform provenance; captions are ordinary Russian export captions.
 
 Each opaque `set-<hash>/input` contains:
 
-- `metrika.json` — 28+ weeks × 7 verified catalog families × desktop/mobile, with visits, card views, cart additions, checkouts, orders and revenue;
-- `Продажи.xlsx` — sheets `Продажи`, `Релизы`, `Бэклог_задачи`;
+- `metrika.json` — 28 weeks × 7 catalog families × desktop/mobile, with visits, card views, cart additions, checkouts, orders, revenue, bounce rate and average visit duration;
+- `Продажи.xlsx` — sheets `Продажи` (full orders from sales accounting, catalog prices), `Релизы`, `Бэклог_задачи`;
 - `releases.json` and `backlog.json` — noisy product context;
 - `manifest.json` — no scenario name, answer path or cause hint.
 
 `answers/<scenario>.json` and `truth.json` are outside `input/` and must not be
-mounted into the agent's catalog. The public observation and dataset IDs are
-derived from the published content. The input has no seed, seed hash or scenario
-verdict. Missing measurements, event availability dates and verified SKU aliases
-remain available as source facts. Generation is deterministic and offline.
+mounted into the agent's catalog. Answer `week` is the ISO week start
+(`week_index` keeps the number); `severity` is the effect actually applied.
+
+What each scenario looks like to an analyst:
+
+| Scenario | Metrika | Sales workbook |
+|---|---|---|
+| S0 | ordinary noise and season | ordinary |
+| S6 | desktop visits ×2–3, bounce ~0.6, duration drops, orders flat | orders flat |
+| S7 | family key stops, its SKU key continues at the same level | orders flat |
+| S12 | checkouts/orders/revenue `incomparable` for the last weeks | comment: reconciliation open |
+| S13 | orders/revenue of the last 2 weeks −45% / −82% | orders flat |
+| S14 | visits +50%, cart under-counted, orders −25…−38% | orders −25…−38% |
+
 For an explicit live-counter smoke test, build a token-free recent plan from the
 latest evidence week:
 
@@ -61,22 +81,16 @@ python3 blind_test_generator.py mp-send \
   --counter 114698578 --token-env YANDEX_METRIKA_TOKEN
 ```
 
-Scenarios are selected by the seed and contain the original S0–S4 set plus
-S6 bot/low-quality traffic, S7 product-taxonomy migration, S12 an honest
-refusal where the evidence is intentionally incomparable, S13 delayed purchase
-events, and S14 a multi-cause regression masked by traffic growth and cart
-under-counting. S12 accepts either `no_alert` or `insufficient_data`; an
-alarm with a guessed family is a false alarm.
-Observed behaviour metrics intentionally lose 10–25% independently to model
-blockers and undercounting. The source truth still contains full orders and
-revenue for the sales workbook.
+S12 accepts either `no_alert` or `insufficient_data`; an alarm with a guessed
+family is a false alarm. The source truth contains full orders and revenue
+for the sales workbook.
 
 ## Score agent cards
 
 Write one card per opaque dataset at `<cards>/set-<hash>/card.json`:
 
 ```json
-{"found": true, "family": "kaspersky_small_office_security", "week": 13, "cause_type": "release_regression"}
+{"found": true, "family": "kaspersky_small_office_security", "week": "2026-10-26", "cause_type": "release_regression"}
 ```
 
 Then run:
