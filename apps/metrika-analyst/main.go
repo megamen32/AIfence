@@ -103,13 +103,14 @@ func newAgent() *agentsdk.Agent {
 	instructions, _ := assets.ReadFile("INSTRUCTIONS.md")
 	a.AddInstruction(&agentsdk.Instruction{Text: string(instructions)})
 	a.RegisterTool(tool.Typed[Query, Batch]("query_metrics").Description("Read exact period metrics from configured MCP or explicitly selected historical evidence file.").Execute(s.Query).Build(), agentsdk.AccessUser)
-	a.RegisterTool(tool.Typed[Compare, Batch]("compare_periods").Description("Compare equal non-overlapping periods; output evidence-v1 including changes.").Execute(s.Compare).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[Compare, Batch]("compare_periods").Description("Compare equal non-overlapping periods; output evidence-v1 including changes.").Execute(s.Compare).Build(), agentsdk.AccessUser, agentsdk.WithReadOnly())
 	a.RegisterTool(tool.Typed[CheckInput, CheckResult]("check_metrika").Description("Check authorized counter or historical file. Never returns token.").Execute(s.Check).Build(), agentsdk.AccessUser)
 	registerWatch(a, Watch{series: s, contextPath: func(ctx context.Context) string {
 		p, _ := watchContext.Get(ctx)
 		return p
 	}})
 	registerWatchSchedule(a)
+	registerExternalDemand(a)
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Что изменилось?", Prompt: "Сравни две последние полные недели. Покажи источники, отклонения и ограничения."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Оценить релиз", Prompt: "Помоги оценить результат релиза: уточни дату, критерий успеха и сопоставимые периоды."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Проверить источник", Prompt: "Проверь подключение Метрики или выбранную выгрузку."})
