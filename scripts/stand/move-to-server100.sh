@@ -55,7 +55,7 @@ if ! done_phase pin; then
   source_revision=$("$D" --context "$CTX" inspect aifence-airlock-1 --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
   [ "$source_revision" = "$CORE_SHA" ] || die "Airlock revision changed: $source_revision"
   "$D" --context "$CTX" ps --format '{{.Names}}|{{.Image}}|{{.ID}}' | sort > "$TMP_PIN"
-  "$D" --context "$CTX" exec aifence-postgres-1 psql -At -F '|' -U airlock -d airlock -c 'select id,slug,source_ref,image_ref from agents where status in (''active'',''building'') order by slug' > "$TMP_APPS"
+  "$D" --context "$CTX" exec aifence-postgres-1 psql -At -F '|' -U airlock -d airlock -c "select id,slug,source_ref,image_ref from agents where status in ('active','building') order by slug" > "$TMP_APPS"
   sync_file "$TMP_PIN" "$ROOT/pin/containers.tsv"
   sync_file "$TMP_APPS" "$ROOT/pin/apps.tsv"
   remote "printf '%s\n' 'aifence_sha=$AIFENCE_SHA' 'airlock_source_sha=$AIRLOCK_SHA' 'airlock_release_sha=$CORE_SHA' 'airlock_tag=$AIRLOCK_TAG' 'agent_tag=$AGENT_TAG' > '$ROOT/pin/release.env'"
