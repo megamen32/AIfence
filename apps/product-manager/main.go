@@ -25,7 +25,7 @@ func newAgent() *agentsdk.Agent {
 	alerts := a.RegisterTopic(&agentsdk.Topic{Slug: "product_signals", Description: "Новые продуктовые сигналы владельца", Access: agentsdk.AccessUser, Enrollment: agentsdk.TopicEnrollmentDefaultOff, PerUser: true})
 	smtp := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "signal_smtp", Description: "Закрытая JSON-настройка внутреннего SMTP relay для одного владельца. Пустое значение отключает отправку.", Secret: true})
 	p := product.Service{Decisions: d, Evidence: e, Notifications: &product.SignalNotifications{Enabled: bridge, Topic: alerts, DB: a.DB()}, Mail: &product.SignalMail{Config: smtp, DB: a.DB()}}
-	h := handlers.New(p, a).WithCatalogOverview(registerCatalogOverview(a).Panel)
+	h := handlers.New(p, a).WithCatalogOverview(registerCatalogOverview(a).Panel).WithDelivery(registerCustomerDelivery(a, p))
 	registerPathCheck(a)
 	registerMarketIntelligence(a, e)
 	registerCompetitorResearch(a)
@@ -59,7 +59,7 @@ func newAgent() *agentsdk.Agent {
 		{Method: "POST", Path: "/priorities", Handler: h.UpdateEstimate, Description: "Сохранить оценку проверки"},
 		{Method: "GET", Path: "/board", Handler: h.Board, Description: "Карточки продуктовых решений"},
 		{Method: "POST", Path: "/edit", Handler: h.Edit, Description: "Отредактировать гипотезу перед подтверждением"},
-		{Method: "POST", Path: "/approve", Handler: product.BacklogApprovalHTTP(h.Approve), Description: "Подтвердить задачу локального бэклога"},
+		{Method: "POST", Path: "/approve", Handler: product.BacklogApprovalHTTP(h.Approve), Description: "Подтвердить задачу и создать черновик в Redmine"},
 		{Method: "POST", Path: "/import", Handler: h.Import, Description: "Импортировать проверяемые наблюдения"},
 	} {
 		r.Access = agentsdk.AccessUser
