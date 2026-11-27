@@ -8,7 +8,7 @@
 @import "./design-system.css";
 
 @plugin "../.airlock/toolchain/lib/tailwind/daisyui.mjs" {
-  themes: light --default, dark --prefersdark;
+  themes: dark --default, light;
 }
 
 /* Idle and request indicators share one cell, so button labels never shift. */
@@ -256,15 +256,18 @@ h3{font-size:1.03rem;font-weight:650;letter-spacing:-.015em;margin-bottom:.6rem}
 
 /* Right-side dashboard. DaisyUI supplies theme contrast in either mode. */
 .pm-frame {
-  --paper:var(--color-base-100); --ink:var(--color-base-content);
-  --rule:var(--color-base-300); --muted:color-mix(in srgb,var(--ink) 66%,var(--paper));
-  --blue:var(--color-primary); --coral:var(--color-error); --okay:var(--color-success);
-  --raised:var(--color-base-200); --warn:var(--color-warning);
+  --paper:#1f2124; --ink:#ececec; --rule:#34373c; --muted:#a3a8b0;
+  --blue:#7fb2ff; --coral:#ff6f66; --okay:#4fcf8f; --raised:#27292d; --warn:#e7b558;
   max-width:52rem;margin-inline:auto;color:var(--ink);background:var(--paper);
   border:1px solid var(--rule);border-radius:var(--aif-radius-card);font:13px/1.4 var(--aif-font-sans);
   font-variant-numeric:tabular-nums;
   animation:aif-enter var(--aif-motion-base) ease-out both;
 }
+/* Keep the PM card readable when the host does not expose DaisyUI theme tokens. */
+@media (prefers-color-scheme: light) {
+  .pm-frame {--paper:#fff;--ink:#1c2026;--rule:#dfe3e8;--muted:#5f6773;--blue:#2f6fd6;--coral:#d6453d;--okay:#1f9a62;--raised:#f0f2f5;--warn:#b7801c}
+}
+[data-theme="light"] .pm-frame {--paper:#fff;--ink:#1c2026;--rule:#dfe3e8;--muted:#5f6773;--blue:#2f6fd6;--coral:#d6453d;--okay:#1f9a62;--raised:#f0f2f5;--warn:#b7801c}
 .dashboard-top,.dashboard-tabs {display:flex;align-items:center;gap:.5rem;padding:.65rem .85rem;border-bottom:1px solid var(--rule)}
 .dashboard-top {justify-content:space-between}
 .dashboard-top strong {font-weight:680;font-size:.96rem}
