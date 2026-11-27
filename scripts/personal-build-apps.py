@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-APPS = ("product-manager", "metrika-analyst", "market-watch")
+APPS = ("product-manager", "metrika-analyst", "market-watch", "web-scraper", "google-trends", "wordstat")
 BUILD_INPUTS = (
     "scripts/deploy-apps",
     "scripts/personal-build-apps.py",

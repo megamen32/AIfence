@@ -55,6 +55,28 @@ func TestMonitorCostNeedsBothInputs(t *testing.T) {
 	}
 }
 
+func TestDemandComparisonKeepsKESAndAstraTogether(t *testing.T) {
+	row := func(product, source, metric, from, to, value string) monitorObservation {
+		return monitorObservation{Row: evidence.Row{Product: product, Source: "research", Metric: metric, Value: value, Unit: "count", Status: "observed", Period: evidence.Period{From: from, To: to}, Ref: evidence.SourceRef{SourceID: source}}}
+	}
+	rows := []monitorObservation{
+		row("kaspersky_endpoint_security", "wordstat", "search_queries", "2026-09-07", "2026-09-13", "12800"),
+		row("kaspersky_endpoint_security", "wordstat", "search_queries", "2026-10-26", "2026-11-01", "8600"),
+		row("astra_linux_special_edition", "wordstat", "search_queries", "2026-09-07", "2026-09-13", "7600"),
+		row("astra_linux_special_edition", "wordstat", "search_queries", "2026-10-26", "2026-11-01", "7340"),
+	}
+	v := demandComparison("kaspersky_endpoint_security", "astra_linux_special_edition", rows)
+	if len(v.Sources) != 2 || v.Sources[0].TargetCurrent != "8600" || v.Sources[0].ControlCurrent != "7340" {
+		t.Fatalf("unexpected demand comparison: %+v", v)
+	}
+	if v.Sources[0].TargetChange != "−32,8 %" || v.Sources[0].ControlChange != "−3,4 %" {
+		t.Fatalf("unexpected demand changes: %+v", v.Sources[0])
+	}
+	if v.Sources[1].Status != "Нет наблюдения" {
+		t.Fatalf("missing Trends should remain explicit: %+v", v.Sources[1])
+	}
+}
+
 func TestFramePathIsRestrictedToCallerAndGeneratedFiles(t *testing.T) {
 	const root = "/apps/12324004-0746-47a6-8174-27dc3fb15759/tmp/path-check/"
 	const leaf = "/12324004-0746-47a6-8174-27dc3fb15759/desktop.png"

@@ -328,7 +328,7 @@ func newAgent() *agentsdk.Agent {
 	a := agentsdk.New(agentsdk.Config{Description: "Web Scraper — sources, parser configuration, coverage and collection operations.", Icon: "🔎"})
 	a.RegisterDirectory("scraper", agentsdk.DirectoryOpts{Read: agentsdk.AccessInternal, List: agentsdk.AccessInternal, Write: agentsdk.AccessInternal, Description: "Validated collection reports and configuration drafts"})
 	s := &Service{store: a}
-	a.RegisterTool(tool.Typed[Query, Snapshot]("get_scraper_status").Description("Actual collector progress, source rules, errors and export receipts. Source is optional. No fabricated or estimated coverage.").Execute(s.Status).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[Query, Snapshot]("get_scraper_status").Description("Actual collector progress, source rules, errors and export receipts. Source is optional. No fabricated or estimated coverage.").Execute(s.Status).Build(), agentsdk.AccessUser, agentsdk.WithReadOnly())
 	a.RegisterTool(tool.Typed[SourceDraft, Draft]("save_source_draft").Description("Save a proposed new HTTPS source, desired fields and update interval; does not start requests or activate a parser.").Execute(s.Draft).Build(), agentsdk.AccessAdmin)
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Handler: s.home, Description: "Web Scraper overview and source details"})
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/status.json", Access: agentsdk.AccessUser, Description: "Read normalized collector report", Handler: func(w http.ResponseWriter, r *http.Request) error {

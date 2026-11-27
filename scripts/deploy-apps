@@ -42,12 +42,12 @@ if sys.argv[3]:
         sys.exit("App bundle platform dependencies or source commit differ from the committed release lock")
 VERIFY_MAIN
 }
-usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager" >&2; exit 2; }
+usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager|web-scraper|google-trends|wordstat" >&2; exit 2; }
 dry=0 create=0 auto=0 slug=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) dry=1;; --create) create=1;; --auto) auto=1;;
-    market-watch|metrika-analyst|product-manager) [[ -z "$slug" ]] || usage; slug="$arg";;
+    market-watch|metrika-analyst|product-manager|web-scraper|google-trends|wordstat) [[ -z "$slug" ]] || usage; slug="$arg";;
     *) usage;;
   esac
 done
