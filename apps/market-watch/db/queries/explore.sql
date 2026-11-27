@@ -6,6 +6,17 @@ WHERE upper(o.sku) = upper(sqlc.arg(sku)::text)
 ORDER BY o.observed_at DESC,o.source,o.url,o.basis,o.quantity,o.max_quantity
 LIMIT 4001;
 
+-- name: SKUWindowObservations :many
+-- Every stored observation of one exact SKU inside the union of the two
+-- requested weeks. Picking the latest reading per week and series happens in
+-- Go, where the series identity and its comparability rules already live.
+SELECT o.offer FROM observations o
+WHERE upper(o.sku) = upper(sqlc.arg(sku)::text)
+  AND o.observed_at >= sqlc.arg(from_time)::timestamptz
+  AND o.observed_at < sqlc.arg(to_time)::timestamptz
+ORDER BY o.observed_at,o.source,o.url,o.basis,o.quantity,o.max_quantity
+LIMIT 4001;
+
 -- name: MatrixPage :many
 WITH page AS (
     SELECT DISTINCT CASE WHEN l.sku='' THEN 'url:'||l.source||':'||l.url ELSE 'sku:'||upper(l.sku) END AS cursor_key
