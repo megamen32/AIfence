@@ -65,7 +65,7 @@ fi
 if ! done_phase build; then
   log "build: clone pinned sources and build native amd64 platform"
   retry "if test -d '$ROOT/build/AIfence/.git'; then git -C '$ROOT/build/AIfence' fetch --depth=1 origin '$AIFENCE_SHA'; else git clone --filter=blob:none https://github.com/megamen32/AIfence.git '$ROOT/build/AIfence'; fi; git -C '$ROOT/build/AIfence' checkout --detach '$AIFENCE_SHA'"
-  retry "if test -d '$ROOT/build/airlock/.git'; then git -C '$ROOT/build/airlock' fetch --depth=1 origin '$AIRLOCK_SHA'; else git clone --filter=blob:none git@github.com:airlockrun/airlock-internal.git '$ROOT/build/airlock'; fi; git -C '$ROOT/build/airlock' checkout --detach '$AIRLOCK_SHA'"
+  retry "if test -d '$ROOT/build/airlock/.git'; then git -C '$ROOT/build/airlock' fetch --depth=1 origin '$AIRLOCK_SHA'; else git clone --filter=blob:none https://github.com/airlockrun/airlock-internal.git '$ROOT/build/airlock'; fi; git -C '$ROOT/build/airlock' checkout --detach '$AIRLOCK_SHA'"
   retry "cd '$ROOT/build/airlock' && docker build --platform linux/amd64 --label org.opencontainers.image.revision=$AIRLOCK_SHA -t aifence-agent-base:$AGENT_TAG -f Dockerfile.agent-base ."
   retry "cd '$ROOT/build/airlock' && docker build --platform linux/amd64 --label org.opencontainers.image.revision=$AIRLOCK_SHA -t aifence-agent-builder:$AGENT_TAG -f Dockerfile.agent-builder ."
   retry "cd '$ROOT/build/airlock' && docker build --platform linux/amd64 --label org.opencontainers.image.revision=$AIRLOCK_SHA -t aifence-js-executor:$AGENT_TAG -f Dockerfile.js-executor ."
