@@ -31,8 +31,8 @@ class BlindGeneratorTests(unittest.TestCase):
             "kaspersky_small_office_security": "KL4141RCEFR",
             "dr_web_desktop_security_suite": "LBW-BC-12M-100-A3",
             "astra_linux_special_edition": "OS2304ELB81BOX000WS01-SO36",
-            "microsoft_365_family": "6GQ-00084",
-            "vmware_vsphere_starter_kit": "PRGN-0121-105",
+            "microsoft_365_business_premium": "CFQ7TTC0LCHC-0002-P1YY",
+            "red_hat_enterprise_linux_server_premium": "RH00003",
             "kaspersky_endpoint_security": "KL4210RAKDE",
             "myoffice_private_cloud": "X2-CLD-NB-3NUNL-A",
         })

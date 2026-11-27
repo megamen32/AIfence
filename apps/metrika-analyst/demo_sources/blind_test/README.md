@@ -19,8 +19,8 @@ Use a new output directory for each run. The generator refuses to replace an
 existing dataset. Visible product names and SKU fields identify verified Market
 Watch offers. Seven independently configured profiles cover Kaspersky Small Office
 Security (`KL4141RCEFR`), Astra Linux Special Edition (`OS2304ELB81BOX000WS01-SO36`),
-Microsoft 365 для семьи (Family) (`6GQ-00084`), VMware vSphere Edition Starter Kit
-(`PRGN-0121-105`), Kaspersky Endpoint Security (`KL4210RAKDE`), Dr.Web Desktop
+Microsoft 365 Business Premium (`CFQ7TTC0LCHC-0002-P1YY`), Red Hat Enterprise Linux Server, Premium
+(`RH00003`), Kaspersky Endpoint Security (`KL4210RAKDE`), Dr.Web Desktop
 Security Suite (`LBW-BC-12M-100-A3`) and МойОфис Частное облако
 (`X2-CLD-NB-3NUNL-A`). Every SKU is accompanied by its exact offer URL.
 The Astra link identifies an OS licence for the specified hardware variant.

@@ -35,14 +35,14 @@ PRODUCTS = {
         "catalog_url": "https://www.softmagazin.ru/pao-gruppa-astra/os2304elb81box000ws01-so36/",
         "visits": 920, "view_rate": 0.7, "cart_rate": 0.2, "checkout_rate": 0.58, "order_rate": 0.76, "aov": 13200,
     },
-    "microsoft_365_family": {
-        "label": "Microsoft 365 для семьи (Family)", "sku": "6GQ-00084", "catalog_seller": "Softline",
-        "catalog_url": "https://store.softline.ru/microsoft/6gq-00084-195981/",
+    "microsoft_365_business_premium": {
+        "label": "Microsoft 365 Business Premium", "sku": "CFQ7TTC0LCHC-0002-P1YY", "catalog_seller": "SoftMagazin",
+        "catalog_url": "https://www.softmagazin.ru/microsoft/cfq7ttc0lchc-0002-p1yy/",
         "visits": 1280, "view_rate": 0.73, "cart_rate": 0.22, "checkout_rate": 0.6, "order_rate": 0.78, "aov": 17100,
     },
-    "vmware_vsphere_starter_kit": {
-        "label": "VMware vSphere Edition Starter Kit", "sku": "PRGN-0121-105", "catalog_seller": "SoftMagazin",
-        "catalog_url": "https://www.softmagazin.ru/paragon-software/prgn-0121-105/",
+    "red_hat_enterprise_linux_server_premium": {
+        "label": "Red Hat Enterprise Linux Server, Premium", "sku": "RH00003", "catalog_seller": "Softmap",
+        "catalog_url": "https://softmap.ru/redhat/red-hat-enterprise-linux-server/element-red-hat-enterprise-linux-server-premium-physical-or-virtual-nodes-1-year/",
         "visits": 720, "view_rate": 0.68, "cart_rate": 0.18, "checkout_rate": 0.55, "order_rate": 0.74, "aov": 22500,
     },
     "kaspersky_endpoint_security": {
