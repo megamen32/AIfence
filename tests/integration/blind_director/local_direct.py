@@ -43,7 +43,13 @@ def upload(token,url,data,content_type):
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--origin',required=True);p.add_argument('--case',required=True,choices=sources.CASES);p.add_argument('--resume-rejected',action='store_true');p.add_argument('--skip-metrika',action='store_true');args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--origin',required=True);p.add_argument('--case',required=True);p.add_argument('--blind30',action='store_true');p.add_argument('--resume-rejected',action='store_true');p.add_argument('--skip-metrika',action='store_true');args=p.parse_args()
+    if args.blind30:
+        import blind30_score
+        package=q.ROOT/'.runtime/blind-director/blind30-sol-v2';_, frozen=blind30_score.verify(package)
+        q.OUT=package/'local-inputs';allowed={x['id'] for x in frozen['cases']}
+    else:allowed=set(sources.CASES)
+    if args.case not in allowed:raise RuntimeError('Unknown case')
     assert_local(args.origin)
     case=args.case; user=json.loads((q.OUT/'users-qa-42082'/f'{case}-final-credentials.json').read_text())
     if user['origin']!=args.origin or user['case']!=case:raise RuntimeError('User provenance mismatch')

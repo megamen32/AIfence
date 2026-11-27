@@ -61,9 +61,36 @@ def kt1(matrix_path,offline_path):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--origin',required=True);parser.add_argument('--case',required=True,choices=CASES);parser.add_argument('--matrix',default='source-matrix-qa-42082-v6.json');parser.add_argument('--offline-score',default='sourcewatch-measured-score.json');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--origin',required=True);parser.add_argument('--case',required=True);parser.add_argument('--blind30',action='store_true');parser.add_argument('--matrix',default='source-matrix-qa-42082-v6.json');parser.add_argument('--offline-score',default='sourcewatch-measured-score.json');parser.add_argument('--output-label',default='sol-chat',choices=('sol-chat','sol-retest-9f'));args=parser.parse_args()
     qa.assert_local(args.origin)
     kt1(qa.OUT/args.matrix,qa.OUT/args.offline_score)
+    slotroot=qa.OUT
+    if args.blind30:
+        import blind30_score
+        package=qa.ROOT/'.runtime/blind-director/blind30-sol-v2';_, frozen=blind30_score.verify(package)
+        if args.case not in {x['id'] for x in frozen['cases']}:raise RuntimeError('Unknown blind case')
+        if not (slotroot/'pilot-retest-9f-freeze.json').is_file():raise RuntimeError('Pilot repeats not frozen')
+        qa.OUT=package/'local-inputs'
+        location=qa.OUT/args.case/'receipts-qa-42082'
+        visible={x.get('snapshot_id') for x in json.loads((location/'discovery-list.json').read_text())['output'].get('snapshots',[])}
+        for name in ('read_wordstat','read_google_trends','read_competitor_prices'):
+            if not numeric_read(location/(name+'-discover.json'),visible):raise RuntimeError('Missing numeric source read: '+name)
+        numeric_sources=set()
+        for path in location.glob('pm-*-read-*.json'):
+            data=json.loads(path.read_text());output=data['receipt']['output']
+            if output.get('snapshot_id') not in visible:continue
+            for row in output.get('rows',[]):
+                ref=row.get('source_ref') or {}
+                try:value=float(row.get('value'))
+                except (ValueError,TypeError):continue
+                if math.isfinite(value) and ref.get('locator') and row.get('unit') and row.get('period'):
+                    numeric_sources.add(ref.get('source_id'))
+        if not {'blind-metrika','synthetic-sales'}<=numeric_sources:raise RuntimeError('Missing numeric sales or Metrika read')
+        discovery=json.loads((location/'metrika-discover.json').read_text())['output']
+        collected=json.loads((qa.OUT/args.case/'collect-all-9f'/'candidates.json').read_text())
+        if not discovery.get('dataset_id') or discovery.get('dataset_id')!=collected.get('dataset_id'):raise RuntimeError('Active Metrika dataset mismatch')
+        if not (qa.OUT/args.case/'collect-all-9f'/'review.json').is_file():raise RuntimeError('Owner review missing')
+    elif args.case not in CASES:raise RuntimeError('Unknown case')
     route=json.loads(ROUTE.read_text())
     if route.get('origin')!=args.origin or route.get('route_verified') is not True or 'sol' not in str(route.get('model','')).lower() or not route.get('provider'):
         raise RuntimeError('QA Sol route not independently verified')
@@ -86,11 +113,11 @@ def main():
     if configured_model!=route['model'] or configured_provider!=route['provider']:
         raise RuntimeError('Effective QA PM route differs from verified Sol route; no fallback permitted')
     require_prompt(PRICE_ACCEPTANCE,'price_acceptance')
-    if args.case not in ('case-01','case-06'):
+    if not args.blind30 and args.case not in ('case-01','case-06'):
         pilot=qa.OUT/'pilot-accepted.json'
         if not pilot.is_file() or json.loads(pilot.read_text()).get('accepted_cases') != ['case-01','case-06']:
             raise RuntimeError('Initial two-case pilot has not been accepted')
-    slotdir=qa.OUT/'model-slots';slotdir.mkdir(mode=0o700,exist_ok=True)
+    slotdir=slotroot/'model-slots';slotdir.mkdir(mode=0o700,exist_ok=True)
     slot=None
     for n in range(2):
         fd=os.open(slotdir/str(n),os.O_CREAT|os.O_RDWR,0o600)
@@ -98,7 +125,7 @@ def main():
             fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);slot=fd;break
         except BlockingIOError:os.close(fd)
     if slot is None:raise RuntimeError('Two-request QA model budget is already in use')
-    out=qa.OUT/args.case/'sol-chat';out.mkdir(mode=0o700,exist_ok=False)
+    out=qa.OUT/args.case/args.output_label;out.mkdir(mode=0o700,exist_ok=False)
     qa.save(out/'admission-plan.json',{'case':args.case,'origin':args.origin,'request_id':str(uuid.uuid4()),'model':route['model'],'provider':route['provider']})
     plan=json.loads((out/'admission-plan.json').read_text())
     conv=qa.call('POST','/api/v1/system/conversations',token,{'title':'Synthetic blind QA'})
@@ -106,6 +133,7 @@ def main():
     payload={'requestId':plan['request_id'],'message':PRICE_ACCEPTANCE,'workspace':{'appId':pm['id'],'path':'/'}}
     qa.save(out/'prompt-request.json',payload)
     # Admission is attempted once. If it fails, reconcile using request_id; never blindly resend.
+    started=time.monotonic()
     receipt=qa.call('POST',f'/api/v1/system/conversations/{cid}/prompt',token,payload)
     qa.save(out/'prompt-receipt.json',receipt);rid=receipt['runId'];deadline=time.monotonic()+300
     while time.monotonic()<deadline:
@@ -113,7 +141,18 @@ def main():
         status=str(run.get('status','')).lower()
         if status in ('complete','completed','success','error','failed','cancelled','canceled','timeout'):
             chat=qa.call('GET',f'/api/v1/conversations/{cid}/chat',token)
-            qa.save(out/'terminal.json',{'run':run,'chat':chat,'case':args.case});print(args.case+' terminal evidence saved');return
+            qa.save(out/'terminal.json',{'run':run,'chat':chat,'case':args.case})
+            if args.blind30:
+                messages=chat.get('messages',[])
+                final=[x.get('content','') for x in messages if x.get('role')=='assistant' and x.get('content')]
+                record={'case':args.case,'question':PRICE_ACCEPTANCE,'chat_id':cid,'run_id':rid,'owner_id':user['user_id'],
+                        'status':'completed' if status in ('complete','completed','success') else 'failed',
+                        'response':final[-1] if final else '', 'duration_seconds':time.monotonic()-started,
+                        'source_receipts':{'terminal_sha256':__import__('hashlib').sha256((out/'terminal.json').read_bytes()).hexdigest(),
+                                           'terminal_path':str(out/'terminal.json')}}
+                qa.save(out/'record.json',record)
+                blind30_score.freeze(package,args.case,out/'record.json')
+            print(args.case+' terminal evidence saved',flush=True);return
         time.sleep(2)
     qa.save(out/'timeout.json',{'run_id':rid,'conversation_id':cid});raise RuntimeError('Run not terminal; do not retry or start another request until reconciled')
 
