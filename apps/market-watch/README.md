@@ -12,6 +12,8 @@ A native Go application for Airlock. The signed-in app members can query public 
 | `list_competitors` | Verify activation, observations, seed URLs and errors; these profiles have no full sitemap inventory |
 | `refresh_market` | Refresh featured pages and previously observed URLs for a known exact SKU |
 | `market_changes` | Price changes on comparable observations of the same store, URL, SKU, price basis and quantity tier |
+| `price_week_delta` | Paired stored prices for one exact SKU in two complete UTC weeks, with missing periods |
+| `family_price_week_delta` | Paired prices for explicit or title-discovered SKUs, with coverage denominators and evidence IDs |
 
 The authenticated route `GET /catalog.csv` streams the full current index as an Excel-compatible CSV. Catalog counts measure observed offers. The Sources tab displays these counts alongside a separately dated reconciliation of license URLs. An unknown license inventory remains explicitly unknown.
 
@@ -41,3 +43,7 @@ go build -o ../../.runtime/bin/importcatalog ./cmd/importcatalog
 ```
 
 On the local Mac deployment, the existing three-hour import also publishes the sitemap reconciliation when all three collector checkpoints exist. Run `go run ./cmd/coverageimport` to inspect the current snapshot without uploading. Run `go run ./cmd/coverageimport -upload -air ../../.runtime/bin/market-air` to upload only that report. Schedule the importer after refreshed observations are published. Exact SKU matching requires a SKU from the store. Offers without a SKU can be found by title and URL. Minimum and maximum quantities are preserved for comparisons.
+
+A bounded Mac refresh is `go run ./collector/cmd/feedfirst -root <existing-feed-root> -out <separate-slice-root> -skus KL4141RCEFS -max-pages 3`. It revisits exact URLs already in the feed through the collector's robots and pacing policy, writes a separate per-store `offers.jsonl` for the ordinary admin `POST /import`, and reports requested SKUs, pages, new offers, missing SKUs and failures. `-family` can replace `-skus` to discover up to 20 SKUs from existing offer titles. Use a checkpoint specific to the selected app deployment when importing this slice.
+
+Both weekly read tools take `baseline_from`, `baseline_to`, `current_from` and `current_to` for complete Monday-to-Sunday UTC weeks. `price_week_delta` also takes `product_key`. `family_price_week_delta` takes either `skus` or `family`, a title phrase whose returned SKU list is a set of indexed candidates. Its response contains `results[]` by SKU, `coverage` with selected SKU and observed-series denominators, `evidence_ids[]`, and `evidence` in the shared `aifence.v1` shape. Each numeric observation links its two source readings in `details.evidence_ids`. Absolute prices stay within their own SKU, seller, URL, basis and quantity tier.

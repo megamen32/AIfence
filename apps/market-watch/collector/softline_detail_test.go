@@ -43,3 +43,22 @@ func TestSoftlineConflictingUpperBound(t *testing.T) {
 		}
 	}
 }
+
+func TestSoftlineSelectedTierAndOverallCounterBounds(t *testing.T) {
+	src := sources(t)[2]
+	const html = `<script id="js-front-config">window.temporaryFrontConfig = {"product":{"minQuantity":200,"priceWithDiscount":"7125","price":"7125"}};</script><h1>License</h1><input class="js-product-quantity" min="50" max="9999" data-minval="200" data-maxval="499" value="200"><span class="js-price-with-discount">1 425 000</span>`
+	rows, err := Extract(src, src.Seeds[0], strings.NewReader(html), time.Unix(0, 0))
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("price: %v %v", rows, err)
+	}
+	o := rows[0]
+	if o.PriceMinor != 712500 || o.PriceBasis != "per_unit" || o.Quantity == nil || *o.Quantity != 200 || o.MaxQuantity == nil || *o.MaxQuantity != 499 {
+		t.Fatalf("tier %+v", o)
+	}
+	// An actual conflict with the tier, unlike the global control minimum,
+	// remains unresolved rather than silently accepting incorrect terms.
+	bad := strings.Replace(html, `data-minval="200"`, `data-minval="100"`, 1)
+	if _, e := Extract(src, src.Seeds[0], strings.NewReader(bad), time.Unix(0, 0)); e == nil {
+		t.Fatal("conflicting tier accepted")
+	}
+}

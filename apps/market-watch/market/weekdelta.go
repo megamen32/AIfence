@@ -54,7 +54,9 @@ type WeekDeltaSeries struct {
 
 // MissingPeriod names a seller and week for which no comparable read exists.
 type MissingPeriod struct {
+	SKU    string `json:"sku"`
 	Seller string `json:"seller"`
+	URL    string `json:"url"`
 	Period string `json:"period"`
 	Reason string `json:"reason"`
 }
@@ -84,18 +86,18 @@ type WeekDelta struct {
 }
 
 type deltaSeriesKey struct {
-	seller, url, basis, currency string
-	quantity, maximum            int64
-	terms                        comparisonTerms
+	seller, url, basis, currency, name string
+	quantity, maximum                  int64
+	terms                              comparisonTerms
 }
 
 func deltaKeyOf(o Observation) deltaSeriesKey {
-	return deltaSeriesKey{o.Details.Seller, o.SourceRef.URL, o.Details.PriceBasis, o.Currency,
+	return deltaSeriesKey{o.Details.Seller, o.SourceRef.URL, o.Details.PriceBasis, o.Currency, o.Details.Name,
 		quantityValue(o.Details.Quantity), quantityValue(o.Details.MaxQuantity), termsOf(o)}
 }
 
 func deltaLabel(k deltaSeriesKey) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%d/%d", k.seller, k.url, k.basis, k.currency, k.quantity, k.maximum)
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%d/%d|%v", k.seller, k.url, k.basis, k.currency, k.name, k.quantity, k.maximum, k.terms)
 }
 
 func parseWeek(label, from, to string) (time.Time, time.Time, error) {
@@ -132,15 +134,27 @@ func (s *Service) WeekDelta(ctx context.Context, in WeekDeltaInput) (WeekDelta, 
 	if err != nil {
 		return out, err
 	}
-	if !currentFrom.After(baselineEnd) {
+	if currentFrom.Before(baselineEnd) {
 		return out, fmt.Errorf("current week must start after the baseline week")
+	}
+	if currentEnd.After(s.now().UTC()) {
+		return out, fmt.Errorf("current week is not complete")
 	}
 	rows, truncated, err := s.weekRows(ctx, sku, baselineFrom, currentEnd)
 	if err != nil {
 		return out, err
 	}
+	if truncated {
+		out.SKU = sku
+		out.BaselineWeek = Period{From: in.BaselineFrom, To: in.BaselineTo}
+		out.CurrentWeek = Period{From: in.CurrentFrom, To: in.CurrentTo}
+		out.AsOf = s.now().UTC().Format(time.RFC3339Nano)
+		out.Status, out.Truncated = "partial", true
+		out.Warnings = []string{"Observation history exceeded 4000 rows; no incomplete price delta was calculated."}
+		out.Evidence = deltaEvidence(out, s.now())
+		return out, nil
+	}
 	out = GroupWeekDelta(rows, sku, baselineFrom, currentFrom, s.now())
-	out.Truncated = truncated
 	return out, nil
 }
 
@@ -155,11 +169,17 @@ func GroupWeekDelta(rows []catalog.Offer, sku string, baselineFrom, currentFrom,
 	readCounts := map[deltaSeriesKey]int{}
 	latest := time.Time{}
 	for _, row := range rows {
+		if !strings.EqualFold(row.SKU, sku) {
+			continue
+		}
 		at, err := time.Parse(time.RFC3339Nano, row.CapturedAt)
 		if err != nil {
 			continue
 		}
 		key := deltaKeyOf(obs(row))
+		if at.Before(baselineFrom) || !at.Before(currentEnd) || !at.Before(baselineEnd) && at.Before(currentFrom) {
+			continue
+		}
 		readCounts[key]++
 		if at.After(latest) {
 			latest = at
@@ -200,12 +220,12 @@ func GroupWeekDelta(rows []catalog.Offer, sku string, baselineFrom, currentFrom,
 	out.SKU = sku
 	out.BaselineWeek = Period{From: baselineFrom.Format(time.DateOnly), To: baselineFrom.AddDate(0, 0, 6).Format(time.DateOnly)}
 	out.CurrentWeek = Period{From: currentFrom.Format(time.DateOnly), To: currentFrom.AddDate(0, 0, 6).Format(time.DateOnly)}
+	out.AsOf = now.UTC().Format(time.RFC3339Nano)
 	if !latest.IsZero() {
 		out.AsOf = latest.UTC().Format(time.RFC3339Nano)
 	}
 	type sourceTotals struct{ reads, series, missing int }
 	totals := map[string]*sourceTotals{}
-	observedSellers := map[string]bool{}
 	for _, key := range ordered {
 		a, aOK := baselines[key]
 		b, bOK := currents[key]
@@ -223,12 +243,11 @@ func GroupWeekDelta(rows []catalog.Offer, sku string, baselineFrom, currentFrom,
 			series.Current = weekRead(b)
 			series.EvidenceIDs = append(series.EvidenceIDs, series.Current.EvidenceID)
 		}
-		observedSellers[key.seller] = true
 		if t := totals[key.seller]; t == nil {
 			totals[key.seller] = &sourceTotals{}
 		}
 		switch {
-		case aOK && bOK:
+		case aOK && bOK && key.quantity > 0 && (key.basis == "displayed_total" || key.basis == "per_unit" && key.maximum >= key.quantity) && a.PriceMinor > 0 && b.PriceMinor > 0:
 			delta := price(b.PriceMinor - a.PriceMinor)
 			pct := 0.0
 			if a.PriceMinor > 0 {
@@ -237,15 +256,17 @@ func GroupWeekDelta(rows []catalog.Offer, sku string, baselineFrom, currentFrom,
 			series.Delta, series.DeltaPct, series.Comparable = &delta, &pct, true
 			out.ComparablePairs++
 			totals[key.seller].series++
+		case aOK && bOK:
+			series.Reason = "quantity or price basis is not verified for a numeric comparison"
 		case aOK:
 			series.Reason = "no observation in the current week"
 			series.Comparable = false
-			out.MissingPeriods = append(out.MissingPeriods, MissingPeriod{Seller: key.seller, Period: "current", Reason: "no stored observation for this offer in the current week"})
+			out.MissingPeriods = append(out.MissingPeriods, MissingPeriod{SKU: sku, Seller: key.seller, URL: key.url, Period: "current", Reason: "no stored observation for this offer in the current week"})
 			totals[key.seller].missing++
 		default:
 			series.Reason = "no observation in the baseline week"
 			series.Comparable = false
-			out.MissingPeriods = append(out.MissingPeriods, MissingPeriod{Seller: key.seller, Period: "baseline", Reason: "no stored observation for this offer in the baseline week"})
+			out.MissingPeriods = append(out.MissingPeriods, MissingPeriod{SKU: sku, Seller: key.seller, URL: key.url, Period: "baseline", Reason: "no stored observation for this offer in the baseline week"})
 			totals[key.seller].missing++
 		}
 		totals[key.seller].reads += readCounts[key]
@@ -266,11 +287,8 @@ func GroupWeekDelta(rows []catalog.Offer, sku string, baselineFrom, currentFrom,
 		out.Warnings = append(out.Warnings, "No stored observations of this SKU in the requested weeks.")
 	case out.ComparablePairs == 0:
 		out.Status = "partial"
-		out.Warnings = append(out.Warnings, "No offer was observed in both weeks; nothing comparable.")
+		out.Warnings = append(out.Warnings, "No comparable numeric price pair in both weeks.")
 	default:
-		if out.Truncated {
-			out.Warnings = append(out.Warnings, "Observation history exceeded 4000 rows; the latest reads may be incomplete.")
-		}
 		if len(out.MissingPeriods) > 0 {
 			out.Status = "partial"
 			out.Warnings = append(out.Warnings, "Some offers were observed in only one of the two weeks.")
@@ -302,7 +320,8 @@ func deltaEvidence(d WeekDelta, now time.Time) Evidence {
 			Caveats: []string{"Latest stored read of each complete week for one SKU, seller, URL, currency, price basis and quantity tier. Absence is not a change."},
 			Details: Details{Seller: series.Seller, Name: series.Name, Quantity: series.Quantity, MaxQuantity: series.MaxQuantity, PriceBasis: series.PriceBasis,
 				CapturedAt: series.Current.CapturedAt, PreviousPrice: &series.Baseline.Value, CurrentPrice: &series.Current.Value,
-				PreviousURL: series.Baseline.URL, PreviousCapturedAt: series.Baseline.CapturedAt, MatchStatus: "exact_sku"}}
+				PreviousURL: series.Baseline.URL, PreviousCapturedAt: series.Baseline.CapturedAt, MatchStatus: "exact_sku",
+				EvidenceIDs: series.EvidenceIDs, BaselineWeek: &d.BaselineWeek, CurrentWeek: &d.CurrentWeek}}
 		ev.Observations = append(ev.Observations, x)
 	}
 	return ev

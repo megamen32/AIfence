@@ -156,8 +156,14 @@ func extractDoc(s Source, page string, doc *goquery.Document, at time.Time) ([]O
 	}
 	if s.Adapter == "softline_product" {
 		offer, err := SoftlineDetail(doc, page, at)
-		if err != nil || offer == nil {
+		if err != nil {
 			return nil, err
+		}
+		if offer == nil {
+			offer = StructuredOffer(s, page, doc, at)
+		}
+		if offer == nil {
+			return nil, nil
 		}
 		return []Offer{*offer}, nil
 	}
