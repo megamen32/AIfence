@@ -241,14 +241,19 @@ func htmlExcerpt(raw []byte) string {
 	return strings.ToValidUTF8(out, "")
 }
 func (j *Journal) NextRepairBatch(now time.Time) (*RepairBatch, error) {
-	rows, e := j.db.Query(`SELECT source,error_type FROM failed_tasks WHERE state='exhausted' AND error_type LIKE 'parse_%' AND evidence_id>0 GROUP BY source,error_type HAVING COUNT(DISTINCT url)>=? ORDER BY MIN(updated_at)`, RepairMinExamples)
+	if e := j.indexRepairTemplates(); e != nil {
+		return nil, e
+	}
+	rows, e := j.db.Query(`SELECT f.source,f.error_type,t.template FROM failed_tasks f JOIN repair_templates t ON t.evidence_id=f.evidence_id
+ WHERE f.state IN ('repair','exhausted') AND f.error_type LIKE 'parse_%'
+ GROUP BY f.source,f.error_type,t.template HAVING COUNT(DISTINCT f.url)>=? ORDER BY MIN(f.updated_at)`, RepairMinExamples)
 	if e != nil {
 		return nil, e
 	}
-	var groups [][2]string
+	var groups [][3]string
 	for rows.Next() {
-		var g [2]string
-		if e = rows.Scan(&g[0], &g[1]); e != nil {
+		var g [3]string
+		if e = rows.Scan(&g[0], &g[1], &g[2]); e != nil {
 			rows.Close()
 			return nil, e
 		}
@@ -262,7 +267,10 @@ func (j *Journal) NextRepairBatch(now time.Time) (*RepairBatch, error) {
 	for _, g := range groups {
 		// Oldest unresolved group first. Keep at least one independent validation
 		// page out of the model prompt when more than ten examples exist.
-		ids, e := j.db.Query(`SELECT MAX(evidence_id) FROM failed_tasks WHERE source=? AND error_type=? AND state='exhausted' AND evidence_id>0 AND NOT EXISTS(SELECT 1 FROM repair_batch_examples x JOIN repair_batches b ON b.id=x.batch_id WHERE x.evidence_id=failed_tasks.evidence_id AND b.state IN ('accepted','rejected')) GROUP BY url ORDER BY MIN(updated_at) LIMIT 21`, g[0], g[1])
+		ids, e := j.db.Query(`SELECT MAX(f.evidence_id) FROM failed_tasks f JOIN repair_templates t ON t.evidence_id=f.evidence_id
+ WHERE f.source=? AND f.error_type=? AND t.template=? AND f.state IN ('repair','exhausted')
+ AND NOT EXISTS(SELECT 1 FROM repair_batch_examples x JOIN repair_batches b ON b.id=x.batch_id WHERE x.evidence_id=f.evidence_id AND b.state IN ('accepted','rejected'))
+ GROUP BY f.url ORDER BY MIN(f.updated_at) LIMIT 21`, g[0], g[1], g[2])
 		if e != nil {
 			return nil, e
 		}
@@ -290,7 +298,7 @@ func (j *Journal) NextRepairBatch(now time.Time) (*RepairBatch, error) {
 		if e != nil {
 			return nil, e
 		}
-		h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%v", g[0], g[1], version, list)))
+		h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%s|%v", g[0], g[1], g[2], version, list)))
 		id := hex.EncodeToString(h[:])
 		var state string
 		var created int64
@@ -482,6 +490,10 @@ func (j *Journal) ActivateRepair(b RepairBatch, r RuleProposal, report RepairRep
 		if _, e = tx.Exec("UPDATE failed_tasks SET state='retry',attempts=0,next_attempt=?,updated_at=? WHERE source=? AND url=? AND evidence_id>0 AND error_type LIKE 'parse_%'", now, now, b.Source, u); e != nil {
 			return e
 		}
+		if _, e = tx.Exec("UPDATE crawl_tasks SET state='retry',updated_at=? WHERE source=? AND url=? AND EXISTS(SELECT 1 FROM failed_tasks f WHERE f.source=crawl_tasks.source AND f.url=crawl_tasks.url AND f.kind=crawl_tasks.kind AND f.generation=crawl_tasks.generation AND f.state='retry' AND f.attempts=0)", now, b.Source, u); e != nil {
+			return e
+		}
+
 	}
 	if _, e = tx.Exec(`INSERT INTO repair_batches(id,source,error_type,state,created_at,rule_version,report) VALUES(?,?,?,'accepted',?,?,?) ON CONFLICT(id) DO UPDATE SET state='accepted',rule_version=excluded.rule_version,report=excluded.report`, b.ID, b.Source, b.ErrorType, now, version, receipt); e != nil {
 		return e

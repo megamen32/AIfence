@@ -37,16 +37,17 @@ func (e *AdmissionPaused) Error() string { return "host paused: " + e.Status.Err
 func (e *AdmissionPaused) Unwrap() error { return e.Status }
 
 type hostState struct {
-	robotsMu      sync.Mutex
-	group         *robotstxt.Group
-	paceMu        sync.Mutex
-	next          time.Time
-	pauseErr      *HTTPStatus
-	inflight      int
-	capacity      int
-	adaptiveDelay time.Duration
-	successes     int
-	changed       chan struct{}
+	robotsMu          sync.Mutex
+	group             *robotstxt.Group
+	paceMu            sync.Mutex
+	next              time.Time
+	pauseErr          *HTTPStatus
+	inflight          int
+	capacity          int
+	adaptiveDelay     time.Duration
+	successes         int
+	transportFailures int
+	changed           chan struct{}
 }
 type HTTP struct {
 	mu      sync.Mutex
@@ -137,7 +138,22 @@ func (s *hostState) feedback(status int, retry time.Time, url string) {
 			s.pauseErr = &HTTPStatus{Code: status, RetryAfter: retry, URL: url}
 		}
 	}
-	if status >= 500 || status == 429 || status == 0 {
+	if status == 0 {
+		// A single timed-out URL is retried by its own queue entry. Only a burst
+		// of transport failures should slow the entire host.
+		s.transportFailures++
+		s.successes = 0
+		if s.transportFailures >= 3 {
+			if s.capacity > 2 {
+				s.capacity = max(2, s.capacity/2)
+			}
+			s.adaptiveDelay = max(s.adaptiveDelay, 2*time.Second)
+			if t := time.Now().Add(s.adaptiveDelay); t.After(s.next) {
+				s.next = t
+			}
+		}
+	} else if status >= 500 || status == 429 {
+		s.transportFailures = 0
 		s.successes = 0
 		s.capacity = max(1, s.capacity/2)
 		s.adaptiveDelay = min(30*time.Second, max(2*time.Second, 2*s.adaptiveDelay))
@@ -147,11 +163,13 @@ func (s *hostState) feedback(status int, retry time.Time, url string) {
 		if retry.After(s.next) {
 			s.next = retry
 		}
-	} else if status == 200 {
+	} else if status >= 200 && status < 400 || status == 404 || status == 410 {
+		s.transportFailures = 0
+		// A valid no-price/unavailable result still proves transport health.
 		s.successes++
-		if s.successes >= 32 {
+		if s.successes >= 8 {
 			s.capacity = min(16, s.capacity+1)
-			s.adaptiveDelay = max(time.Second, s.adaptiveDelay*3/4)
+			s.adaptiveDelay = max(time.Second, s.adaptiveDelay/2)
 			s.successes = 0
 		}
 	}

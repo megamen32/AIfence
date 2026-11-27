@@ -78,7 +78,7 @@ func OpenJournal(root string) (*Journal, error) {
 	if err = os.Chmod(file, 0600); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", file+"?_pragma=busy_timeout(15000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
+	db, err := sql.Open("sqlite", file+"?_pragma=busy_timeout(15000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
@@ -316,9 +316,13 @@ func (j *Journal) RecordFailure(source, url, generation, kind, errorType, detail
 	defer tx.Rollback()
 	n := 0
 	var oldID int64
-	e = tx.QueryRow("SELECT attempts,evidence_id FROM failed_tasks WHERE source=? AND url=? AND generation=? AND kind=?", source, url, generation, kind).Scan(&n, &oldID)
+	var oldType, oldState string
+	e = tx.QueryRow("SELECT attempts,evidence_id,error_type,state FROM failed_tasks WHERE source=? AND url=? AND generation=? AND kind=?", source, url, generation, kind).Scan(&n, &oldID, &oldType, &oldState)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return e
+	}
+	if oldState == "repair" && oldType == errorType && evidenceID > 0 && evidenceID == oldID {
+		return nil
 	}
 	n = min(n+1, MaxAttempts)
 	if evidenceID == 0 {
@@ -331,6 +335,12 @@ func (j *Journal) RecordFailure(source, url, generation, kind, errorType, detail
 	if errorType == "forbidden" || errorType == "robots_excluded" {
 		state = "blocked"
 	}
+	// Retrying identical archived HTML with the same parser cannot improve it.
+	// Hand it to repair immediately; only a validated rule reopens the task.
+	if WaitingForRule(errorType, evidenceID) {
+		state = "repair"
+	}
+
 	next := now.Add(RetryDelay(n))
 	if retryAfter.After(next) {
 		next = retryAfter
