@@ -4,12 +4,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin:$PATH"
 export GOMAXPROCS="${GOMAXPROCS:-2}" GOFLAGS="${GOFLAGS:--p=1}"
-usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager" >&2; exit 2; }
+usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager|competitor-research" >&2; exit 2; }
 dry=0 create=0 auto=0 slug=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) dry=1;; --create) create=1;; --auto) auto=1;;
-    market-watch|metrika-analyst|product-manager) [[ -z "$slug" ]] || usage; slug="$arg";;
+    market-watch|metrika-analyst|product-manager|competitor-research) [[ -z "$slug" ]] || usage; slug="$arg";;
     *) usage;;
   esac
 done
