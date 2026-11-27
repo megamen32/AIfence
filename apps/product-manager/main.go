@@ -6,6 +6,7 @@ import (
 	"agent/internal/evidence"
 	privateui "agent/internal/handlers"
 	"agent/internal/product"
+	"agent/internal/sourcewatch"
 	"agent/views"
 
 	"github.com/airlockrun/agentsdk"
@@ -26,6 +27,11 @@ func newAgent() *agentsdk.Agent {
 	h := handlers.New(p, a).WithCatalogOverview(registerCatalogOverview(a).Panel)
 	registerPathCheck(a)
 	registerMarketIntelligence(a, e)
+	watch := sourcewatch.Register(a)
+	a.RegisterTool(tool.Typed[sourcewatch.Window, sourcewatch.WatchState]("start_source_watch").Description("Enable an owner-scoped weekly check. Use compare_periods for a store metric plus compare_demand for a Wordstat phrase, compare_google_trends for search interest, price_week_delta for a market SKU, or several. Supply approved binding UUIDs, the percent drop threshold and the initial UTC Monday. Optional demand_drop_pct also triggers on falling search interest. Runs until stopped. On hosts without owner-scoped app reads from jobs the check reports unsupported.").Execute(watch.Start).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[sourcewatch.WatchRef, sourcewatch.WatchRef]("stop_source_watch").Description("Stop the owner's weekly check by watch ID.").Execute(watch.Stop).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[struct{}, sourcewatch.SummaryList]("list_source_watches").Description("List this owner's watch IDs, active state and latest outcomes.").Execute(watch.Summaries).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[sourcewatch.WatchRef, sourcewatch.Review]("review_source_watch").Description("Read the owner's completed typed review of one watch. Every cited evidence ID is validated against the pinned signal.").Execute(watch.Review).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[evidence.Empty, evidence.Index]("list_evidence").Description("List immutable evidence snapshots imported by this user, newest first.").Execute(e.List).Build(), agentsdk.AccessUser)
 	a.RegisterTool(tool.Typed[evidence.Query, evidence.Result]("read_evidence").Description("Read observations with source locators. Filter by source, IDs or page with offset and limit; total_matched includes all matching rows.").Execute(e.Read).Build(), agentsdk.AccessUser)
 	a.RegisterTool(salesReviewTool(a, h), agentsdk.AccessUser)
