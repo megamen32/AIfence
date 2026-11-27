@@ -258,7 +258,7 @@ market-price-history { display:block; min-width:0; color:var(--mw-fg,#202938); f
 .ov-bars { display: block; width: 100%; height: auto; max-width: 30rem; overflow: hidden; }
 .ov-bar { fill: var(--ov-accent); transform-box: fill-box; transform-origin: left center; animation: ov-grow .7s cubic-bezier(.2,.7,.2,1) both; }
 .ov-label, .ov-count { font: 13px/1 Inter, system-ui, sans-serif; }
-.ov-label { fill: var(--muted); }
+.ov-label { color: var(--muted); line-height: 22px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ov-count { fill: var(--color-base-content); font-weight: 650; }
 .ov-changes { display: grid; gap: .1rem; list-style: none; margin: 0; padding: 0; }
 .ov-changes a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .8rem; align-items: center; padding: .5rem .55rem; margin-inline: -.55rem; border-radius: .5rem; }

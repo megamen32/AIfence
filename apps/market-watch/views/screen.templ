@@ -357,7 +357,9 @@ templ overview(o Overview) {
 				<h2>Предложения по магазинам</h2>
 				<svg class="ov-bars" viewBox={ "0 0 380 " + strconv.Itoa(o.BarsHeight) } role="img" aria-label="Число предложений с ценой по магазинам">
 					for _, b := range o.Bars {
-						<text x="0" y={ b.TextY } class="ov-label">{ b.Label }</text>
+						<foreignObject x="0" y={ b.Y } width="96" height="22">
+							<div xmlns="http://www.w3.org/1999/xhtml" class="ov-label" title={ b.Label }>{ b.Label }</div>
+						</foreignObject>
 						<rect x="104" y={ b.Y } width={ b.Width } height="22" rx="4" class="ov-bar" style={ "animation-delay:" + b.Delay }></rect>
 						<text x={ b.CountX } y={ b.TextY } class="ov-count">{ b.Count }</text>
 					}
