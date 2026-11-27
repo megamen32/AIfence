@@ -576,6 +576,9 @@ func (h *Handler) Board(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if r.Header.Get("HX-Request") != "true" {
+		return views.Index(v).Render(r.Context(), w)
+	}
 	return views.LiveBoard(v).Render(r.Context(), w)
 }
 func (h *Handler) Approve(w http.ResponseWriter, r *http.Request) error {
