@@ -1,0 +1,51 @@
+{
+  "records": [
+    {
+      "hypothesis": {
+        "id": "watch-kes-7e6f0128",
+        "title": "Падение заказов Kaspersky Endpoint Security требует проверки пути корзины",
+        "product_key": "kaspersky_endpoint_security",
+        "status": "in_backlog",
+        "evidence_level": "correlation",
+        "signal_ids": ["7e6f0128-603b-87cf-9bc9-14680c36eb22"],
+        "economic_effect": {"status": "unknown", "assumptions": []},
+        "backlog_ref": {"id": "redmine-8", "url": "http://redmine.localhost:42080/issues/8", "tag": "сгенерирована ИИ-помощником"}
+      },
+      "planning": {"weekly_potential_rub": 18000, "check_hours": 4, "basis": "ДЕМО: оценка стоимости задержки из PM-карточки"},
+      "task": {"id": "redmine-8", "url": "http://redmine.localhost:42080/issues/8", "title": "Проверить путь Kaspersky Endpoint Security"},
+      "card_url": "http://product-manager.localhost:42080/?id=watch-kes-7e6f0128",
+      "version": 3,
+      "evidence_snapshot_id": "ev-demo-pm-kes-20261127"
+    },
+    {
+      "hypothesis": {
+        "id": "watch-kso-20261127",
+        "title": "Проверить снижение самостоятельных заказов Kaspersky Small Office Security",
+        "product_key": "kaspersky_small_office_security",
+        "status": "proposed",
+        "evidence_level": "signal_only",
+        "signal_ids": ["watchdog-kso-20261127"],
+        "economic_effect": {"status": "unknown", "assumptions": []}
+      },
+      "planning": {"weekly_potential_rub": 12000, "check_hours": 6, "basis": "ДЕМО: оценка стоимости задержки из PM-карточки"},
+      "card_url": "http://product-manager.localhost:42080/?id=watch-kso-20261127",
+      "version": 1,
+      "evidence_snapshot_id": "ev-demo-pm-kso-20261127"
+    },
+    {
+      "hypothesis": {
+        "id": "watch-drweb-20261127",
+        "title": "Сверить контрольный ряд Dr.Web Desktop Security Suite",
+        "product_key": "dr_web_desktop_security_suite",
+        "status": "awaiting_measurement",
+        "evidence_level": "path_verified",
+        "signal_ids": ["watchdog-drweb-20261127"],
+        "economic_effect": {"status": "unknown", "assumptions": []}
+      },
+      "planning": {"weekly_potential_rub": 6000, "check_hours": 2, "basis": "ДЕМО: оценка стоимости задержки из PM-карточки"},
+      "card_url": "http://product-manager.localhost:42080/?id=watch-drweb-20261127",
+      "version": 2,
+      "evidence_snapshot_id": "ev-demo-pm-drweb-20261127"
+    }
+  ]
+}

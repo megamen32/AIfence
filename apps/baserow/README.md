@@ -33,3 +33,24 @@ No weakening of session verification or global CSP is required.
 Tools: list_workspaces, list_fields, list_rows, get_row, create_row.
 A separate user-owned view can represent Market Watch data; observed
 prices must remain a one-way projection of the source.
+
+## Product Manager signals dashboard
+
+The reproducible publisher `scripts/publish-pm-dashboard-42080-baserow.py`
+projects the Product Manager `list_hypotheses` output into the current user's
+`Market Watch / Сигналы и гипотезы` table. It keeps status, evidence level and
+confidence, cost of delay in RUB/week, a Redmine issue link when one is present,
+the PM card link, signal IDs and the source locator. Rows created from
+`fixtures/synthetic/pm-dashboard.json` carry the visible `ДЕМО` label; live PM
+rows are never relabelled or copied when their product identity is unknown.
+
+Run a deterministic dry-run with:
+
+```sh
+python3 scripts/publish-pm-dashboard-42080-baserow.py \
+  --fixture fixtures/synthetic/pm-dashboard.json --dry-run
+```
+
+The publisher is idempotent by `Ключ строки` and never deletes unrelated rows.
+It maintains the views `Сигналы и гипотезы`, `Требуют подтверждения` and `Есть
+задача Redmine`.
