@@ -29,3 +29,11 @@ The current public vhost was applied as a scoped operational change; the infrast
 ## Stand scripts
 
 `setup-host.sh` provisions a new dedicated user, bounded disk and rootless daemon and refuses existing names. `start-runtime.sh` is **new-stand bootstrap only**: it refuses an existing `.env`, requires a public hostname, trusted gateway and explicit background-action decision, and does not change the live stand. `configure.py` likewise refuses an activated stand and defaults to the observed execution and build model IDs for a new stand. `import-from-cache.py` and `import-image.py` import pinned release images one at a time; `model-canary.py` sends a synthetic prompt to an explicitly supplied origin; `save-mac-credential.py` stores the isolated operator login in the Mac keychain. `acme-dig.sh` and `acme-reload.sh` are the installed stand-specific renewal helpers. Operator connection settings are kept in ignored `.runtime/stand/operator.env`.
+
+## Локальная приёмка 27 ноября, Екатеринбург
+
+| КТ | Ревизия приложений | Проверено | Результат |
+|---|---|---|---|
+| КТ0 | `044b279` | Чистый `main` совпал с `origin/main`. В истории есть `521d195` и `bf7c4f5`. Сборка SDK прошла. Локальный `http://localhost:42082/health` вернул `status=ok`, `db=true`, `s3=true`. API вернул `codex/gpt-6.1-sol` для исполнения и сборки. | Пройдено. Запросов к модели при проверке маршрута — 0. |
+
+Экземпляр `aifence-qa` использует собственные БД, хранилище, сети и тома в Colima на Mac. Образы сверены с пятью записями `platform/airlock.lock.json`. Порт опубликован только на loopback. На старте контейнеру Airlock выделены 1 CPU, 384 МиБ мягкого и 768 МиБ жёсткого лимита, 128 процессов, без дополнительного swap. Для одного приложения выделено до 384 МиБ RAM. Хостовая VM располагает 6 CPU и 12 ГиБ общей памяти. Первый пакет после проверки чтений ограничен двумя параллельными кейсами. Учётные данные и ответы пользователей хранятся вне Git.
