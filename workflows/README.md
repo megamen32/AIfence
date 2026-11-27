@@ -37,4 +37,10 @@ A hosted saved-file `run_js` runs under the current user's file and app grants. 
 `node --test workflows/collect-evidence.test.mjs` from the repository root. Tests use mocked native capability contracts and synthetic inputs; they are not a live Airlock integration test. For live acceptance verify the deployed tool schemas and one hosted workflow invocation, read the returned file via the user's catalog, and repeat the identical request to confirm idempotency.
 
 
-Для сторожа используются типизированные инструменты Metrika Analyst и Product Manager. Сохранённый файл выше относится к отдельной операции сбора свидетельств. Проверенное поведение установленного исполнителя описано в [журнале интеграции](../docs/qa/watchdog-chat.md).
+## Вычисленные сигналы сторожа
+
+Тот же сценарий собирает и готовые сигналы сторожа, чтобы они доходили до Product Manager вместе с остальными свидетельствами. После чтения источников он вызывает `scan_watchdog_series` с постраничной выборкой и для каждого кандидата вида `controlled_decline` с измеренным контролем вызывает `collect_selected_watchdog_case({dataset_id, candidate_id})`. Кандидаты не отбираются по ожидаемому ответу: собирается каждый, кого вернул скан. Готовые `case.document` сохраняются в снимок в `watchdog_cases[]` вместе с `dataset_id`, `candidate_id`, `signal_id`, периодом, контролем и исходными процентами.
+
+Каждый документ переносится как есть, с собственными локаторами и `source_policy`. Если хотя бы один документ отмечен `local_project_only`, весь снимок получает ту же политику. При отсутствии выбранного владельцем набора, отказе доступа или пустом скане сценарий пишет причину в `warnings` и продолжает собирать остальные источники. `watchdog_cases` остаётся пустым, а не заполняется заглушками. Состояние можно проверить через обычный вход `run_js` по тому же `run_id`.
+
+Сохранённый файл выше относится к отдельной операции сбора свидетельств. Проверенное поведение установленного исполнителя описано в [журнале интеграции](../docs/qa/watchdog-chat.md).

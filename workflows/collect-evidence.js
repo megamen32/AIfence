@@ -57,6 +57,10 @@ function result(file,doc,reused) {
     sources:doc.sources.map(s=>({source:s.source,status:s.status,count:s.batch?.observations?.length||0,
       observed_count:s.batch?.observations?.filter(o=>o.status==="observed").length||0,
       reason:s.reason||null,file:s.file||null})),document_refs:doc.document_refs,
+    watchdog_cases:(doc.watchdog_cases||[]).map(c=>({dataset_id:c.dataset_id,candidate_id:c.candidate_id,signal_id:c.signal_id,
+      kind:c.kind,period:c.period,control_product_key:c.control_product_key,relative_change_pct:c.relative_change_pct,
+      control_change_pct:c.control_change_pct,observations:c.document?.batches?.reduce((n,b)=>n+(b.observations?.length||0),0)||0,
+      first_alert_magnitude:c.document?.first_alert_magnitude||null})),
     previous_snapshot:doc.previous_snapshot,warnings:doc.warnings};
 }
 const old=await existing();
@@ -98,6 +102,43 @@ async function collect(source,slug,call) {
 // The queries must match the live typed tool schemas. No silent fallback to invented data.
 await collect("market","market-watch",()=>apps.market_watch.tools.list_offers(request.market_query));
 await collect("metrika","metrika-analyst",()=>apps.metrika_analyst.tools.compare_periods(request.metrics_query));
+// Computed watchdog cases are collected the same way for every candidate the
+// scan returns. Nothing is chosen by an expected answer: each candidate with a
+// measured control is turned into its own signed, owner-scoped case.document.
+const watchdog_cases=[];
+const watchdog_warnings=[];
+try {
+  await platform.inspectApp({app:"metrika-analyst",section:"tools"});
+  let dataset=null,offset=0;
+  for(let page=0;page<20;page++) {
+    const scan=await apps.metrika_analyst.tools.scan_watchdog_series(offset?{offset}:{});
+    if(!isObject(scan)||typeof scan.status!=="string"||!Array.isArray(scan.candidates))
+      throw Error("Invalid watchdog scan response");
+    if(scan.status!=="ok"&&scan.status!=="needs_selection") {
+      watchdog_warnings.push("watchdog scan: "+scan.status);
+      break;
+    }
+    if(scan.status==="needs_selection"||!scan.dataset_id) {
+      watchdog_warnings.push("watchdog: no owner-selected dataset; choose one on the Metrika page");
+      break;
+    }
+    dataset=scan.dataset_id;
+    for(const c of scan.candidates) {
+      if(!isObject(c)||typeof c.candidate_id!=="string"||!c.candidate_id) continue;
+      if(c.kind!=="controlled_decline"||!c.control_product_key) continue;
+      const r=await apps.metrika_analyst.tools.collect_selected_watchdog_case({dataset_id:dataset,candidate_id:c.candidate_id});
+      if(isObject(r)&&isObject(r.document)) watchdog_cases.push({dataset_id:dataset,candidate_id:c.candidate_id,
+        signal_id:r.first_alert_signal_id||c.signal_id||null,kind:c.kind,period:c.period||null,
+        control_product_key:c.control_product_key||null,relative_change_pct:c.relative_change_pct??null,
+        control_change_pct:c.control_change_pct??null,document:r.document});
+      else watchdog_warnings.push("watchdog case "+c.candidate_id+": no document returned");
+    }
+    if(typeof scan.next_offset!=="number"||scan.next_offset<=offset) break;
+    offset=scan.next_offset;
+  }
+} catch(e) {
+  watchdog_warnings.push("watchdog cases: app access, scan or case contract failed");
+}
 for(const id of request.evidence_file_ids) {
   try {const r=await platform.files({operation:"read",fileId:id});add(batch(JSON.parse(r.text)),ref(r.file));}
   catch(e) {sources.push({source:"provided_evidence",status:"unavailable",reason:"Invalid or unreadable evidence",file_id:id});warnings.push("Unavailable evidence file: "+id);}
@@ -120,8 +161,10 @@ for(const source of ["research","economics"]) {
     warnings.push(source+": no observed evidence; do not infer facts or measured profit");
 }
 const status=sources.every(s=>s.status==="ok"&&s.batch?.observations?.some(o=>o.status==="observed"))&&!warnings.length?"complete":"partial";
-const localOnly = request.source_policy === "local_project_only" || sources.some(s=>s.batch?.source_policy === "local_project_only");
-const doc={schema_version:version,...(localOnly ? {source_policy:"local_project_only"} : {}),run_id,product_key,collected_at:new Date().toISOString(),request,status,sources,document_refs,previous_snapshot,warnings};
+const localOnly = request.source_policy === "local_project_only" || sources.some(s=>s.batch?.source_policy === "local_project_only") ||
+  watchdog_cases.some(c=>c.document?.source_policy === "local_project_only");
+for(const w of watchdog_warnings) warnings.push(w);
+const doc={schema_version:version,...(localOnly ? {source_policy:"local_project_only"} : {}),run_id,product_key,collected_at:new Date().toISOString(),request,status,sources,watchdog_cases,document_refs,previous_snapshot,warnings};
 const data=JSON.stringify(doc,null,2);
 if(data.length>240000) throw Error("Snapshot too large; narrow the queries or evidence files");
 let written;
