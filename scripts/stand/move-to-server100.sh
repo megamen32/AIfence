@@ -72,10 +72,10 @@ dump aifence-personal-redmine-database-1 redmine secret redmine
 dump aifence-baserow-baserow-1 postgres peer baserow
 log "saving amd64 images to server"
 mapfile -t LIVE < <("$D" --context "$CTX" ps -q --filter label=run.airlock.instance=aifence | xargs -r "$D" --context "$CTX" inspect --format '{{.Config.Image}}' | sort -u)
-IMAGES=(aifence-airlock:personal-624cc8d53339 aifence-frontend:personal-624cc8d53339 aifence-agent-builder:be0f9ee03be3 aifence-agent-base:be0f9ee03be3 aifence-js-executor:be0f9ee03be3 pgvector/pgvector:pg17 rustfs/rustfs:latest caddy:2-alpine postgres:16-alpine redmine:6.1.6-alpine3.23 curlimages/curl:latest "${LIVE[@]}")
+IMAGES=(aifence-airlock:personal-624cc8d53339 aifence-frontend:personal-624cc8d53339 aifence-agent-builder:be0f9ee03be3 aifence-agent-base:be0f9ee03be3 aifence-js-executor:be0f9ee03be3 pgvector/pgvector:pg17 rustfs/rustfs:latest postgres:16-alpine redmine:6.1.6-alpine3.23 curlimages/curl:latest "${LIVE[@]}")
 mapfile -t IMAGES < <(printf '%s\n' "${IMAGES[@]}"|sort -u); for i in "${IMAGES[@]}"; do "$D" --context "$CTX" image inspect "$i" >/dev/null || die "missing image $i"; done
 "$D" --context "$CTX" save "${IMAGES[@]}" | gzip -1 | remote "gzip -d | docker load"
-remote "docker pull --platform linux/amd64 baserow/baserow:2.4.3"
+remote "docker pull --platform linux/amd64 baserow/baserow:2.4.3 caddy:2-alpine"
 log "copying live Docker volumes"
 vol(){ local n=$1; "$D" --context "$CTX" run --rm -v "$n:/from:ro" caddy:2-alpine sh -c 'tar -C /from -czf - .' | remote "docker run --rm -i -v '$n:/to' caddy:2-alpine sh -c 'tar -C /to -xzf -'"; }
 for v in aifence-data aifence_rustfsdata aifence_caddy-data aifence_caddy-config aifence-baserow_data aifence-personal-redmine_database aifence-personal-redmine_files userio-airlock-standalone_state; do log "volume $v"; vol "$v"; done
