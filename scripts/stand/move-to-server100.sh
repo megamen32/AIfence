@@ -23,7 +23,7 @@ remote 'docker info >/dev/null' || die "destination docker unavailable"
 remote "test ! -e '$ROOT' || test -f '$ROOT/.move-managed'" || die "destination exists and is not managed"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/aifence-move.XXXX"); trap 'rm -rf "$TMP"' EXIT
 remote "mkdir -p '$ROOT'/airlock/{caddy,db} '$ROOT'/caddy-market-iframe '$ROOT'/apps/{baserow,redmine-mcp,metrika,userio} '$ROOT'/redmine '$ROOT'/secrets/userio-private '$ROOT'/dumps '$ROOT'/volumes; touch '$ROOT/.move-managed'"
-sync(){ rsync -a --delete -e 'ssh -o BatchMode=yes' "$1" "$REMOTE:$2"; }
+sync(){ local src="$1" dst="$2" attempt=1; while ! rsync -a --delete --partial --timeout=900 -e 'ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=120' "$src" "$REMOTE:$dst"; do [[ $attempt -ge 4 ]] && return 1; attempt=$((attempt+1)); sleep 2; done; }
 log "copying compose, Caddy and app sources"
 sync "$SRC/.runtime/airlock/docker-compose.yml" "$ROOT/airlock/docker-compose.yml"
 sync "$SRC/.runtime/airlock/caddy/" "$ROOT/airlock/caddy/"
