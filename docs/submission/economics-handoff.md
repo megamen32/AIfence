@@ -6,7 +6,8 @@ first. It contains measured Airlock run usage, a native detector
 microbenchmark, provenance, calculator checks and the remaining acceptance
 steps. The historical QA data are synthetic, not a final KES/Terra fast run.
 
-For final acceptance, measure one full run on the deployed open-weights Terra fast model:
+For final acceptance, measure one full run on the deployed Terra fast route after
+the open-weights and fallback-license gate has passed:
 
 1. Record its actual Terra fast model ID, checkpoint/build, date and scope.
 2. Read the completed conversation using `scripts/measure-chat` on the

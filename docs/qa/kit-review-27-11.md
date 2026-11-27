@@ -1,31 +1,97 @@
-# Submission kit audit · 27.11.2026
+# Аудит комплекта подачи · 27.11.2026
 
-Read-only audit of `README.md`, `docs/submission/*`, the linked QA records,
-the current repository, the local KES workbook and package manifests. The only
-content change made during this audit is the grammatical typo fixed in
-`docs/submission/README.md:10`.
+Проверены `README.md`, все Markdown-файлы в `docs/submission/`, ссылки на QA,
+рабочая книга KES, manifests и notices. 42082 не разворачивался, не
+перезапускался и не перестраивался. Изменения внесены только в README и
+`docs/submission/`; этот чеклист добавлен по заданию аудита.
 
-## Checklist
+## Проверки
 
-- [x] Placeholder-name lint passes. Command `python3 scripts/lint-placeholder-names.py` returned `No placeholder product names found.` The same result holds for the submission directory.
-- [x] Local Markdown links in `README.md` and `docs/submission/*.md` resolve to existing files. The scene image paths named by `docs/submission/demo.md:19-22` also exist.
-- [x] Economics values for Kaspersky Endpoint Security match `/Users/user/Downloads/Датасет_ИИ-помощник_PM_v17.xlsx`, sheet `Продажи`, columns `week_start`, `product_family`, `orders_index`, and channel `Самостоятельные заказы клиентов`. The calculated means are 165.846 for the 13-week baseline, 113.000 for the first four post-release weeks, and 111.571 for the seven-week post-release window. The percentages and index deficits in `docs/submission/economics.md:67-82` recalculate correctly.
-- [x] The Astra Linux control value in `docs/submission/economics.md:84-86` also matches the workbook when the same 13-week baseline and seven-week post-release window are used. The means are 98.538 and 96.000, with a −2.576% change.
-- [x] The example arithmetic in `docs/submission/economics.md:134-145` is correct for its stated assumptions. It is visibly labelled as an example, so it is not presented as measured customer economics.
-- [x] Listed Go and Node versions match the manifests checked. `agentsdk` is v0.11.0, `goai` is v0.3.4, `templ` is v0.3.1020, `mcp-remote` is 0.1.43, `yandex-metrica-mcp` is 1.0.1, `mcp-yandex-wordstat` is 2.5.0, and `supergateway` is 4.3.0.
+- [x] **Локальные ссылки.** Скрипт обхода Markdown-ссылок для `README.md` и
+  `docs/submission/**/*.md` не нашёл отсутствующих файлов. PNG/JPEG-кадры,
+  названные в `docs/submission/demo.md:19-22`, существуют в
+  `docs/qa/scenes-27-11/`.
+- [x] **Placeholder lint.** `python3 scripts/lint-placeholder-names.py` и
+  `python3 scripts/lint-placeholder-names.py docs/submission` вернули
+  `No placeholder product names found.`
+- [x] **Исключённый стенд.** В `README.md` и `docs/submission/` нет hostname
+  исключённого внешнего стенда. Из `docs/submission/deployment.md:21` и
+  `docs/submission/model-acceptance/QA-64K-20261126.md:33-35` убраны ссылки на
+  операторский QA-runbook, который мог раскрыть внешний адрес. Исторические
+  записи вне docs-зоны не менялись.
+- [x] **Приватность источников.** `README.md:12-16`,
+  `docs/submission/README.md:28`, `docs/submission/deployment.md:3-11` и
+  `docs/submission/form.md:15` оставляют один временный маркер Mac Airlock
+  tunnel; точного URL в отчёте `sol-stand` нет, поэтому не выдуман.
 
-## Findings
+## Числа и источники
 
-- [ ] **P0 · open-weights compliance is unverified.** `docs/submission/form.md:13` and `docs/submission/models-and-prior-work.md:27-37` identify the effective route as `combo/airlock-personal-exec-terra61-safe` with a MiniMax failover, while `models-and-prior-work.md:12` says the Terra checkpoint and license still require confirmation. The kit cannot establish that every model used by the route is open weights or that the exact checkpoint permits contest use. The latest live QA also records Gemma 4 64K rather than Terra fast in `docs/qa/kes-contest-2026-11-27.md:13-18`.
-- [ ] **P1 · excluded public stand is reachable from the repository.** `docs/submission/deployment.md:21` links to `docs/qa/stand.md`, whose `docs/qa/stand.md:5` contains `https://aifence.bezrabotnyi.com/`. The same public chat origin appears directly in `docs/qa/kes-contest-2026-11-27.md:15-16`. Both URLs returned HTTP 200 during this audit. The submission instructions require excluding this public stand.
-- [ ] **P1 · jury URL is still incomplete.** `README.md:12-16`, `docs/submission/README.md:17`, `docs/submission/deployment.md:3-11`, and `docs/submission/form.md:15` still point to a future `sol-stand` read-back or leave the jury URL as a TODO. `/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md` exists, but its content does not supply a submission-ready tunnel URL. The kit therefore does not contain an opening jury link.
-- [ ] **P1 · live KES acceptance failed.** `docs/qa/kes-contest-2026-11-27.md:15-18` records one cancelled run and one run that requested clarification without answering the price question or naming the Astra change. `docs/qa/e2e-27-11.md:7-18` records incomplete source-watch checks, no new Redmine issue, and no Dion receipt. `docs/submission/demo.md:21-22` correctly leaves final results conditional, but the script cannot be treated as an evidence-backed final take yet.
-- [ ] **P1 · third-party notices are incomplete for shipped Market Watch imports.** `docs/submission/models-and-prior-work.md:59-70` lists `github.com/PuerkitoBio/goquery` v1.14.0 and `github.com/temoto/robotstxt` v1.1.2, and the code imports both from `apps/market-watch`. Their blocks are absent from `apps/market-watch/THIRD_PARTY_NOTICES.generated.md`, as the document itself acknowledges.
-- [ ] **P2 · repository link does not open anonymously.** `README.md:20-23` and `docs/submission/README.md:23` link to GitHub, but the GitHub web/API checks returned HTTP 404. The documents disclose the private-repository decision, so this is an unresolved delivery condition rather than a hidden claim.
-- [ ] **P2 · submission form still contains freeze placeholders.** `docs/submission/form.md:15-17` leaves the exact stand URL, final results, and release SHA for later insertion. `docs/submission/demo.md:22` contains `[N из M]`, `[K]`, `[U]`, and `[значение или честно “не рассчитана”]`. These values must be resolved before submission.
+- [x] **Holdout.** `docs/qa/holdout-final-2026-11-27.md:11-16,99` даёт
+  watchdog v2 **11/22 попаданий**, **0 ложных `cause_signal`** и **S14 = 0/6**.
+  Эти значения стоят в `README.md:34`, `docs/submission/README.md:19`,
+  `docs/submission/form.md:17`, `docs/submission/form-draft.md:14` и
+  `docs/submission/demo.md:22`.
+- [~] **Terra fast chat.** Значение **19/20 cause-first, 0 ложных тревог** в
+  `README.md:35`, `docs/submission/README.md:20`, `docs/submission/form.md:17`,
+  `docs/submission/form-draft.md:14` и `docs/submission/demo.md:22` взято из
+  QA-записи координатора `terra-dev30-prompt-v4`. Файл этой записи не найден в
+  checkout; документы теперь явно требуют приложить его перед подачей. Это не
+  выдаётся за локально воспроизведённый результат.
+- [x] **KES index.** Калькулятор чтения рабочей книги
+  `/Users/user/Downloads/Датасет_ИИ-помощник_PM_v17.xlsx`, лист `Продажи`,
+  подтвердил в `docs/submission/economics.md:67-86` средние KES 165,846,
+  113,000 и 111,571, а также контроль Astra Linux Special Edition 98,538 и
+  96,000. Производные −31,865%, −32,726%, 379,923 и 168,538 пересчитываются
+  из этих строк; индекс не назван рублями.
+- [x] **Рублёвый пример.** `docs/submission/economics.md:131-148` помечает
+  100 заказов/неделю, чек 50 000 ₽, маржу 20%, падение 32,726%, недели 1 и 4,
+  preventable fraction 100% как допущения. `economics.py` возвращает
+  327 260 ₽ в неделю, 1 309 040 ₽ при обнаружении на четвёртой неделе и
+  981 780 ₽ штрафа за задержку; smoke-check арифметики пройден.
+- [x] **Видео.** `docs/submission/demo.md:1-3,19-24,39` содержит четыре сцены
+  35 + 35 + 55 + 50 = **175 секунд (2:55)**; placeholders `[N из M]`, `[K]`,
+  `[U]` и `[значение]` удалены. Кадры отмечены как `[SCENE]`, а отправка
+  Redmine/Dion остаётся условной при отсутствии live receipt.
 
-## Scope decisions
+## Модели, API и библиотеки
 
-- No stand, browser session, deployment, restart, or live configuration was changed.
-- No substantive submission claim was rewritten. The only source edit was the obvious grammar correction in `docs/submission/README.md:10`.
-- The audit used the local workbook in Downloads for the economic cross-check. Customer credentials, tokens, cookies, and private access values were not read or recorded.
+- [x] Версии в `docs/submission/models-and-prior-work.md:51-83` сверены с
+  `apps/*/go.mod`, `apps/*/package.json` и lock-файлами: `agentsdk v0.11.0`,
+  `goai v0.3.4`, `templ v0.3.1020`, `goquery v1.14.0`, `robotstxt v1.1.2`,
+  `mcp-remote 0.1.43`, `yandex-metrica-mcp 1.0.1`,
+  `mcp-yandex-wordstat 2.5.0`, `supergateway 4.3.0`.
+- [x] Модельный список объявляет Terra fast единственной продуктовой моделью;
+  исторические Gemma/Ollama в `docs/submission/model-acceptance/` и legacy
+  `scripts/stand/configure.py` явно исключены из состава конкурсного продукта.
+  Actual slot read-back остаётся в `models-and-prior-work.md:20-39`:
+  `combo/airlock-personal-exec-terra61-safe` и MiniMax failover.
+- [ ] **Open-weights gate не закрыт.** Для Terra checkpoint и fallback
+  checkpoint не представлены карточка весов и лицензия. До получения этих
+  доказательств нельзя утверждать, что фактический fallback-маршрут полностью
+  соответствует правилу open weights. Это отмечено в
+  `models-and-prior-work.md:12,36-39,96-97` и в
+  `economics-handoff.md:9-19`.
+- [ ] **Notices.** `goquery` и `robotstxt` действительно импортируются
+  Market Watch, но их блоки отсутствуют в
+  `apps/market-watch/THIRD_PARTY_NOTICES.generated.md`; это зафиксировано в
+  `models-and-prior-work.md:67-70` и требует regeneration вне docs-зоны.
+
+## Доставка и ссылки
+
+- [x] GitHub URL в `README.md:20-23` и `docs/submission/README.md:39` проверен
+  анонимно: web/API возвращают HTTP 404. Документы честно оставляют репозиторий
+  закрытым и передают решение владельцу; публикация не предпринималась.
+- [ ] Точный jury tunnel URL отсутствует в
+  `/Users/user/AIfence/.runtime/sol-sessions/sol-stand/REPORT.md`; до появления
+  этой строки комплект не содержит открываемой ссылки на жюри.
+- [x] Ранее указанная грамматическая ошибка в `docs/submission/README.md:10`
+  исправлена; описание, экономика, модели/лицензии и четырёхсценный сценарий
+  теперь согласованы с проверенными источниками и ограничениями.
+
+## Ограничения аудита
+
+- Проверка рабочей книги выполнена read-only через локальный парсер
+  `apps/product-manager/research/xlsx.py`; исходный файл не копировался в Git.
+- Не выполнялись deploy, restart, rebuild или live writes на 42082.
+- Текущая проверка не закрывает open-weights gate и не подменяет отсутствующий
+  файл `terra-dev30-prompt-v4` локальным прогоном.
