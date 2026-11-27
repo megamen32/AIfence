@@ -330,6 +330,8 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	changePct, observationID, observationRef := 0.0, "", ""
 	if delta != nil {
 		changePct, observationID, observationRef = *delta.Value, delta.ID, delta.SourceRef.Locator
+	} else if computed.ChangePct == nil {
+		return Outcome{Status: "incomplete"}, nil
 	} else {
 		changePct, observationID, observationRef = *computed.ChangePct, computed.CurrentID, computed.CurrentRef
 	}

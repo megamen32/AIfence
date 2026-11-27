@@ -33,7 +33,7 @@ func productDelta(b batch, product, segment, metric string, current period) *obs
 		if o.ProductKey != product || o.MetricKey != metric+".relative_change_pct" || o.Period != current || !segmentMatches(o.Segment, segment) {
 			continue
 		}
-		if o.Status != "observed" || o.Unit != "percent" || o.Value == nil || !bounded(o.ID, 256) || !bounded(o.SourceRef.SourceID, 128) || delta != nil {
+		if o.Status != "observed" || o.Unit != "percent" || o.Value == nil || !bounded(o.ID, 256) || !bounded(o.SourceRef.SourceID, 128) || !bounded(o.SourceRef.Locator, 512) || delta != nil {
 			return nil
 		}
 		delta = o
@@ -43,7 +43,8 @@ func productDelta(b batch, product, segment, metric string, current period) *obs
 
 // familyChange computes the two-week change from raw observed weekly rows of
 // one product family and one segment. It keeps both source IDs and locators,
-// uses the unit as published, and never mixes segments or families.
+// uses the unit as published, and never mixes segments or families. A zero
+// baseline has no defined relative percentage, so it is not a change.
 func familyChange(b batch, product, segment, metric string, before, current period) *FamilyChange {
 	var a, c *observation
 	for i := range b.Observations {
@@ -70,7 +71,10 @@ func familyChange(b batch, product, segment, metric string, before, current peri
 			c = o
 		}
 	}
-	if a == nil || c == nil || a.ID == c.ID || a.Unit != c.Unit || a.SourceRef.SourceID != c.SourceRef.SourceID || a.SourceRef.Revision != c.SourceRef.Revision {
+	if a == nil || c == nil || a.ID == c.ID || a.Unit != c.Unit || a.SourceRef.SourceID != c.SourceRef.SourceID || a.SourceRef.Revision != c.SourceRef.Revision || !sameSegment(a.Segment, c.Segment) {
+		return nil
+	}
+	if *a.Value == 0 {
 		return nil
 	}
 	out := &FamilyChange{
@@ -88,6 +92,12 @@ func familyChange(b batch, product, segment, metric string, before, current peri
 
 func segmentMatches(rowSegment, want string) bool {
 	return want == "" || strings.EqualFold(rowSegment, want)
+}
+
+// sameSegment keeps a pair comparable when the window did not pin a segment:
+// the two weeks must still come from one and the same segment.
+func sameSegment(a, b string) bool {
+	return a == b
 }
 
 func detailBool(details map[string]any, key string) bool {
