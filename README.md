@@ -30,7 +30,7 @@ Product Manager is the only application orchestrating investigations. Market Wat
 
 Private inputs: `материалы/`, `materials/`, `data/`, `private/`; all ignored by Git. Keep them local and read-only. Import only within authorized closed workspace and configured non-training model provider. Never send raw customer data or credentials to third parties or publish them. The repository remains private until the owner decides how to share the contest version.
 
-Start with [architecture](docs/architecture.md), [contracts](contracts/README.md), and [track assignments](docs/tracks/README.md). The [submission pack](docs/submission/README.md) contains the jury access instructions, video script, economics, licenses and verified limits. Integration closes on 27 November at 18:00, code freezes at 22:00, and submission is due on 28 November 2026 at 12:00, all in UTC+5.
+Start with [architecture](docs/architecture.md), [contracts](contracts/README.md), and [track assignments](docs/tracks/README.md). The [submission pack](docs/submission/README.md) contains the jury access instructions, video script, economics, licenses and verified limits. Integration closes on 27 November at 18:00, code freezes at 22:00, and submission is due on 28 November 2026 at 12:00, all in UTC+5. Record after the freeze, using the final results table and after owner approval.
 
 ### Optional authorized image cache
 
