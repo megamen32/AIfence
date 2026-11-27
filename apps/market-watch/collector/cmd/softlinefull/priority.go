@@ -71,7 +71,7 @@ func (s *survey) prioritizePending(pending []pageJob) {
 	if e != nil {
 		// Priority is optional. A bad competing snapshot must not stop discovery.
 		fmt.Fprintln(os.Stderr, "comparison priority unavailable:", e)
-		return
+		counts = map[string]int{}
 	}
 	scores := make(map[string]int, len(pending))
 	overlap := 0
@@ -80,7 +80,7 @@ func (s *survey) prioritizePending(pending []pageJob) {
 		if n > 0 {
 			overlap++
 		}
-		score := 2 * n
+		score := catalog.DemoPriority(j.page) + 2*n
 		if _, ok := s.prior[j.page]; ok {
 			score++
 		}

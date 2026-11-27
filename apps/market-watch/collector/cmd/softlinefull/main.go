@@ -180,6 +180,9 @@ func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, erro
 	if err != nil {
 		return nil, err
 	}
+	if offer == nil {
+		offer = catalog.StructuredOffer(source, page, doc, at)
+	}
 	if offer != nil {
 		p.State = "priced"
 		p.Offer = offer
@@ -227,6 +230,7 @@ type survey struct {
 	verified          verifiedBatch
 	batchByURL        map[string]catalog.Offer
 	skippedByEvidence atomic.Int64
+	familyDone        map[string]bool
 }
 
 func rank(p softlinefamily.Product) int {
@@ -363,7 +367,13 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	http := catalog.NewHTTP()
+	journal, e := catalog.OpenJournal(filepath.Dir(*out))
+	if e != nil {
+		return e
+	}
+	defer journal.Close()
+	ctx = catalog.WithJournal(ctx, journal, "", "")
+	http := catalog.NewArchivedHTTP(journal)
 	var inv inventory
 	path := filepath.Join(dir, "sitemap.json")
 	if e = read(path, &inv); errors.Is(e, os.ErrNotExist) {
@@ -376,6 +386,9 @@ func run() error {
 		return e
 	}
 	s := survey{cfg: inv, dir: dir, out: *out, known: map[string]bool{}, covered: map[string]softlinefamily.Product{}}
+	if e = s.importLegacyArchive(journal); e != nil {
+		return e
+	}
 	s.prior = map[string]catalog.Offer{}
 	prior, err := os.Open(filepath.Join(*out, "offers.jsonl"))
 	if err == nil {
@@ -410,8 +423,12 @@ func run() error {
 	if e = s.loadVerifiedBatch(*batchFile); e != nil {
 		return e
 	}
+	catalog.PrioritizeURLs(inv.Families)
 	if e = s.scan(ctx, inv.Families, true, http.Fetch); e == nil {
 		e = s.scan(ctx, inv.Products, false, http.Fetch)
+	}
+	if e == nil {
+		e = s.drainRetries(ctx, http.Fetch)
 	}
 	if err := s.snapshot(); err != nil {
 		return err

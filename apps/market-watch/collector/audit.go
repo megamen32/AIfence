@@ -74,6 +74,12 @@ func inspectDocument(s Source, page string, doc *goquery.Document, at time.Time)
 		}
 	}
 	p.Offers, err = extractDoc(s, page, doc, at)
+	// Existing verified tier data wins over less-specific structured prices.
+	if len(p.Offers) == 0 && err == nil && (s.ID != "softmagazin" || p.Category == "software") {
+		if o := StructuredOffer(s, page, doc, at); o != nil {
+			p.Offers = []Offer{*o}
+		}
+	}
 	priced := map[string]bool{}
 	for _, o := range p.Offers {
 		priced[o.URL+"\x00"+o.SKU] = true

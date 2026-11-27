@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -117,6 +116,15 @@ func readInventory(ctx context.Context, dir string, s catalog.Source, f catalog.
 			return inv, e
 		}
 		closed := last.InventoryAt == inv.DiscoveredAt && (last.State == "complete" || last.State == "needs_review")
+		if j, _, _ := catalog.JobJournal(ctx); j != nil && closed {
+			_, pending, err := j.NextDue(s.ID, inv.DiscoveredAt, "page")
+			if err != nil {
+				return inv, err
+			}
+			if pending {
+				closed = false
+			}
+		}
 		if refresh == 0 || !closed || time.Since(start) < refresh {
 			if s.ID == "softmagazin" && (len(inv.VariantURLs) == 0 || inv.VariantSitemapAt == "") {
 				if e = discoverSoftMagazinVariants(ctx, s, f, &inv); e != nil {
@@ -392,21 +400,18 @@ type outcome struct {
 	fatal error
 }
 
-func readPage(ctx context.Context, s catalog.Source, u string, fetch catalog.Fetch) (catalog.PageResult, error) {
-	at := time.Now().UTC()
+func parseDownloaded(s catalog.Source, u string, d catalog.Downloaded) (catalog.PageResult, error, error) {
+	at := d.At
 	p := catalog.PageResult{URL: u, At: at.Format(time.RFC3339), State: "error"}
-	b, err := fetch(ctx, s, u)
+	err := d.Err
 	if err == nil {
-		p, err = catalog.InspectPage(s, u, bytes.NewReader(b), at)
+		p, err = catalog.InspectPage(s, u, bytes.NewReader(d.Body), at)
 		if s.ID == "softmagazin" && p.Category == "unknown" && (p.State == "priced" || p.State == "no_public_price") {
 			p.State = "unclassified"
 		}
 	}
-	if ctx.Err() != nil {
-		return p, ctx.Err()
-	}
 	if err == nil {
-		return p, nil
+		return p, nil, nil
 	}
 	p.Error = err.Error()
 	var he *catalog.HTTPStatus
@@ -418,62 +423,146 @@ func readPage(ctx context.Context, s catalog.Source, u string, fetch catalog.Fet
 			if he.Code == http.StatusForbidden && he.URL == u {
 				p.State = "access_denied"
 			}
-			return p, fmt.Errorf("%s: paused after %w on %s (Retry-After %s)", s.ID, he, u, he.RetryAfter)
+			return p, err, fmt.Errorf("%s: paused after %w on %s", s.ID, he, u)
 		}
 	}
 	if strings.Contains(err.Error(), "robots.txt disallows") {
 		p.State = "robots_excluded"
 	}
-	return p, nil
+	if catalog.StopRequest(err) || errors.Is(err, context.Canceled) {
+		return p, err, err
+	}
+	return p, err, nil
+}
+
+func readPage(ctx context.Context, s catalog.Source, u string, fetch catalog.Fetch) (catalog.PageResult, error) {
+	p, _, e := parseDownloaded(s, u, catalog.DownloadTask(ctx, s, u, fetch))
+	return p, e
+}
+
+type queueOutcome struct {
+	p               catalog.PageResult
+	d               catalog.Downloaded
+	parseErr, fatal error
+}
+
+func processBatch(ctx context.Context, s catalog.Source, pending []string, fetch catalog.Fetch, consume func(catalog.PageResult) error) error {
+	var controlErr error
+	returnErr := catalog.Pipeline(ctx, pending, func(work context.Context, u string) catalog.Downloaded {
+		return catalog.DownloadTask(work, s, u, fetch)
+	}, func(u string, d catalog.Downloaded) queueOutcome {
+		if d.Skip {
+			return queueOutcome{d: d}
+		}
+		p, e, fatal := parseDownloaded(s, u, d)
+		if e == nil && fatal == nil && p.State == "unclassified" && len(p.Offers) == 0 && (s.ID != "softmagazin" || p.Category == "software") {
+			if j, _, _ := catalog.JobJournal(ctx); j != nil {
+				o, err := j.RepairOffer(s, u, d.Body, d.At)
+				if err != nil {
+					return queueOutcome{p, d, err, err}
+				}
+				if o != nil {
+					p.Offers = []catalog.Offer{*o}
+					p.Variants = append(p.Variants, catalog.Variant{URL: o.URL, Name: o.Name, SKU: o.SKU, Status: "priced"})
+					p.State = "priced"
+				}
+			}
+		}
+		return queueOutcome{p, d, e, fatal}
+	}, func(r queueOutcome) error {
+		if r.d.Skip {
+			return nil
+		}
+		var admission *catalog.AdmissionPaused
+		if errors.As(r.d.Err, &admission) || errors.Is(r.d.Err, context.Canceled) {
+			return r.fatal
+		}
+		if r.fatal != nil {
+			var old, new *catalog.HTTPStatus
+			if errors.As(r.fatal, &new) && (!errors.As(controlErr, &old) || new.RetryAfter.After(old.RetryAfter)) {
+				controlErr = r.fatal
+			}
+			if e := catalog.RecordTask(ctx, s, r.p.URL, r.d, false, r.parseErr, "network"); e != nil {
+				return e
+			}
+			return r.fatal
+		}
+		if e := consume(r.p); e != nil {
+			return e
+		}
+		resolved := r.p.State == "priced" || r.p.State == "no_public_price" || r.p.State == "not_product" || r.p.State == "unavailable" || r.p.State == "out_of_scope"
+		typ := "parse_unclassified"
+		if r.p.Category == "unknown" && s.ID == "softmagazin" {
+			typ = "parse_unknown_scope"
+		}
+		if r.p.State == "robots_excluded" {
+			typ = "robots_excluded"
+		}
+		return catalog.RecordTask(ctx, s, r.p.URL, r.d, resolved, r.parseErr, typ)
+	})
+	if controlErr != nil {
+		return controlErr
+	}
+	return returnErr
 }
 func process(ctx context.Context, s catalog.Source, pending []string, fetch catalog.Fetch, consume func(catalog.PageResult) error) error {
-	workCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	tasks := make(chan string)
-	results := make(chan outcome)
-	var wg sync.WaitGroup
-	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for u := range tasks {
-				p, fatal := readPage(workCtx, s, u, fetch)
-				select {
-				case results <- outcome{p, fatal}:
-				case <-workCtx.Done():
-					return
-				}
-				if fatal != nil {
-					return
-				}
-			}
-		}()
+	pending = unique(pending)
+	catalog.PrioritizeURLs(pending)
+	j, gen, kind := catalog.JobJournal(ctx)
+	if j == nil {
+		return processBatch(ctx, s, pending, fetch, consume)
 	}
-	go func() {
-		defer close(tasks)
-		for _, u := range pending {
-			select {
-			case tasks <- u:
-			case <-workCtx.Done():
-				return
-			}
+	if e := j.Seed(s.ID, gen, kind, pending, catalog.DemoPriority); e != nil {
+		return e
+	}
+	for len(pending) > 0 {
+		n := min(len(pending), 256)
+		if e := processBatch(ctx, s, pending[:n], fetch, consume); e != nil {
+			return e
 		}
-	}()
-	go func() { wg.Wait(); close(results) }()
-	for result := range results {
-		if result.fatal != nil {
-			if result.p.State == "access_denied" {
-				if err := consume(result.p); err != nil {
-					return err
-				}
-			}
-			return result.fatal
+		pending = pending[n:]
+		due, e := j.Due(s.ID, gen, kind, time.Now(), 128)
+		if e != nil {
+			return e
 		}
-		if err := consume(result.p); err != nil {
-			return err
+		if len(due) > 0 {
+			if e = processBatch(ctx, s, due, fetch, consume); e != nil {
+				return e
+			}
 		}
 	}
-	return ctx.Err()
+	return nil
+}
+
+func drainRetries(ctx context.Context, s catalog.Source, fetch catalog.Fetch, consume func(catalog.PageResult) error) error {
+	j, gen, kind := catalog.JobJournal(ctx)
+	if j == nil {
+		return nil
+	}
+	for {
+		due, e := j.Due(s.ID, gen, kind, time.Now(), 256)
+		if e != nil {
+			return e
+		}
+		if len(due) > 0 {
+			if e = processBatch(ctx, s, due, fetch, consume); e != nil {
+				return e
+			}
+			continue
+		}
+		next, ok, e := j.NextDue(s.ID, gen, kind)
+		if e != nil || !ok {
+			return e
+		}
+		delay := max(time.Second, time.Until(next))
+		t := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
 }
 func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fetch, refresh time.Duration) (workerErr error) {
 	dir := filepath.Join(root, s.ID)
@@ -502,8 +591,12 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	}
 	defer func() {
 		var status *catalog.HTTPStatus
-		if errors.As(workerErr, &status) && status.RetryAfter.After(time.Now()) {
-			if err := saveJSON(pauseFile, status.RetryAfter); err != nil {
+		if errors.As(workerErr, &status) && catalog.FatalControl(workerErr) {
+			until := status.RetryAfter
+			if until.Before(time.Now().Add(3 * time.Hour)) {
+				until = time.Now().Add(3 * time.Hour)
+			}
+			if err := saveJSON(pauseFile, until); err != nil {
 				workerErr = errors.Join(workerErr, err)
 			}
 		}
@@ -520,6 +613,29 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	pages, e := replay(f)
 	if e != nil {
 		return e
+	}
+	if journal, _, _ := catalog.JobJournal(ctx); journal != nil {
+		ctx = catalog.WithJournal(ctx, journal, inv.DiscoveredAt, "page")
+		for u, p := range pages {
+			if p.At < inv.DiscoveredAt || p.EvidenceURL != "" || !(p.State == "unclassified" || p.State == "error") {
+				continue
+			}
+			at, err := time.Parse(time.RFC3339, p.At)
+			if err != nil {
+				continue
+			}
+			typ, _ := catalog.FailureType(errors.New(p.Error), "parse_unclassified")
+			if p.Category == "unknown" && s.ID == "softmagazin" {
+				typ = "parse_unknown_scope"
+			}
+			id := int64(0)
+			if ev, err := journal.Latest(s.ID, u); err == nil {
+				id = ev.ID
+			}
+			if err = journal.SeedLegacyFailure(s.ID, u, inv.DiscoveredAt, "page", typ, at, id); err != nil {
+				return err
+			}
+		}
 	}
 	if _, e = snapshot(dir, inv, pages); e != nil {
 		return e
@@ -589,7 +705,7 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	var pending []string
 	for _, u := range inv.URLs {
 		p, ok := pages[u]
-		if !ok || p.At < inv.DiscoveredAt || s.ID == "softmagazin" && p.Category == "" && (p.State == "priced" || p.State == "no_public_price" || p.State == "unclassified") || p.EvidenceURL != "" || p.State == "error" && p.Attempts < 3 || p.State == "unclassified" {
+		if !ok || p.At < inv.DiscoveredAt || s.ID == "softmagazin" && p.Category == "" && (p.State == "priced" || p.State == "no_public_price" || p.State == "unclassified") || p.EvidenceURL != "" || p.State == "error" && p.Attempts < catalog.MaxAttempts || p.State == "unclassified" {
 			pending = append(pending, u)
 		}
 	}
@@ -646,7 +762,7 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 		var gaps []string
 		for _, u := range inv.VariantURLs {
 			p, ok := pages[u]
-			if !observed[u] && (!ok || p.At < inv.DiscoveredAt || p.State == "error" && p.Attempts < 3 || p.State == "unclassified") {
+			if !observed[u] && (!ok || p.At < inv.DiscoveredAt || p.State == "error" && p.Attempts < catalog.MaxAttempts || p.State == "unclassified") {
 				gaps = append(gaps, u)
 			}
 		}
@@ -657,19 +773,25 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 	// Transient transport failures get a second opportunity in the same
 	// generation. Control responses (403, 429, 503 and Retry-After) stop a run.
 	candidates := append(append([]string{}, inv.URLs...), inv.VariantURLs...)
-	for attempt := 1; attempt < 3; attempt++ {
-		var failed []string
-		for _, u := range candidates {
-			p := pages[u]
-			if p.State == "error" && p.At >= inv.DiscoveredAt && p.Attempts < 3 {
-				failed = append(failed, u)
-			}
-		}
-		if len(failed) == 0 {
-			break
-		}
-		if e = process(ctx, s, failed, fetch, consume); e != nil {
+	if journal, _, _ := catalog.JobJournal(ctx); journal != nil {
+		if e = drainRetries(ctx, s, fetch, consume); e != nil {
 			return e
+		}
+	} else {
+		for attempt := 1; attempt < 3; attempt++ {
+			var failed []string
+			for _, u := range candidates {
+				p := pages[u]
+				if p.State == "error" && p.At >= inv.DiscoveredAt && p.Attempts < catalog.MaxAttempts {
+					failed = append(failed, u)
+				}
+			}
+			if len(failed) == 0 {
+				break
+			}
+			if e = process(ctx, s, failed, fetch, consume); e != nil {
+				return e
+			}
 		}
 	}
 	st, e := snapshot(dir, inv, pages)
@@ -709,7 +831,14 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	httpClient := catalog.NewHTTP()
+	journal, e := catalog.OpenJournal(*root)
+	if e != nil {
+		fmt.Fprintln(os.Stderr, e)
+		os.Exit(1)
+	}
+	defer journal.Close()
+	ctx = catalog.WithJournal(ctx, journal, "", "")
+	httpClient := catalog.NewArchivedHTTP(journal)
 	res := make(chan error, len(chosen))
 	for _, s := range chosen {
 		go func() { res <- worker(ctx, s, *root, httpClient.Fetch, *refresh) }()
