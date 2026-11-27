@@ -21,6 +21,8 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterDirectory("adapter-state", agentsdk.DirectoryOpts{Read: agentsdk.AccessInternal, List: agentsdk.AccessInternal, Write: agentsdk.AccessInternal, Description: "Private versioned adaptive store rules and captured HTML evidence"})
 	s := market.NewWithCatalog(a, a.DB())
 	s.SetAdapterProposer(proposeStoreAdapter(a))
+	a.RegisterTool(tool.Typed[market.LegacyAuditInput, market.LegacyAuditResult]("audit_legacy_archive").Description("Read-only verification of migrated source HTML and exact specialized parsing. No HTTP requests to stores and no activation.").Execute(s.AuditLegacyArchive).Build(), agentsdk.AccessAdmin)
+
 	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/migration/stage", Handler: s.StageLegacyMigration, Access: agentsdk.AccessAdmin, Description: "Stage an idempotent verified batch of legacy task metadata; no network collection or activation"})
 	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/migration/archive", Handler: s.StageLegacyArchive, Access: agentsdk.AccessAdmin, Description: "Transfer only raw gzip objects belonging to the verified staged snapshot; verify storage and update offsets without activating a crawler"})
 
