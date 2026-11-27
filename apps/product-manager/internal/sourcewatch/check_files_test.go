@@ -18,6 +18,8 @@ type fileCase struct {
 	Name   string `json:"name"`
 	Dir    string `json:"dir"`
 	Window Window `json:"window"`
+	// MondayOverride replaces the Monday the file's week is pinned to.
+	Monday string `json:"monday,omitempty"`
 	// Each source is a raw evidence file, decoded by the same Read adapter a
 	// host would use. No value is injected by the test.
 	Metrika  string `json:"metrika"`
@@ -57,19 +59,36 @@ func TestCheckOnEvidenceFiles(t *testing.T) {
 	if root == "" {
 		t.Skip("SOURCEWATCH_CASE_DIR not set; this is the explicit file-based run")
 	}
-	raw, err := os.ReadFile(filepath.Join(root, "cases.json"))
-	if err != nil {
-		t.Fatal(err)
+	// Every *cases.json in the directory is one frozen input set. Each file is
+	// read as delivered; the oracle inside names only the expected status.
+	manifests, err := filepath.Glob(filepath.Join(root, "*cases.json"))
+	if err != nil || len(manifests) == 0 {
+		t.Fatalf("no case manifests in %s: %v", root, err)
 	}
 	var cases []fileCase
-	if err = json.Unmarshal(raw, &cases); err != nil {
-		t.Fatal(err)
+	for _, manifest := range manifests {
+		raw, err := os.ReadFile(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var set []fileCase
+		if err = json.Unmarshal(raw, &set); err != nil {
+			t.Fatalf("%s: %v", manifest, err)
+		}
+		cases = append(cases, set...)
 	}
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			starts := 0
-			out, err := Check(t.Context(), tc.Window, tc.Approved, fileRead(caseDir(root, tc.Dir)), func(_ context.Context, s Signal) (string, error) {
+			w := tc.Window
+			if tc.Monday != "" {
+				w.Monday = tc.Monday
+			}
+			out, err := Check(t.Context(), w, tc.Approved, fileRead(caseDir(root, tc.Dir)), func(_ context.Context, s Signal) (string, error) {
 				starts++
+				if w.ProductKey != "" && (s.ProductKey != w.ProductKey || s.FamilyChange == nil) {
+					t.Errorf("family provenance lost: %+v", s)
+				}
 				if tc.WantTrigger != "" && s.Trigger != tc.WantTrigger {
 					t.Errorf("trigger %q want %q", s.Trigger, tc.WantTrigger)
 				}
