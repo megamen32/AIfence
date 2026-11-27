@@ -65,6 +65,8 @@ def lint(folder, products):
     required={'manifest.json','metrika.json','releases.json','backlog.json','Продажи.xlsx'}
     if {x.name for x in folder.iterdir()} != required: issues['unexpected_input_files']+=1
     allowed={str(x).lower() for x in products}
+    # A migrated catalog key is the product's own verified SKU.
+    aliases={str(v.get('sku','')).lower():str(k).lower() for k,v in products.items() if v.get('sku')}
     for name in ('manifest.json','metrika.json','releases.json','backlog.json'):
         obj=json.loads((folder/name).read_text(encoding='utf-8'))
         strings=list(walk(obj));checks['json_strings']+=len(strings)
@@ -85,7 +87,8 @@ def lint(folder, products):
                 key=str(row.get('product_key','')).lower()
                 canonical=str(row.get('details',{}).get('canonical_product_key','')).lower()
                 if key not in allowed:
-                    if canonical in allowed: checks['synthetic_renamed_keys']+=1
+                    if canonical in allowed or key in aliases:
+                        canonical=canonical if canonical in allowed else aliases[key]; checks['synthetic_renamed_keys']+=1
                     else: issues['unverified_product_keys']+=1
                 else: canonical=key
                 if canonical in products:

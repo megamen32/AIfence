@@ -45,7 +45,8 @@ def test_s1_has_missing_cart_after_failure_week(tmp_path):
     missing = [o for o in evidence["observations"] if o["metric_key"] == "cart_additions" and o["status"] == "missing"]
     assert missing
     assert answer["family"] == truth["choice"]["family"]
-    assert answer["week"] == truth["choice"]["week"]
+    assert answer["week_index"] == truth["choice"]["week"]
+    assert answer["week"] == g.week_start(truth["choice"]["week"]).isoformat()
 
 
 def test_xlsx_is_real_zip(tmp_path):

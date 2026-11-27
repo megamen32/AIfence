@@ -8,6 +8,31 @@ from pathlib import Path
 
 import blind_test_generator as g
 
+SKU_ALIAS = {p["sku"].lower(): family for family, p in g.PRODUCTS.items()}
+LEAK_FIELDS = ("bot_share_estimate", "traffic_quality", "traffic_source", "canonical_product_key",
+               "availability_status", "available_on", "alias_from", "alias_to", "traffic_campaign",
+               "experiment_id", "allocation_status", "our_price_rub", "competitor_price_rub")
+
+
+def four_week_drops(observations, metric, by_device):
+    series = {}
+    for o in observations:
+        if o["metric_key"] != metric or o["value"] is None:
+            continue
+        week = int(o["source_ref"]["locator"].split(";")[0].split("=")[1])
+        key = (SKU_ALIAS.get(o["product_key"], o["product_key"]), o["segment"] if by_device else "all")
+        series.setdefault(key, {}).setdefault(week, 0)
+        series[key][week] += o["value"]
+    out = []
+    for key, values in series.items():
+        for end in range(7, max(values) + 1):
+            a = [values.get(w) for w in range(end - 7, end - 3)]
+            b = [values.get(w) for w in range(end - 3, end + 1)]
+            if None in a or None in b or not sum(a):
+                continue
+            out.append((sum(b) / sum(a) - 1, key, end))
+    return out
+
 
 class BlindGeneratorTests(unittest.TestCase):
     def test_determinism_and_hidden_answers(self):
@@ -23,7 +48,7 @@ class BlindGeneratorTests(unittest.TestCase):
                 self.assertTrue(re.search(r"\bS(?:0|1|2|3|4|6|7|12|13|14)\b", text) is None)
 
     def test_minimum_family_count_and_independent_catalog_profiles(self):
-        fields = ("visits", "view_rate", "cart_rate", "checkout_rate", "order_rate", "aov")
+        fields = ("visits", "view_rate", "cart_rate", "checkout_rate", "order_rate", "price")
         profiles = {tuple(product[field] for field in fields) for product in g.PRODUCTS.values()}
         self.assertGreaterEqual(len(g.PRODUCTS), 5)
         self.assertEqual(len(profiles), len(g.PRODUCTS))
@@ -50,7 +75,8 @@ class BlindGeneratorTests(unittest.TestCase):
             allowed_keys = set(g.PRODUCTS) | {p["sku"].lower() for p in g.PRODUCTS.values()}
             for row in json.loads(evidence)["observations"]:
                 details = row["details"]
-                family = details.get("canonical_product_key", row["product_key"])
+                family = SKU_ALIAS.get(row["product_key"], row["product_key"])
+                self.assertNotIn("canonical_product_key", details)
                 self.assertIn(row["product_key"], allowed_keys)
                 self.assertTrue(details["synthetic"])
                 self.assertEqual(details["sku"], g.PRODUCTS[family]["sku"])
@@ -94,29 +120,38 @@ class BlindGeneratorTests(unittest.TestCase):
                 result = g.write_dataset(root / scenario, 20261127, scenario, 28)
                 truth = json.loads(Path(result["truth"]).read_text())
                 evidence = json.loads((Path(result["input"]) / "metrika.json").read_text())
-                canonical_families = {
-                    row["details"].get("canonical_product_key", row["product_key"])
-                    for row in evidence["observations"]
-                }
+                canonical_families = {SKU_ALIAS.get(row["product_key"], row["product_key"])
+                                      for row in evidence["observations"]}
                 self.assertEqual(canonical_families, set(g.PRODUCTS))
                 self.assertEqual(truth["choice"]["scenario"], scenario)
                 self.assertEqual({row["family"] for row in truth["truth"]}, set(g.PRODUCTS))
                 self.assertEqual(len(truth["truth"]), 28 * len(g.PRODUCTS) * len(g.DEVICES))
                 for field in ("family", "sku", "catalog_url"):
                     self.assertTrue(all(row.get(field) for row in truth["truth"]))
+                family = truth["choice"]["family"]; event = truth["choice"]["week"]
                 if scenario == "S6":
-                    self.assertTrue(any(o["details"].get("traffic_quality") == "low" for o in evidence["observations"]))
+                    bounce = {o["source_ref"]["locator"].split(";")[0]: o["value"] for o in evidence["observations"]
+                              if o["product_key"] == family and o["segment"] == "desktop" and o["metric_key"] == "bounce_rate"}
+                    self.assertGreater(bounce[f"week={event}"], 2 * bounce[f"week={event - 1}"])
                 elif scenario == "S7":
-                    self.assertTrue(any(o["product_key"] == o["details"]["sku"].lower() and o["details"].get("canonical_product_key") in g.PRODUCTS for o in evidence["observations"]))
+                    alias = g.PRODUCTS[family]["sku"].lower()
+                    weeks = {int(o["source_ref"]["locator"].split(";")[0][5:]) for o in evidence["observations"] if o["product_key"] == alias}
+                    self.assertEqual(min(weeks), event)
+                    self.assertFalse(any(o["product_key"] == family and o["period"]["from"] >= g.week_start(event).isoformat()
+                                         for o in evidence["observations"]))
                 elif scenario == "S12":
                     answer = json.loads((Path(result["answers"]) / "S12.json").read_text())
                     self.assertEqual(answer["accepted_outcomes"], ["no_alert", "insufficient_data"])
                     self.assertEqual(g.score_card(answer, {"outcome": "no_alert"})["status"], "correct_no_alert")
                     self.assertEqual(g.score_card(answer, {"status": "insufficient_data"})["status"], "correct_insufficient_data")
                 elif scenario == "S13":
-                    self.assertTrue(any(o["status"] == "missing" and o["details"].get("availability_status") == "late" and o["details"].get("available_on") for o in evidence["observations"]))
+                    last = g.week_start(27).isoformat()
+                    seen = sum(o["value"] for o in evidence["observations"] if o["product_key"] == family
+                               and o["metric_key"] == "orders" and o["period"]["from"] == last)
+                    actual = sum(r["orders"] for r in truth["truth"] if r["family"] == family and r["week"] == 27)
+                    self.assertLess(seen, .3 * actual)
+                    self.assertEqual(evidence["status"], "ok")
                 else:
-                    family = truth["choice"]["family"]
                     start = g.week_start(truth["choice"]["week"]).isoformat()
                     actual = {(r["week_start"], r["device"]): r["cart_additions"]
                               for r in truth["truth"] if r["family"] == family}
@@ -126,6 +161,56 @@ class BlindGeneratorTests(unittest.TestCase):
                             date = o["period"]["from"]
                             retention[date >= start].append(o["value"] / actual[date, o["segment"]])
                     self.assertLess(statistics.mean(retention[True]), statistics.mean(retention[False]))
+
+    def test_s0_noise_floor(self):
+        # A clean dataset must not show the drops the detector alerts on.
+        with tempfile.TemporaryDirectory() as tmp:
+            for seed in range(10):
+                result = g.write_dataset(Path(tmp) / str(seed), 9100 + seed, "S0", 28)
+                obs = json.loads((Path(result["input"]) / "metrika.json").read_text())["observations"]
+                self.assertGreaterEqual(min(four_week_drops(obs, "orders", False))[0], -.12, seed)
+                self.assertGreaterEqual(min(four_week_drops(obs, "orders", True))[0], -.15, seed)
+
+    def test_planted_change_is_recent_and_on_the_question_family(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for seed in range(6):
+                for scenario in ("S6", "S7", "S12", "S13", "S14"):
+                    choice = g.pick_scenario(seed, scenario, 28)
+                    self.assertIn(choice["family"], g.KASPERSKY_FAMILIES)
+                    self.assertGreaterEqual(choice["week"], 28 - 6)
+                result = g.write_dataset(Path(tmp) / str(seed), 9200 + seed, "S14", 28)
+                truth = json.loads(Path(result["truth"]).read_text())["choice"]
+                obs = json.loads((Path(result["input"]) / "metrika.json").read_text())["observations"]
+                drops = [d for d in four_week_drops(obs, "orders", False) if d[2] == 27]
+                worst = min(drops)
+                self.assertEqual(worst[1][0], truth["family"])
+                noise = min(d for d in drops if d[1][0] != truth["family"])
+                self.assertLess(worst[0], 2 * noise[0])
+            self.assertIn(g.pick_scenario(1, "S6", 28, "all")["family"], g.PRODUCTS)
+
+    def test_no_answer_fields_and_decoy_releases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for scenario in ("S0", "S6", "S7", "S12", "S13", "S14"):
+                result = g.write_dataset(Path(tmp) / scenario, 9300, scenario, 28)
+                folder = Path(result["input"])
+                for name in ("metrika.json", "releases.json", "backlog.json"):
+                    text = (folder / name).read_text()
+                    for field in LEAK_FIELDS:
+                        self.assertNotIn(f'"{field}"', text, (scenario, name))
+                    self.assertNotIn("Synthetic measurement", text)
+                releases = json.loads((folder / "releases.json").read_text())
+                self.assertGreaterEqual(sum(r["description"] in g.SPECIFIC_RELEASES for r in releases), 4)
+                # Every observation keeps machine-readable provenance for the platform.
+                obs = json.loads((folder / "metrika.json").read_text())["observations"]
+                self.assertTrue(all(o["details"]["synthetic"] and o["details"]["origin"] == "synthetic_fixture" for o in obs))
+
+    def test_sales_prices_are_catalog_prices(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = g.write_dataset(Path(tmp), 9400, "S0", 28)
+            truth = json.loads(Path(result["truth"]).read_text())["truth"]
+            for row in truth:
+                self.assertEqual(row["unit_price"], g.PRODUCTS[row["family"]]["price"])
+            self.assertEqual(g.PRODUCTS["kaspersky_small_office_security"]["price"], 4718.70)
 
     def test_agent_inputs_exclude_seeds_and_scenario_verdicts(self):
         forbidden = (
