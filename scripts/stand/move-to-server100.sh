@@ -74,7 +74,8 @@ log "saving amd64 images to server"
 mapfile -t LIVE < <("$D" --context "$CTX" ps -q --filter label=run.airlock.instance=aifence | xargs -r "$D" --context "$CTX" inspect --format '{{.Config.Image}}' | sort -u)
 IMAGES=(aifence-airlock:personal-624cc8d53339 aifence-frontend:personal-624cc8d53339 aifence-agent-builder:be0f9ee03be3 aifence-agent-base:be0f9ee03be3 aifence-js-executor:be0f9ee03be3 pgvector/pgvector:pg17 rustfs/rustfs:latest postgres:16-alpine redmine:6.1.6-alpine3.23 curlimages/curl:latest "${LIVE[@]}")
 mapfile -t IMAGES < <(printf '%s\n' "${IMAGES[@]}"|sort -u); for i in "${IMAGES[@]}"; do "$D" --context "$CTX" image inspect "$i" >/dev/null || die "missing image $i"; done
-"$D" --context "$CTX" save "${IMAGES[@]}" | gzip -1 | remote "gzip -d | docker load"
+save_group(){ log "saving image $1"; "$D" --context "$CTX" save "$1" | gzip -1 | remote "gzip -d | docker load"; }
+for image in "${IMAGES[@]}"; do save_group "$image"; done
 remote "docker pull --platform linux/amd64 baserow/baserow:2.4.3 caddy:2-alpine"
 log "copying live Docker volumes"
 vol(){ local n=$1; "$D" --context "$CTX" run --rm -v "$n:/from:ro" caddy:2-alpine sh -c 'tar -C /from -czf - .' | remote "docker run --rm -i -v '$n:/to' caddy:2-alpine sh -c 'tar -C /to -xzf -'"; }
