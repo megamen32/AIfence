@@ -38,6 +38,10 @@ These are measured quality checks with different scopes. The figures do not
 claim that every planted cause is found or that a hypothesis is proven without
 the cited evidence.
 
+The Terra fast row refers to the coordinator QA record `terra-dev30-prompt-v4`;
+that record is not committed in this checkout and must be attached to the final
+submission evidence package.
+
 ## Architecture in ten lines
 
 1. Airlock supplies authentication, the assistant loop, storage, scheduling and file access.
