@@ -20,59 +20,59 @@ import (
 const competitorResearchDirectory = "tmp/competitor-research"
 
 type competitorResearchInput struct {
-	Company        string
-	Site           string
-	Market         string
-	Offer          string
-	Goal           string
-	Competitors    []string
-	Products       []string
-	MaxCompetitors int
+	Company        string   `json:"company"`
+	Site           string   `json:"site,omitempty"`
+	Market         string   `json:"market,omitempty"`
+	Offer          string   `json:"offer,omitempty"`
+	Goal           string   `json:"goal,omitempty"`
+	Competitors    []string `json:"competitors,omitempty"`
+	Products       []string `json:"products,omitempty"`
+	MaxCompetitors int      `json:"max_competitors,omitempty"`
 }
 type competitorResearchCriterion struct {
-	Block       string
-	Criterion   string
-	Weight      float64
-	Collection  string
-	Description string
+	Block       string  `json:"block"`
+	Criterion   string  `json:"criterion"`
+	Weight      float64 `json:"weight"`
+	Collection  string  `json:"collection"`
+	Description string  `json:"description"`
 }
 type competitorResearchPlan struct {
-	StudyID     string
-	CreatedAt   string
-	Brief       string
-	TargetSite  string
-	Market      string
-	Competitors []string
-	Products    []string
+	StudyID     string   `json:"study_id"`
+	CreatedAt   string   `json:"created_at"`
+	Brief       string   `json:"brief"`
+	TargetSite  string   `json:"target_site"`
+	Market      string   `json:"market,omitempty"`
+	Competitors []string `json:"competitors,omitempty"`
+	Products    []string `json:"products,omitempty"`
 	Criteria    []competitorResearchCriterion
-	NextActions []string
-	CSVColumns  []string
-	Limitations []string
+	NextActions []string `json:"next_actions"`
+	CSVColumns  []string `json:"csv_columns"`
+	Limitations []string `json:"limitations"`
 }
 type competitorObservation struct {
-	Competitor string
-	URL        string
-	Product    string
-	Block      string
-	Criterion  string
-	Value      string
-	Score      *float64
-	Status     string
-	SourceURL  string
-	CheckedAt  string
-	Notes      string
+	Competitor string   `json:"competitor"`
+	URL        string   `json:"url,omitempty"`
+	Product    string   `json:"product,omitempty"`
+	Block      string   `json:"block"`
+	Criterion  string   `json:"criterion"`
+	Value      string   `json:"value,omitempty"`
+	Score      *float64 `json:"score,omitempty"`
+	Status     string   `json:"status,omitempty"`
+	SourceURL  string   `json:"source_url,omitempty"`
+	CheckedAt  string   `json:"checked_at,omitempty"`
+	Notes      string   `json:"notes,omitempty"`
 }
 type competitorCSVInput struct {
-	StudyID string
-	Rows    []competitorObservation
+	StudyID string                  `json:"study_id"`
+	Rows    []competitorObservation `json:"rows"`
 }
 type competitorCSVResult struct {
-	StudyID     string
-	RowCount    int
-	Filename    string
-	Columns     []string
-	CSV         string
-	Limitations []string
+	StudyID     string   `json:"study_id"`
+	RowCount    int      `json:"row_count"`
+	Filename    string   `json:"filename"`
+	Columns     []string `json:"columns"`
+	CSV         string   `json:"csv"`
+	Limitations []string `json:"limitations"`
 }
 
 var competitorCSVColumns = []string{"study_id", "competitor", "url", "product", "block", "criterion", "value", "score_1_to_5", "status", "source_url", "checked_at", "notes"}
