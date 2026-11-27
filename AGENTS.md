@@ -29,6 +29,20 @@ Full checklist, few-shot prompts and grading: `.agents/skills/qa-testing/SKILL.m
 - **Astra is the orchestrator.** Delegate UI/frontend work to 1–2 subagents (frontend-design skill plus `.agents/skills/pm-panel-design/SKILL.md`, reference mockup `design/pm-panel/index.html`), lower priority than the end-to-end run; provide before/after screenshots. Do not hand-edit UI in the orchestrator loop.
 - **Priority:** one end-to-end KES run through a real Airlock chat with a vague director request comes first. Then blind scenarios S7 (renamed product family), S13 (late events), S14 (masked multi-cause), S6 (bots), S12 (A/B allocation shift = honest refusal). The scorer must accept `no_alert` and `insufficient_data` as correct where the oracle says so.
 
+## UI of every app: mandatory checklist (owner decision, 27.11)
+
+Applies to Product Manager, Metrika Analyst, Market Watch, Web Scraper and any app a user can open. A UI change is not done until every line holds, checked on the local Mac Airlock with screenshots.
+
+- **Useful the moment it opens.** The first screen shows the owner's real data already in the app (latest snapshot, catalog, prices, visits). No start screen that asks to enter, upload or pick data before anything is shown. If an input is needed, show the current reading next to it.
+- **No demo slop.** No «Деморежим», «демо-данные», «учебные», «тестовые», «синтетические сигналы», «пример» toggles or banners in what the user sees. Synthetic data lives only in fixtures and blind runs, never behind a UI switch. `python3 scripts/lint-placeholder-names.py` exits 0.
+- **Real numbers from the app's own data.** Products, SKUs, prices and percentages are computed from the app's stored data. Never copy figures from `design/pm-panel/index.html` (1,24 млн ₽, −32,7 %, 2 418, R-09 are mockup values).
+- **Charts, not tables of numbers.** Each screen has at least one inline-SVG visual: line chart with control, treemap, bars, sparklines. Russian number format, tabular figures.
+- **Motion.** Lines draw in (stroke-dashoffset), the anomaly tile pulses, ₽ counters tick, tiles fade in. Respect `prefers-reduced-motion`.
+- **Source cards.** Every figure shows where it came from (Метрика, Market Watch, заказы, интервью) as a small card or locator, not hidden in text.
+- **Cost of delay** in ₽/week on any alert or hypothesis that has money attached, alerts sorted by ₽/week.
+- **Empty states explain what to do.** When a source has no data, say which source, what is missing and the one action that fills it («Подключите счётчик Метрики в настройках источников»), not «Нет данных» or «Ожидается снимок».
+- **Visual reference:** `design/pm-panel/index.html` and `.agents/skills/pm-panel-design/SKILL.md`. Dark and light themes, 400px and 700px widths.
+
 ## Unattended runs: no macOS Keychain prompts
 
 The owner must be able to leave the laptop while agents work. Any keychain dialog blocks the run.
