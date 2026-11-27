@@ -1,6 +1,6 @@
 ---
 name: stand-deploy
-description: Use before building or deploying any AIfence app (product-manager, metrika-analyst, market-watch) to the Mac Airlock stand on 42080, and when checking what is currently running there.
+description: Use before building or deploying any AIfence app (product-manager, metrika-analyst, market-watch, web-scraper, google-trends, wordstat) to the Mac Airlock stand on 42080, and when checking what is currently running there.
 ---
 
 # Выкатка приложений на стенд 42080
@@ -19,7 +19,7 @@ description: Use before building or deploying any AIfence app (product-manager, 
 ```sh
 cd /Users/user/AIfence            # чистый checkout на main, deploy-скрипты и lock закоммичены
 export AIRLOCK_URL=http://localhost:42080
-export AIFENCE_PERSONAL_CACHE=/Users/user/personal-integration/.runtime/personal-release   # закреплённые agentsdk/airlock/sol
+export AIFENCE_PERSONAL_CACHE=/Users/user/AIfence-worktrees/personal-integration/.runtime/personal-release   # закреплённые agentsdk/airlock/sol
 export GOPROXY=off                # сборка только из кеша, без сети
 scripts/deploy-apps --dry-run product-manager     # только стейджинг и проверки, без сборки и выкладки
 scripts/deploy-apps product-manager               # реальная выкатка
@@ -57,3 +57,16 @@ cat "$(git -C /Users/user/AIfence rev-parse --path-format=absolute --git-common-
 ## Если что-то пошло не так
 
 Остановиться, записать точную ошибку и команду в трек, не повторять выкатку по кругу и не чистить state/замки без проверки. Деплой в цикле ожидания Ready больше пары минут без изменения статуса это сигнал смотреть `air logs`, а не перезапускать.
+
+## Уроки ночной выкатки 28.11 (новые приложения: web-scraper, google-trends, wordstat)
+
+- **Гейт «текущий main» смотрит на `refs/heads/main` всего репозитория.** В флоте из linked worktree ветка `main` может числиться за чужим worktree и стоять на старом коммите. Быстрый форвард чужого worktree с незакоммиченными файлами отказывает; вместо него безопасно двигать сам ref: `git merge-base --is-ancestor refs/heads/main origin/main && git update-ref refs/heads/main $(git rev-parse origin/main)` — файлы и индекс чужого worktree не трогаются. После СВОЕГО успешного push `refs/heads/main` тоже надо обновить перед следующей выкаткой в той же сессии: push уводит origin/main вперёд, и гейт начнёт отказывать без видимой причины.
+- **main уезжает между шагами.** Перед каждой выкаткой: `git fetch origin main` → сдвинуть `refs/heads/main` (см. выше) → `git merge --ff-only origin/main` → `AIFENCE_DEPLOY_COMMIT=$(git rev-parse origin/main)`. Push коммита сразу после коммита; при гонке («failed to push some refs») — fetch + rebase + push снова.
+- **source_conflict без `--force`: `air clone`.** Когда серверный источник уехал вперёд биндинга, а `air pull` отвечает «local and remote source both changed», клонировать серверное состояние: `go tool air clone <slug> <dir> --url $AIRLOCK_URL`. Клон несёт свежий биндинг в `<dir>/.airlock/local/agent.toml` — скопировать его в `<git-common-dir>/aifence-deploy/state/<origin_key>/<slug>/agent.toml` (chmod 600) и перевыкатить. Перед перезаписью сравнить клон с main (`diff -rq`): если серверный источник содержит чужие изменения, которых нет в main, сначала в main их, потом выкатка. `--force` только после проверки, кто деплоил последним.
+- **Маркеры конфликта, закоммиченные в main.** Fleet-rebase может закоммитить `<<<<<<< HEAD` в app.css: tailwind соберёт stylesheet без тем и приложение молча станет светлым. Проверка: `git show origin/main:<file> | grep -c '^<<<<<<<'`. Чинить разрешением конфликта на согласованную строку (для research-приложений `themes: dark --default, light --preferslight;`), коммит, перевыкатка.
+- **TLS-флапы внутри docker-сборки стенда.** Dockerfile приложений скачивают tailwindcss/daisyui с GitHub (`ADD`) на стороне стенда; флап даёт «Latest update failed. The current version is still running.» при локально зелёной сборке. Один ретрай выкатки обычно проходит. Приложения без tailwind в docker (web-scraper, инлайн-CSS) этим не болеют.
+- **500 failed to upload source.** Разовая ошибка сервера при заливке источника: `air inspect` (ничего не подвисло) → один повторный запуск `deploy-apps`. Не повторять вслепую больше раза.
+- **Приложения вне APPS-кортежа.** `personal-build-apps.py APPS` и whitelist слагов в `deploy-apps` должны включать новое приложение (коммит b3f01ba добавил web-scraper, google-trends, wordstat). `--auto` сам выбирает create против существующего по ответу `air status` «agent not found».
+- **Доступ к UI приложений для проверки.** Демо-учётки §0 могут получать от платформы `{"error":"access denied"}` на корне нового приложения, даже имея живую Airlock-сессию (видено на web-scraper). Владельческая учётка открывает всё. Учётку владельца хранить только в `.runtime/<имя>/access.json` с правами 0600, пароль не печатать.
+- **Проверка тёмной темы для видео.** Браузер по умолчанию light colorScheme — это и есть кейс жюри. Проверять скриншоты в дефолтном контексте (не colorScheme='dark'). daisyUI-флаг `--preferslight` в зашитом daisyui.mjs не поддерживается и молча игнорируется (сборка не ломается, light остаётся доступным через `data-theme="light"`). Для «всегда тёмной» панели: `themes: dark --default, ...` в app.css и удалить `@media(prefers-color-scheme:light)`-override из инлайн-CSS (metrika, web-scraper).
+- **Приёмка после выкатки.** Ready + HTTP 200 + скриншот в `docs/qa/apps-dark-27-11/` (1440px, full page) + строка `deployed: <app> <sha> <время>` в начало REPORT.md деплойера. Скриншоты снимать владельческой учёткой.
