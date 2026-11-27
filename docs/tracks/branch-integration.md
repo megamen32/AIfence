@@ -34,6 +34,15 @@
 | `personal/m1-native-sourcewatch-20261127` | не установлен | `491767f` | `491767f` | ×/× | diff OK | `m1-native-persist-20261127` · 0/0/0 |
 | `price-feed-2` | КТ3 · release | `713ccd7` | `713ccd7` | ✓/✓ | предок main · покрытие чтений: отчёт `26e6d5f` | `market-price-feed-first-release` · 0/0/10 · защищённые данные |
 
+## Очередь интеграции · 27.11
+
+1. **QA 42082 · personal-9c972bc.** QA4 подтвердил установку пары backend/frontend, здоровье БД и S3 и чтение существующих снимков под владельцем.
+2. **Native Source Watch → main.** `origin/main` опубликован на `39e1ec0`, предок — native tip `491767f` (`personal/m1-native-sourcewatch-20261127`). Diff и локальная сборка `39e1ec0` проверены. Локальный tip `integrate/m1-native-main-20261127` — `39e1ec0`, опубликованный tip этой ветки — `095f1ba`. Контакт по приёму в main — интегратор, чат «Настроить оркестрацию агентов». Владелец рабочего дерева не подтверждён.
+3. **PM → QA 42082.** QA4 выкладывает PM из опубликованного SHA main и подтверждает запуск задания с чтениями под владельцем.
+4. **UI последним.** Перед merge повторно сверить tip кандидата и ревизию в staging.
+
+На время сборки и выкладки сохранить `blind-catalog-verification`, деревья `personal/*`, native-интеграцию и UI staging. После снимка 11:08 снята Git-привязка только `market-price-feed-first-release` (`713ccd7`, предок `origin/main`) по подтверждению КТ3. Игнорируемые файлы возвращены на прежние места. Квитанция — `~/AIfence/.runtime/worktree-retirement/price-feed-2-2e793fju/manifest.json`.
+
 ## Перед UI-merge
 
 - `origin/claude/project-thread-s8sr76` `94a88c3` · владелец не установлен · в main ×/×. `ui-qa` · detached HEAD `a1a8648`. Новый опубликованный tip требует отдельной проверки. WIP 0/0/1. Сохранить `.runtime`.
