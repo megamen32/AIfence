@@ -13,3 +13,5 @@ Directory failure or partial resolution retains statistics. Answers finish with 
 UI and typed tools share demand.Service. No domain background jobs or persisted state. Tests cover explicit human callers, denied nonhuman access, real zero, missing counts, lookup failure, ambiguous IDs, concurrent cache use and exact shared deadlines.
 
 Source provenance: isolated from the separately developed standalone Wordstat application under apps/wordstat. No private Airlock core or organizer materials were copied. Toolchain/generated output, credentials and runtime state remain outside tracked source.
+
+Chat QA 2026-11-27: the unchanged general-demand prompt produced an invalid sum across overlapping commercial phrases and inferred purchase intent from download wording. Instructions now prohibit all sums across main/associated phrase counts, including commercial clusters; download alone is not buying intent. A general-demand answer should use 3-5 short paragraphs with phrase frequency, actual coverage, period and source limits, without unsolicited cluster totals or a top-10 table.
