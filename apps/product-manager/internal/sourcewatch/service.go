@@ -143,6 +143,7 @@ type observation struct {
 	Segment    string         `json:"segment,omitempty"`
 	SourceRef  sourceRef      `json:"source_ref"`
 	Details    map[string]any `json:"details,omitempty"`
+	Caveats    []string       `json:"caveats,omitempty"`
 }
 type batch struct {
 	AsOf          string        `json:"as_of"`
@@ -292,6 +293,9 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		target = "store"
 	}
 	query := map[string]any{"product_key": target, "metric_keys": []string{w.Metric}, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}
+	if w.ProductKey == "" {
+		query["source_mode"] = "live"
+	}
 	if w.Segment != "" {
 		query["segment"] = w.Segment
 	}
@@ -302,6 +306,7 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	if metrika.SchemaVersion != "aifence.v1" || metrika.Source != "metrika" {
 		return Outcome{}, errors.New("Metrika binding returned an unexpected contract")
 	}
+	warnings = append(warnings, comparisonWarnings(metrika)...)
 	if w.MarketBinding != "" {
 		if familySelected {
 			err = read(ctx, w.MarketBinding, map[string]any{"skus": w.SKUs, "family": w.Family, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &family)
@@ -407,8 +412,11 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	// sources did prove, and it must not become a price cause on its own.
 	// Only a malformed envelope, or no evidence from any source, is incomplete.
 	marketUsable := marketStatus == "ok" || marketStatus == "partial" || marketStatus == "unavailable"
-	if metrika.Status != "ok" || (w.MarketBinding != "" && !marketUsable) {
-		return Outcome{Status: "incomplete", Warnings: warnings}, nil
+	if metrika.Status != "ok" {
+		return Outcome{Status: "incomplete", Warnings: append(warnings, fmt.Sprintf("metrika: no complete %s comparison for %s..%s and %s..%s", w.Metric, before.From, before.To, current.From, current.To))}, nil
+	}
+	if w.MarketBinding != "" && !marketUsable {
+		return Outcome{Status: "incomplete", Warnings: append(warnings, "market_watch: the requested price comparison has no usable status")}, nil
 	}
 	var delta *observation
 	var computed *FamilyChange
@@ -424,13 +432,13 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		}
 	}
 	if delta == nil && computed == nil {
-		return Outcome{Status: "incomplete", Warnings: warnings}, nil
+		return Outcome{Status: "incomplete", Warnings: append(warnings, "metrika: no unique observed relative change with the requested source, metric and periods")}, nil
 	}
 	changePct, observationID, observationRef := 0.0, "", ""
 	if delta != nil {
 		changePct, observationID, observationRef = *delta.Value, delta.ID, delta.SourceRef.Locator
 	} else if computed.ChangePct == nil {
-		return Outcome{Status: "incomplete", Warnings: warnings}, nil
+		return Outcome{Status: "incomplete", Warnings: append(warnings, "metrika: zero baseline; relative change is undefined")}, nil
 	} else {
 		changePct, observationID, observationRef = *computed.ChangePct, computed.CurrentID, computed.CurrentRef
 	}
@@ -540,4 +548,30 @@ func metrikaDelta(b batch, metric string, current period) *observation {
 		delta = o
 	}
 	return delta
+}
+
+// comparisonWarnings keeps bounded source diagnostics, including a missing
+// relative change when the counter reports a zero baseline.
+func comparisonWarnings(b batch) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(text string) {
+		text = strings.TrimSpace(text)
+		if text != "" && len(text) <= 1024 && len(out) < 16 && !seen[text] {
+			seen[text] = true
+			out = append(out, "metrika: "+text)
+		}
+	}
+	for _, warning := range b.Warnings {
+		add(warning)
+	}
+	for _, observation := range b.Observations {
+		if observation.Status == "observed" && observation.Value != nil {
+			continue
+		}
+		for _, caveat := range observation.Caveats {
+			add(fmt.Sprintf("%s %s..%s: %s", observation.MetricKey, observation.Period.From, observation.Period.To, caveat))
+		}
+	}
+	return out
 }

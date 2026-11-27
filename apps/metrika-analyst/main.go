@@ -187,7 +187,7 @@ func newAgent() *agentsdk.Agent {
 		data := s.dashboard(r.Context(), time.Now().UTC())
 		q := r.URL.Query()
 		if q.Get("from") != "" {
-			in := Compare{ProductKey: "store", MetricKeys: strings.Split(data.Metrics, ","), BaselineFrom: q.Get("from"), BaselineTo: q.Get("to"), CurrentFrom: q.Get("current_from"), CurrentTo: q.Get("current_to"), Segment: "all"}
+			in := Compare{ProductKey: data.ProductKey, MetricKeys: strings.Split(data.Metrics, ","), BaselineFrom: q.Get("from"), BaselineTo: q.Get("to"), CurrentFrom: q.Get("current_from"), CurrentTo: q.Get("current_to"), Segment: "all"}
 			data.FormFrom, data.FormTo, data.FormCurFrom, data.FormCur = in.BaselineFrom, in.BaselineTo, in.CurrentFrom, in.CurrentTo
 			if b, e := s.Compare(r.Context(), in); e != nil {
 				data.Compare = &compareView{Title: "Ваше сравнение", Error: "Сравнение не выполнено: " + e.Error()}

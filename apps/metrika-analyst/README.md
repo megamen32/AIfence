@@ -266,3 +266,5 @@ collect и в `details` соответствующей строки `watchdog.al
 ```sh
 GOMAXPROCS=2 GOFLAGS=-p=1 go test -run '^TestExternalDemand' -count=1 .
 ```
+
+Фоновые проверки живого счётчика передают `source_mode: "live"` в `compare_periods`. Это сохраняет источник проверки при смене файла на панели. Явный `source_path` несовместим с этим режимом. Без режима сохраняется выбранный источник приложения.

@@ -349,7 +349,7 @@ func watchdogState(rows []monitorObservation) (map[watchdogSeries]monitorObserva
 	return fresh, open
 }
 
-func (h *Handler) cardInvestigation(ctx context.Context, record decision.Record, orders, margin string) (*views.Investigation, error) {
+func (h *Handler) cardInvestigation(ctx context.Context, record decision.Record, orders, margin string, related ...evidence.Summary) (*views.Investigation, error) {
 	snapshot := record.EvidenceSnapshotID
 	rows := []monitorObservation{}
 	for offset := 0; ; offset += 100 {
@@ -367,6 +367,15 @@ func (h *Handler) cardInvestigation(ctx context.Context, record decision.Record,
 		}
 	}
 	v := savedCard(record, rows)
+	if len(related) > 0 && v.ReleaseHistory == nil {
+		next, e := h.releaseRows(ctx, rows, record, related)
+		if e != nil {
+			return nil, e
+		}
+		if len(next) > 0 {
+			v.ReleaseHistory = nativeReleaseHistory(record.Hypothesis.ProductKey, next, next[0].snapshot)
+		}
+	}
 	monitorEconomics(v, orders, margin)
 	return v, nil
 }
@@ -374,6 +383,7 @@ func (h *Handler) cardInvestigation(ctx context.Context, record decision.Record,
 func savedCard(record decision.Record, rows []monitorObservation) *views.Investigation {
 	key := record.Hypothesis.ProductKey
 	v := investigation(key, rows, []decision.Record{record}, record.Hypothesis.SignalIDs...)
+	releaseMeasurement(v, record)
 	v.CardID, v.RecordURL = record.Hypothesis.ID, ""
 	v.ProductKey, v.SnapshotID = key, record.EvidenceSnapshotID
 	return v
@@ -472,6 +482,16 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 				v.After = num(*m.Current.Value) + " " + m.Current.Unit
 			}
 		}
+	}
+	snapshot := ""
+	if signal != nil {
+		snapshot = signal.snapshot
+	} else if record != nil {
+		snapshot = record.EvidenceSnapshotID
+	}
+	v.ReleaseHistory = nativeReleaseHistory(key, rows, snapshot)
+	if record != nil {
+		releaseMeasurement(v, *record)
 	}
 	if signal != nil {
 		v.Chart = plot(signal, rows, v.ReleaseDate)

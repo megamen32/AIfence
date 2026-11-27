@@ -82,6 +82,7 @@ type dashView struct {
 	Compare              *compareView
 	FormFrom, FormTo     string
 	FormCurFrom, FormCur string
+	ProductKey           string
 	Metrics              string
 }
 
@@ -111,7 +112,32 @@ func weekShort(w dashWeek) string {
 	return fmt.Sprintf("%d %s", w.From.Day(), monthsShort[w.From.Month()])
 }
 
+func dashboardSandbox(c Settings) bool {
+	path := strings.ToLower(c.EvidencePath)
+	return strings.Contains(path, "aifence-sandbox.json")
+}
+
+func dashboardProduct(c Settings) string {
+	if dashboardSandbox(c) {
+		return "kaspersky_small_office_security"
+	}
+	return "store"
+}
+
+func dashboardWeeks(c Settings, now time.Time) []dashWeek {
+	if dashboardSandbox(c) {
+		return []dashWeek{
+			{From: time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)},
+			{From: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)},
+		}
+	}
+	return lastWeeks(now, dashWeeks)
+}
+
 func dashMetrics(c Settings) []string {
+	if dashboardSandbox(c) {
+		return []string{"orders"}
+	}
 	if c.Ecommerce {
 		return []string{"visits", "users", "orders", "purchase_conversion"}
 	}
@@ -243,9 +269,10 @@ func niceTicks(lo, hi float64, n int) []float64 {
 
 func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 	c := s.config(ctx)
-	weeks := lastWeeks(now, dashWeeks)
+	weeks := dashboardWeeks(c, now)
 	keys := dashMetrics(c)
-	v := dashView{Metrics: strings.Join(keys, ",")}
+	productKey := dashboardProduct(c)
+	v := dashView{ProductKey: productKey, Metrics: strings.Join(keys, ",")}
 	last, prev := weeks[len(weeks)-1], weeks[len(weeks)-2]
 	v.FormFrom, v.FormTo = prev.From.Format(time.DateOnly), prev.To.Format(time.DateOnly)
 	v.FormCurFrom, v.FormCur = last.From.Format(time.DateOnly), last.To.Format(time.DateOnly)
@@ -271,7 +298,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 		wg.Add(1)
 		go func(i int, w dashWeek) {
 			defer wg.Done()
-			batches[i], errs[i] = s.query(ctx, Query{ProductKey: "store", MetricKeys: keys, From: w.From.Format(time.DateOnly), To: w.To.Format(time.DateOnly), Segment: "all"}, c)
+			batches[i], errs[i] = s.query(ctx, Query{ProductKey: productKey, MetricKeys: keys, From: w.From.Format(time.DateOnly), To: w.To.Format(time.DateOnly), Segment: "all"}, c)
 		}(i, w)
 	}
 	wg.Wait()
@@ -367,6 +394,9 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 	}
 
 	v.Eyebrow = "МАГАЗИН · НЕДЕЛЯ " + strings.ToUpper(weekLabel(last))
+	if dashboardSandbox(c) {
+		v.Eyebrow = "KASPERSKY SMALL OFFICE SECURITY · ПЕРИОД " + strings.ToUpper(weekLabel(last))
+	}
 	if a, b := vals[len(vals)-1], vals[len(vals)-2]; a != nil && b != nil && *b != 0 {
 		pct := (*a - *b) / math.Abs(*b) * 100
 		v.HeadTone = deltaTone(pct)
@@ -403,7 +433,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 		}
 		v.Sources = append(v.Sources, card)
 	}
-	if !c.Ecommerce {
+	if !c.Ecommerce && !dashboardSandbox(c) {
 		v.Notes = append(v.Notes, "Заказы и конверсия скрыты: e-commerce в счётчике не подтверждён (настройка ecommerce_confirmed).")
 	}
 	if estimated {

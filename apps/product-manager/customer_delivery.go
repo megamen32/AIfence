@@ -49,7 +49,7 @@ type slotOutput struct {
 }
 
 const (
-	redmineMCP = "http://redmine-mcp:8000/mcp"
+	redmineMCP = "http://127.0.0.1:18460/mcp"
 	userioMCP  = "https://msg.bezrabotnyi.com/mcp"
 	// 04:00 UTC is 09:00 at the owner's UTC+5 office.
 	morningHourUTC = 4

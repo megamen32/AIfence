@@ -42,8 +42,10 @@ type SummaryList struct {
 	Watches []WatchSummary `json:"watches"`
 }
 type Review struct {
-	Status string        `json:"status"`
-	Result *ReviewOutput `json:"result,omitempty"`
+	Message  string        `json:"message,omitempty"`
+	Warnings []string      `json:"warnings,omitempty"`
+	Status   string        `json:"status"`
+	Result   *ReviewOutput `json:"result,omitempty"`
 }
 
 // ApproveRef identifies one pinned signal whose review the owner confirms.
@@ -355,7 +357,17 @@ func (s *Service) Review(ctx context.Context, in WatchRef) (Review, error) {
 		return Review{}, err
 	}
 	if row.AnalysisRunID == "" {
-		return Review{}, errors.New("анализ ещё не запущен")
+		out := reviewWithoutAnalysis(row.Active, row.LastStatus)
+		if row.LastMonday != "" {
+			job, err := s.job.Get(ctx, ID(owner, "delivery", JobInput{WatchID: in.WatchID, Monday: row.LastMonday}))
+			if err != nil {
+				return Review{}, err
+			}
+			if job.Output != nil {
+				out.Warnings = job.Output.Warnings
+			}
+		}
+		return out, nil
 	}
 	pinned, err := s.queries.GetSourceWatchSignalByRun(ctx, db.GetSourceWatchSignalByRunParams{OwnerID: owner, AnalysisRunID: row.AnalysisRunID})
 	if err != nil {
@@ -450,4 +462,27 @@ func (s *Service) pinnedOccurrence(ctx context.Context, owner string, in JobInpu
 		return nil, errors.New("pinned source signal does not match this occurrence")
 	}
 	return &original, nil
+}
+
+// A completed source check does not necessarily start a model review. Returning
+// its state lets chat finish without repeatedly requesting a nonexistent run.
+func reviewWithoutAnalysis(active bool, status string) Review {
+	out := Review{Status: status}
+	switch status {
+	case "incomplete":
+		out.Message = "Недостаточно сопоставимых данных за выбранные недели. Анализ не запускался; подробности указаны в warnings."
+	case "quiet":
+		out.Message = "Порог наблюдения не достигнут. Дополнительный анализ не требуется."
+	case "model_route_unapproved":
+		out.Message = "Сигнал найден, но маршрут модели для анализа ещё не одобрен."
+	case "failed", "schedule_failed":
+		out.Message = "Проверка завершилась ошибкой. Анализ не запускался."
+	default:
+		if !active {
+			out.Status, out.Message = "stopped", "Наблюдение остановлено."
+		} else {
+			out.Status, out.Message = "scheduled", "Проверка запланирована. Результата анализа пока нет."
+		}
+	}
+	return out
 }
