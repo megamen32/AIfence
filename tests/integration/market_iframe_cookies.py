@@ -16,7 +16,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_HOST = "market-watch.localhost"
-BASEROW_HOST = "baserow.localhost"
+OWNER_APP_HOSTS = ("baserow.localhost", "openai-byok-local.localhost", "userio-dion-local.localhost",
+                   "product-manager.localhost", "metrika-analyst.localhost")
 NONCE = "__air_relay_nonce=sample; Path=/; Max-Age=900; HttpOnly; SameSite=Lax"
 CLEAR = "__air_relay_nonce=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0; HttpOnly; SameSite=Lax"
 SESSION = "__air_session=example; Path=/; Max-Age=900; HttpOnly; SameSite=Lax"
@@ -106,13 +107,15 @@ class EmbeddedCookiePolicy(unittest.TestCase):
         self.check_flow(APP_HOST, {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Site": "same-origin"}, False)
         self.check_flow(APP_HOST, {}, False)
 
-    def test_authenticated_baserow_view(self):
-        self.check_flow(BASEROW_HOST, {"Sec-Fetch-Dest": "iframe"}, True)
-        self.check_flow(BASEROW_HOST, {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Storage-Access": "none"}, True)
-        self.check_flow(BASEROW_HOST, {"Sec-Fetch-Dest": "document"}, False)
+    def test_authenticated_owner_app_views(self):
+        for host in OWNER_APP_HOSTS:
+            self.check_flow(host, {"Sec-Fetch-Dest": "iframe"}, True)
+            self.check_flow(host, {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Storage-Access": "none"}, True)
+            self.check_flow(host, {"Sec-Fetch-Dest": "document"}, False)
+            self.check_flow(host, {}, False)
 
     def test_unrelated_origins(self):
-        for host in ("localhost", "other.localhost", "market-watch.localhost.example"):
+        for host in ("localhost", "other.localhost", "market-watch.localhost.example", "product-manager.localhost.example"):
             self.check_flow(host, {"Sec-Fetch-Dest": "iframe"}, False)
 
 
