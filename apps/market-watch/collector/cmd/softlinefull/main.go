@@ -171,7 +171,7 @@ func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, erro
 						return products, nil
 					}
 				}
-				return append(products, softlinefamily.Product{URL: page, State: "unrecognized_product"}), nil
+				return append(products, softlinefamily.Product{URL: page, State: "unrecognized_product", StatusEvidence: "canonical_family_does_not_list_requested_url"}), nil
 			}
 			return []softlinefamily.Product{{URL: page, State: "unrecognized_product"}}, nil
 		}

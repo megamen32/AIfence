@@ -202,34 +202,62 @@ func htmlExcerpt(raw []byte) string {
 	if e != nil {
 		return ""
 	}
-	// Keep full bytes on disk. Model input is the original relevant markup,
-	// not website scripts/session state. Limit per example and total context.
 	var parts []string
-	doc.Find("script[type='application/ld+json']").EachWithBreak(func(_ int, n *goquery.Selection) bool {
-		if len(parts) >= 4 {
+	// Visible product title, SKU, status and price before boilerplate.
+	doc.Find("h1,.articul-manufacturer,.out-of-production-label,.no-price,[itemprop='price'],[itemprop='priceCurrency'],[itemprop='sku'],.price-field,.js-price-with-discount,input.js-product-quantity").EachWithBreak(func(_ int, n *goquery.Selection) bool {
+		if len(parts) >= 25 {
 			return false
 		}
-		if h, e := goquery.OuterHtml(n); e == nil {
+		if h, e := goquery.OuterHtml(n); e == nil && len(h) <= 700 {
 			parts = append(parts, h)
 		}
 		return true
 	})
+	// Send product/offer metadata, not irrelevant Organization/WebSite data.
+	for _, p := range schemaProducts(doc) {
+		fields := map[string]any{}
+		for _, k := range []string{"@type", "@id", "url", "mainEntityOfPage", "sku", "name"} {
+			if v, ok := p[k]; ok {
+				fields[k] = v
+			}
+		}
+		var offers []map[string]any
+		for _, o := range objectList(p["offers"]) {
+			f := map[string]any{}
+			for _, k := range []string{"@type", "url", "description", "price", "priceCurrency", "availability", "lowPrice", "highPrice", "eligibleQuantity", "priceSpecification"} {
+				if v, ok := o[k]; ok {
+					f[k] = v
+				}
+			}
+			offers = append(offers, f)
+			if len(offers) >= 5 {
+				break
+			}
+		}
+		fields["offers"] = offers
+		if b, e := json.Marshal(fields); e == nil && len(b) <= 2000 {
+			parts = append(parts, string(b))
+		}
+		if len(parts) >= 32 {
+			break
+		}
+	}
 	if _, data, ok := strings.Cut(doc.Find("#js-front-config").Text(), "window.temporaryFrontConfig ="); ok {
 		var cfg map[string]json.RawMessage
 		if json.NewDecoder(strings.NewReader(data)).Decode(&cfg) == nil {
-			for _, key := range []string{"product", "familyId", "models"} {
-				if v := cfg[key]; len(v) > 0 {
-					parts = append(parts, key+": "+string(v))
+			for _, k := range []string{"product", "familyId", "models"} {
+				if v := cfg[k]; len(v) > 0 {
+					parts = append(parts, k+": "+string(v[:min(len(v), 1300)]))
 				}
 			}
 		}
 	}
 	doc.Find("script,style,iframe,noscript,input[type='hidden'],form").Remove()
-	doc.Find("h1,[itemprop='price'],[itemprop='priceCurrency'],[itemprop='sku'],[class*='price'],[class*='articul'],[class*='quantity'],[class*='sku']").EachWithBreak(func(_ int, n *goquery.Selection) bool {
+	doc.Find("[class*='price'],[class*='articul'],[class*='quantity'],[class*='sku']").EachWithBreak(func(_ int, n *goquery.Selection) bool {
 		if len(parts) >= 60 {
 			return false
 		}
-		if h, e := goquery.OuterHtml(n); e == nil && len(h) <= 2400 {
+		if h, e := goquery.OuterHtml(n); e == nil && len(h) <= 700 {
 			parts = append(parts, h)
 		}
 		return true
@@ -240,6 +268,7 @@ func htmlExcerpt(raw []byte) string {
 	}
 	return strings.ToValidUTF8(out, "")
 }
+
 func (j *Journal) NextRepairBatch(now time.Time) (*RepairBatch, error) {
 	if e := j.indexRepairTemplates(); e != nil {
 		return nil, e
@@ -269,7 +298,7 @@ func (j *Journal) NextRepairBatch(now time.Time) (*RepairBatch, error) {
 		// page out of the model prompt when more than ten examples exist.
 		ids, e := j.db.Query(`SELECT MAX(f.evidence_id) FROM failed_tasks f JOIN repair_templates t ON t.evidence_id=f.evidence_id
  WHERE f.source=? AND f.error_type=? AND t.template=? AND f.state IN ('repair','exhausted')
- AND NOT EXISTS(SELECT 1 FROM repair_batch_examples x JOIN repair_batches b ON b.id=x.batch_id WHERE x.evidence_id=f.evidence_id AND b.state IN ('accepted','rejected'))
+ AND NOT EXISTS(SELECT 1 FROM repair_batch_examples x JOIN repair_batches b ON b.id=x.batch_id WHERE x.evidence_id=f.evidence_id AND b.state IN ('accepted','rejected','no_candidate'))
  GROUP BY f.url ORDER BY MIN(f.updated_at) LIMIT 21`, g[0], g[1], g[2])
 		if e != nil {
 			return nil, e

@@ -18,11 +18,12 @@ import (
 const Host = "store.softline.ru"
 
 type Product struct {
-	URL   string         `json:"url"`
-	Name  string         `json:"name"`
-	SKU   string         `json:"sku,omitempty"`
-	State string         `json:"state"`
-	Offer *catalog.Offer `json:"offer,omitempty"`
+	URL            string         `json:"url"`
+	Name           string         `json:"name"`
+	SKU            string         `json:"sku,omitempty"`
+	State          string         `json:"state"`
+	StatusEvidence string         `json:"status_evidence,omitempty"`
+	Offer          *catalog.Offer `json:"offer,omitempty"`
 }
 
 func objects[T any](raw json.RawMessage) ([]T, error) {
