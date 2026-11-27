@@ -7,6 +7,37 @@ description: Use before writing or running any demo, video, test, blind-scenario
 
 The jury must see that the agent finds the problem itself. A prompt that names tools, dates or metrics is a script, not a test. Rules are also summarised in the root `AGENTS.md`.
 
+## 0. Как войти на стенд (42080 и 42082)
+
+Пароли в репозитории нет и быть не должно. Учётки лежат в приватных файлах Mac, права 0600, формат JSON с полями `email` и `password`. Читать файл один раз за процесс, пароль не печатать и не логировать. Не искать пароль через Keychain и не трогать профиль личного Chrome владельца (см. AGENTS.md, «Unattended runs»).
+
+| Порт | Что это | Файл с учёткой (на Mac, `/Users/user/AIfence/.runtime/`) |
+| --- | --- | --- |
+| 42080 | Личный Airlock на Mac («Mac — это стенд»), приложения на `*.localhost:42080`. Сюда идут демо и приёмка | `film-s14-clean-pm-take-20261127/access.json` (демо-директор, чистый) или `film-s14-owner-private/access.json` (владелец с загруженным каталогом и кейсом S14) |
+| 42082 | QA-Airlock, старый образ (без ReadAppTool), слепые прогоны | `qa-sol-20261127/operator.json` |
+
+Учётки порта 42080 на 42082 не работают, и наоборот (проверено 27.11: чужой порт отвечает 401). Остальные `qa-track-*/operator.json` устарели и не входят ни на один порт, не использовать. У личной учётки владельца пароля в файле нет: он открывает стенд в своём браузере, где уже вошёл.
+
+### В браузере (Playwright, как в `docs/submission/s14-take/review_take.py`)
+
+1. Открыть Chromium со стандартными флагами `--use-mock-keychain` и `--password-store=basic`, отдельный профиль, не личный.
+2. `request.post("http://localhost:<порт>/auth/login", data={"email": …, "password": …})`. Ответ 200 содержит `accessToken` и ставит cookie `airlock_session`.
+3. Забрать `request.storage_state()` в контекст браузера и открыть `http://localhost:<порт>/` для чата или `http://product-manager.localhost:<порт>/` для панели PM. Если форма входа всё же показана, ввести email и пароль из того же файла на странице `http://localhost:<порт>/`.
+4. Проверка входа: `GET /api/v1/me` с `Authorization: Bearer <accessToken>` возвращает 200.
+
+### Через API
+
+```
+POST http://localhost:<порт>/auth/login   {"email": "...", "password": "..."}  ->  accessToken, refreshToken
+GET  http://localhost:<порт>/api/v1/me    Authorization: Bearer <accessToken>
+```
+
+- Одному агенту один токен на весь прогон, не логиниться на каждый запрос. Для слепых прогонов токен берёт `tests/integration/blind_director/token_client.py` из сокета `.runtime/blind-director/login.sock`, пароль в процесс не попадает.
+- Права владельца вместо демо-учётки (например привязки job→app, `/api/v1/agents/{id}/job-app-tool-bindings`) получают через device-login: `POST /auth/device/begin`, показать владельцу код, он подтверждает его сам на `/device-login`, затем `POST /auth/device/poll`. Подтверждать код за владельца нельзя.
+- Новую демо-учётку заводят `tests/integration/blind_director/local_qa_users.py` и `docs/submission/s14-take/prepare_case.py`. Файл сохраняют в `.runtime/<имя>/access.json` с правами 0600, а в таблицу выше добавляют строку.
+
+Если вход не получился: 401 значит не тот порт или файл. Не перебирать пароли: остановиться и записать в README трека, какой файл и порт пробовали. Не создавать учётки через `/auth/activate` и не менять пароли существующих.
+
 ## 1. Who writes the request
 
 A director of digital channels at Softline, about 40, does not read analytics, writes in chat quickly. She does not know product keys, SKUs, tool names, fixtures, metric names, date windows or which group is the control. She can be vague, wrong, emotional, mix two topics, add noise. She never pre-approves actions.
