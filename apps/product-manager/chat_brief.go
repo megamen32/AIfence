@@ -140,7 +140,7 @@ func appendCauseReview(b *strings.Builder, causes []handlers.CauseReading) {
 		if kind == "" {
 			kind = "причинный признак"
 		}
-		confirmation := "причина не доказана"
+		confirmation := "кандидат причины: величины измерены, причинность не проверена"
 		if c.Confirmation == "confirmed" {
 			confirmation = "подтверждено"
 		}
