@@ -16,6 +16,7 @@ import (
 type BriefQuery struct {
 	Offset  int  `json:"offset,omitempty"`
 	Summary bool `json:"summary,omitempty"`
+	Director bool `json:"director,omitempty"`
 }
 
 type BriefFact struct {
