@@ -1,9 +1,45 @@
-#!/usr/bin/env bash
-# AIfence: exact private Airlock source, isolated runtime, no credentials in Git.
-set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+#!/usr/bin/env python3
+"""Start AIfence using the approved personal runtime when it is installed."""
+import fcntl
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_rollout():
+    spec = importlib.util.spec_from_file_location("personal_mac_rollout", ROOT / "scripts/personal-mac-rollout.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main():
+    rollout = load_rollout()
+    markers = (rollout.RUNTIME / "personal-releases/current", rollout.RUNTIME / "personal-overlay")
+    personal = any(path.exists() or path.is_symlink() for path in markers)
+    runtime = rollout.RUNTIME if personal else ROOT / ".runtime"
+    env = dict(os.environ, AIFENCE_UP_ROOT=str(ROOT),
+               AIFENCE_UP_GUARD=str(ROOT / "scripts/personal-mac-rollout.py"), AIFENCE_UP_RUNTIME=str(runtime),
+               AIFENCE_UP_PERSONAL="1" if personal else "0")
+    command = ["bash", "-c", START, str(ROOT / "scripts/up"), *sys.argv[1:]]
+    if not personal:
+        return subprocess.call(command, env=env)
+    # Check before even creating the shared lock, then again while holding it.
+    rollout.installed_release()
+    with (runtime / "personal-overlay/release.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        rollout.installed_release()
+        return subprocess.call(command, env=env)
+
+
+START = r"""set -euo pipefail
+ROOT="${AIFENCE_UP_ROOT:?}"
 export PATH="/opt/homebrew/bin:/usr/local/go/bin:$PATH"
-RUNTIME="$ROOT/.runtime"; SRC="$RUNTIME/airlock"
+RUNTIME="${AIFENCE_UP_RUNTIME:?}"; SRC="$RUNTIME/airlock"
 mkdir -p "$RUNTIME"; chmod 700 "$RUNTIME"
 REV="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["revision"])' "$ROOT/platform/airlock.lock.json")"
 TAG="${REV:0:12}"
@@ -44,6 +80,9 @@ if [[ ! -f .env ]]; then
 fi
 grep -qx 'COMPOSE_PROJECT_NAME=aifence' .env || { echo 'Refusing foreign .env'; exit 1; }
 grep -qx 'TLS_MODE=local' .env || { echo 'Refusing non-local environment'; exit 1; }
+if [[ "$AIFENCE_UP_PERSONAL" == 1 ]]; then
+  python3 "$AIFENCE_UP_GUARD" --check-installed
+fi
 # Preserve upstream Compose; override only the local target architecture.
 cat > "$RUNTIME/compose.local.yml" <<'YAML'
 services:
@@ -72,7 +111,7 @@ YAML_NATIVE
 fi
 # Render the loopback Market Watch gateway without changing upstream files.
 if grep -qx 'DOMAIN=localhost' .env; then
-  "$ROOT/scripts/local-market-iframe" >> "$RUNTIME/compose.local.yml"
+  "$ROOT/scripts/local-market-iframe" --runtime "$RUNTIME" >> "$RUNTIME/compose.local.yml"
 fi
 # Personal overlays are optional local artifacts, excluded from Git.
 # Verify their exact local image IDs and provenance before selecting them.
@@ -111,7 +150,7 @@ build_if_missing() {
 }
 # Optionally import the exact signed-release image contents from an authorized cache.
 if [[ -n "${AIFENCE_CACHE_HOST:-}" || -s "$RUNTIME/cache-host" ]]; then
-  "$ROOT/scripts/import-release-images"
+  "$ROOT/scripts/import-release-images" --runtime "$RUNTIME"
 fi
 # Start the exact upstream dependency images, no platform code patches.
 build_if_missing "$AGENT_BASE_IMAGE" Dockerfile.agent-base
@@ -123,6 +162,9 @@ if ! docker image inspect "$AIRLOCK_IMAGE" >/dev/null 2>&1; then
 fi
 [[ "$(docker image inspect "$AIRLOCK_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$REV" ]] || { echo "Backend revision mismatch" >&2; exit 1; }
 build_if_missing "$FRONTEND_IMAGE" enterprise/Dockerfile.frontend
+if [[ "$AIFENCE_UP_PERSONAL" == 1 ]]; then
+  python3 "$AIFENCE_UP_GUARD" --check-installed
+fi
 "${compose[@]}" up -d --no-build --pull missing
 for ((i=0;i<120;i++)); do
   if "${compose[@]}" exec -T airlock wget -qO- http://localhost:8080/health >/dev/null 2>&1 && curl --noproxy '*' -fsS --max-time 4 http://localhost:42080/health >/dev/null 2>&1; then
@@ -135,3 +177,7 @@ for ((i=0;i<120;i++)); do
 done
 "${compose[@]}" ps >&2
 echo 'Airlock did not pass health checks' >&2; exit 1
+"""
+
+if __name__ == "__main__":
+    sys.exit(main())
