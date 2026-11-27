@@ -423,16 +423,7 @@ func run() error {
 	if e = s.loadVerifiedBatch(*batchFile); e != nil {
 		return e
 	}
-	catalog.PrioritizeURLs(inv.Families)
-	if e = s.scan(ctx, inv.Families, true, http.Fetch); e == nil {
-		e = s.scan(ctx, inv.Products, false, http.Fetch)
-	}
-	if e == nil {
-		e = s.drainRetries(ctx, http.Fetch)
-	}
-	if err := s.snapshot(); err != nil {
-		return err
-	}
+	e = s.runScheduled(ctx, http.Fetch)
 	if e == nil {
 		return save(filepath.Join(dir, "finished.json"), time.Now().UTC())
 	}

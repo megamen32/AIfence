@@ -259,7 +259,9 @@ func snapshot(dir string, inv inventory, pages map[string]catalog.PageResult) (p
 			}
 			if p.State != "error" && (inv.Source != "softmagazin" || p.Category == "software") {
 				for _, v := range p.Variants {
-					observed[v.URL] = true
+					if v.Status == "priced" || v.Status == "no_public_price" {
+						observed[v.URL] = true
+					}
 					status.Variants++
 				}
 			}
@@ -447,10 +449,26 @@ type queueOutcome struct {
 }
 
 func processBatch(ctx context.Context, s catalog.Source, pending []string, fetch catalog.Fetch, consume func(catalog.PageResult) error) error {
+	tasks := make([]catalog.ReadyTask, 0, len(pending))
+	for _, u := range pending {
+		tasks = append(tasks, catalog.ReadyTask{URL: u, Kind: "page"})
+	}
+	return processReadyBatch(ctx, s, tasks, fetch, consume, nil)
+}
+func processReadyBatch(ctx context.Context, s catalog.Source, pending []catalog.ReadyTask, fetch catalog.Fetch, consume func(catalog.PageResult) error, covered map[string]bool) error {
 	var controlErr error
-	returnErr := catalog.Pipeline(ctx, pending, func(work context.Context, u string) catalog.Downloaded {
-		return catalog.DownloadTask(work, s, u, fetch)
-	}, func(u string, d catalog.Downloaded) queueOutcome {
+	returnErr := catalog.Pipeline(ctx, pending, func(work context.Context, t catalog.ReadyTask) catalog.Downloaded {
+		if covered[t.URL] {
+			if j, gen, kind := catalog.JobJournal(work); j != nil {
+				if e := j.Resolve(s.ID, t.URL, gen, kind, 0); e != nil {
+					return catalog.Downloaded{Err: &catalog.ArchiveFailure{Err: e}, At: time.Now()}
+				}
+			}
+			return catalog.Downloaded{Skip: true}
+		}
+		return catalog.DownloadReady(work, s, t, fetch)
+	}, func(t catalog.ReadyTask, d catalog.Downloaded) queueOutcome {
+		u := t.URL
 		if d.Skip {
 			return queueOutcome{d: d}
 		}
@@ -685,6 +703,9 @@ func worker(ctx context.Context, s catalog.Source, root string, fetch catalog.Fe
 			lastExport = time.Now()
 		}
 		return nil
+	}
+	if journal, _, _ := catalog.JobJournal(ctx); journal != nil {
+		return runScheduled(ctx, s, dir, &inv, pages, fetch, consume)
 	}
 	if s.ID == "softmagazin" {
 		for _, u := range s.Seeds {

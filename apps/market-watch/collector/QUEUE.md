@@ -55,3 +55,34 @@ go test ./collector/...
 go test -race ./collector ./collector/cmd/softlinefull ./collector/cmd/fullcatalog
 ```
 The SDK application build/deploy is separate from the local Go collectors.
+
+## Independent scheduling (second revision)
+
+The journal is the scheduler. Both family and standalone URL inventories are
+restored before publishing a new snapshot. Ready work is selected from SQLite
+in bounded mixed windows: family/variant, new/retry and archived-body lanes
+each have a share, with the demo/competition preference inside each lane.
+The existing per-store writer locks remain the ownership boundary. An
+interrupted running task can be resumed after the owner releases its lock.
+
+Network failures retain their original attempts and exponentially delayed
+next attempt. A failure to parse a retained successful response moves directly
+to `repair`; the same body/rule pair is not retried. Old unresolved rows with
+no raw body remain network work. Repair batches are selected by source,
+error type and cached structural HTML fingerprint, with 10–20 examples and
+held-out validation. Only an accepted rule can reopen those archived tasks.
+A rejected batch leaves the missing prices explicitly unresolved.
+
+SoftMagazin category discovery proceeds in slices of at most eight network
+requests between price windows. It can still report incomplete scope or
+category count discrepancies; those are not permission to guess software
+classification. No listing audit blocks the existing exact URL inventory.
+
+The host start interval and robots/Retry-After restrictions are unchanged.
+An isolated transport timeout is local to the task; repeated transport
+failures reduce concurrency. Healthy responses, including 404/410, allow
+the host limiter to recover gradually. A source pause still stops new HTTP.
+
+This revision is not a publisher change-feed implementation: independent
+refresh of already verified prices remains a separate follow-up. The existing
+featured-offer refresh, export and import services are not replaced.

@@ -19,6 +19,7 @@ import (
 type categoryAudit struct {
 	InventoryAt string                     `json:"inventory_at"`
 	Complete    bool                       `json:"complete"`
+	NextAuditAt string                     `json:"next_audit_at,omitempty"`
 	Errors      map[string]string          `json:"errors,omitempty"`
 	Sections    map[string]sectionEvidence `json:"sections,omitempty"`
 }
@@ -66,7 +67,25 @@ func softwareSections(s catalog.Source, body []byte) ([]string, error) {
 
 // Only the publisher's software sections are used for early price snapshots.
 // Hardware also appears in the family sitemap and on general vendor lists.
+var errListingYield = errors.New("listing audit yielded to price queue")
+
 func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inventory, pages map[string]catalog.PageResult, fetch catalog.Fetch, save func(catalog.PageResult) error) error {
+	return collectListingsBudget(ctx, s, dir, inv, pages, fetch, save, 0)
+}
+func collectListingsBudget(ctx context.Context, s catalog.Source, dir string, inv *inventory, pages map[string]catalog.PageResult, fetch catalog.Fetch, save func(catalog.PageResult) error, budget int) error {
+	limited := budget > 0
+	if limited {
+		base := fetch
+		fetch = func(c context.Context, src catalog.Source, u string) ([]byte, error) {
+			if budget <= 0 {
+				return nil, errListingYield
+			}
+			budget--
+			return base(c, src, u)
+		}
+	}
+	var recheck []string
+
 	path := filepath.Join(dir, "software-listing-progress.json")
 	visits := map[string]listingVisit{}
 	if data, e := os.ReadFile(path); e == nil {
@@ -82,10 +101,25 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 		return err
 	}
 	root := "https://" + s.Host + "/soft/"
-	body, e := fetch(ctx, s, root)
-	if e != nil {
-		return e
+	var body []byte
+	var e error
+	if limited {
+		if j, _, _ := catalog.JobJournal(ctx); j != nil {
+			if ev, err := j.Latest(s.ID, root); err == nil && ev.At.Format(time.RFC3339) >= inv.DiscoveredAt {
+				body, e = j.Raw(ev)
+				if e != nil {
+					return e
+				}
+			}
+		}
 	}
+	if len(body) == 0 {
+		body, e = fetch(ctx, s, root)
+		if e != nil {
+			return e
+		}
+	}
+
 	sections, e := softwareSections(s, body)
 	if e != nil {
 		return e
@@ -136,6 +170,12 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 				return ctx.Err()
 			}
 			if e != nil {
+				if errors.Is(e, errListingYield) {
+					return e
+				}
+				if catalog.StopRequest(e) {
+					return e
+				}
 				// The family sitemap still provides the canonical detail URLs.
 				var status *catalog.HTTPStatus
 				if errors.As(e, &status) && status.Code == 403 && status.URL == current {
@@ -207,8 +247,12 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 			// A subsequent audit should refetch this section after page drift.
 			for page := range seen {
 				if v, ok := visits[page]; ok && v.Issue == "" {
-					v.Recheck = true
-					visits[page] = v
+					if limited {
+						recheck = append(recheck, page)
+					} else {
+						v.Recheck = true
+						visits[page] = v
+					}
 				}
 			}
 			if err := saveJSON(path, visits); err != nil {
@@ -220,5 +264,16 @@ func collectListings(ctx context.Context, s catalog.Source, dir string, inv *inv
 		}
 	}
 	audit.Complete = len(audit.Errors) == 0
+	if limited {
+		audit.NextAuditAt = time.Now().UTC().Add(3 * time.Hour).Format(time.RFC3339)
+		for _, page := range recheck {
+			v := visits[page]
+			v.Recheck = true
+			visits[page] = v
+		}
+		if e = saveJSON(path, visits); e != nil {
+			return e
+		}
+	}
 	return saveJSON(auditFile, audit)
 }

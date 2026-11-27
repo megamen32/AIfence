@@ -32,7 +32,7 @@ func TestJournalArchiveBackoffAndResume(t *testing.T) {
 		t.Fatal(e)
 	}
 	for i := 1; i <= MaxAttempts; i++ {
-		if e = j.RecordFailure("softline", url, "g", "product", "parse_unclassified", "", ev.ID, at, time.Time{}); e != nil {
+		if e = j.RecordFailure("softline", url, "g", "product", "network", "", 0, at, time.Time{}); e != nil {
 			t.Fatal(e)
 		}
 		f, e := j.Failure("softline", url, "g", "product")
@@ -62,8 +62,12 @@ func TestJournalArchiveBackoffAndResume(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer j.Close()
-	b, stored, ok, e := j.RetryBody("softline", url, "g", "product")
-	if e != nil || !ok || string(b) != string(raw) || !stored.At.Equal(at) {
+	stored, e := j.Evidence(ev.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := j.Raw(stored)
+	if e != nil || string(b) != string(raw) || !stored.At.Equal(at) {
 		t.Fatal("archive lost or freshness changed", e)
 	}
 	if allowed, e := j.MayRun("softline", url, "g", "product", time.Now().Add(time.Hour)); e != nil || allowed {
@@ -106,6 +110,22 @@ func TestRetryUsesArchiveNotNetwork(t *testing.T) {
 		t.Fatal(e)
 	}
 	ctx := WithJournal(context.Background(), j, "g", "product")
+	waiting, e := j.Failure(s.ID, u, "g", "product")
+	if e != nil || waiting.State != "repair" || waiting.Attempts != 1 {
+		t.Fatal(waiting, e)
+	}
+	d0 := DownloadTask(ctx, s, u, func(context.Context, Source, string) ([]byte, error) {
+		t.Fatal("identical HTML retried")
+		return nil, nil
+	})
+	if !d0.Skip {
+		t.Fatal("repair wait did not stop duplicate parse")
+	}
+	// Simulate the explicit requeue by a validated parser revision, tested
+	// end-to-end in TestRepairBatchGateAndHeldOut.
+	if _, e = j.db.Exec("UPDATE failed_tasks SET state='retry',attempts=0,next_attempt=0 WHERE url=?", u); e != nil {
+		t.Fatal(e)
+	}
 	d := DownloadTask(ctx, s, u, func(context.Context, Source, string) ([]byte, error) {
 		t.Fatal("parse retry touched network")
 		return nil, nil
@@ -206,7 +226,7 @@ func TestRepairBatchGateAndHeldOut(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		for range 5 {
+		for range 1 {
 			if e = j.RecordFailure("softline", u, "g", "product", "parse_unclassified", "", ev.ID, at, time.Time{}); e != nil {
 				t.Fatal(e)
 			}
