@@ -284,6 +284,9 @@ func GroupWeekDelta(rows []catalog.Offer, sku string, baselineFrom, currentFrom,
 	switch {
 	case len(out.Series) == 0:
 		out.Status = "unavailable"
+		out.MissingPeriods = append(out.MissingPeriods,
+			MissingPeriod{SKU: sku, Period: "baseline", Reason: "no stored observation of this SKU in the baseline week"},
+			MissingPeriod{SKU: sku, Period: "current", Reason: "no stored observation of this SKU in the current week"})
 		out.Warnings = append(out.Warnings, "No stored observations of this SKU in the requested weeks.")
 	case out.ComparablePairs == 0:
 		out.Status = "partial"
