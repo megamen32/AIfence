@@ -39,6 +39,7 @@ func (e *AdmissionPaused) Unwrap() error { return e.Status }
 type hostState struct {
 	robotsMu          sync.Mutex
 	group             *robotstxt.Group
+	robotsErr         error
 	paceMu            sync.Mutex
 	next              time.Time
 	pauseErr          *HTTPStatus
@@ -50,16 +51,22 @@ type hostState struct {
 	changed           chan struct{}
 	transport         http.RoundTripper
 }
+
+// Raw response sink is storage-agnostic: the native app uses PostgreSQL
+// receipts and Airlock Storage; standalone legacy workers use their journal.
+type HTTPArchive func(context.Context, string, string, string, int, string, time.Time, []byte) error
 type HTTP struct {
 	mu         sync.Mutex
 	hosts      map[string]*hostState
-	journal    *Journal
+	archive    HTTPArchive
 	publicOnly bool
 	transport  http.RoundTripper
 }
 
-func NewHTTP() *HTTP                   { return NewArchivedHTTP(nil) }
-func NewArchivedHTTP(j *Journal) *HTTP { return &HTTP{hosts: map[string]*hostState{}, journal: j} }
+func NewHTTP() *HTTP { return newHTTPWithArchive(nil) }
+func newHTTPWithArchive(archive HTTPArchive) *HTTP {
+	return &HTTP{hosts: map[string]*hostState{}, archive: archive}
+}
 func (h *HTTP) state(host string) *hostState {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -184,7 +191,7 @@ type response struct {
 	location string
 }
 
-func (s *hostState) get(ctx context.Context, raw string, delay time.Duration, j *Journal, source, requested string) (response, error) {
+func (s *hostState) get(ctx context.Context, raw string, delay time.Duration, archive HTTPArchive, source, requested string) (response, error) {
 	if e := s.wait(ctx, delay); e != nil {
 		return response{}, e
 	}
@@ -229,8 +236,8 @@ func (s *hostState) get(ctx context.Context, raw string, delay time.Duration, j 
 		}
 		location = loc.String()
 	}
-	if j != nil {
-		if _, err := j.Archive(source, requested, raw, res.StatusCode, location, at, body); err != nil {
+	if archive != nil {
+		if err := archive(ctx, source, requested, raw, res.StatusCode, location, at, body); err != nil {
 			if res.StatusCode == 403 || res.StatusCode == 429 || res.StatusCode == 503 || (res.StatusCode >= 500 && when.After(time.Now())) {
 				return response{}, errors.Join(&HTTPStatus{Code: res.StatusCode, RetryAfter: when, URL: raw}, &ArchiveFailure{err})
 			}
@@ -246,22 +253,28 @@ func (s *hostState) get(ctx context.Context, raw string, delay time.Duration, j 
 	return response{body: body}, nil
 }
 
-func (s *hostState) policy(ctx context.Context, host, source string, j *Journal) (*robotstxt.Group, error) {
+func (s *hostState) policy(ctx context.Context, host, source string, archive HTTPArchive) (*robotstxt.Group, error) {
 	s.robotsMu.Lock()
 	defer s.robotsMu.Unlock()
 	if s.group != nil {
 		return s.group, nil
 	}
-	res, e := s.get(ctx, "https://"+host+"/robots.txt", time.Second, j, source, "https://"+host+"/robots.txt")
+	if s.robotsErr != nil {
+		return nil, s.robotsErr
+	}
+	res, e := s.get(ctx, "https://"+host+"/robots.txt", time.Second, archive, source, "https://"+host+"/robots.txt")
 	if e != nil {
-		return nil, fmt.Errorf("robots unavailable: %w", e)
+		s.robotsErr = fmt.Errorf("robots unavailable: %w", e)
+		return nil, s.robotsErr
 	}
 	if res.location != "" {
-		return nil, fmt.Errorf("robots redirect unsupported")
+		s.robotsErr = fmt.Errorf("robots unavailable: redirect unsupported")
+		return nil, s.robotsErr
 	}
 	rules, e := robotstxt.FromBytes(res.body)
 	if e != nil {
-		return nil, e
+		s.robotsErr = fmt.Errorf("robots unavailable: %w", e)
+		return nil, s.robotsErr
 	}
 	s.group = rules.FindGroup(UserAgent)
 	return s.group, nil
@@ -277,7 +290,7 @@ func (h *HTTP) Fetch(ctx context.Context, src Source, raw string) ([]byte, error
 		return nil, fmt.Errorf("URL outside approved HTTPS host")
 	}
 	s := h.state(src.Host)
-	rules, e := s.policy(ctx, src.Host, src.ID, h.journal)
+	rules, e := s.policy(ctx, src.Host, src.ID, h.archive)
 	if e != nil {
 		return nil, e
 	}
@@ -296,7 +309,7 @@ func (h *HTTP) Fetch(ctx context.Context, src Source, raw string) ([]byte, error
 		if !rules.Test(u.RequestURI()) {
 			return nil, fmt.Errorf("robots.txt disallows %s", u.RequestURI())
 		}
-		res, e := s.get(ctx, raw, delay, h.journal, src.ID, requested)
+		res, e := s.get(ctx, raw, delay, h.archive, src.ID, requested)
 		if e != nil {
 			return nil, e
 		}
