@@ -161,6 +161,12 @@ templ sourceBoard(v HomeView) {
 						<span>Открыть исходный снимок</span>
 						@lucide.Icon("arrow-up-right", "size-4")
 					</a>
+					if v.Detail.BaserowURL != "" {
+						<a class="text-link" href={ v.Detail.BaserowURL } target="_blank" rel="noopener noreferrer">
+							<span>Открыть в Baserow</span>
+							@lucide.Icon("arrow-up-right", "size-4")
+						</a>
+					}
 				</section>
 			} else if v.ShowSources {
 				<div class="meta muted">Снимок данных · { v.AsOf }</div>

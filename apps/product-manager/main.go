@@ -19,6 +19,7 @@ func newAgent() *agentsdk.Agent {
 	topic := a.RegisterUIChangeTopic("product-decisions")
 	policy := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "private_model_route", Description: "Доступ закрытых снимков из чата с разрешенным локальным маршрутом модели. Значение задает владелец стенда после проверки конфигурации.", Default: "off", Pattern: "^(off|approved)$"})
 	strictReply := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "strict_submit_answer", Description: "Требовать финальный ответ через submit_answer. По умолчанию агент отвечает обычным текстом.", Default: "off", Pattern: "^(off|on)$"})
+	baserowWeeklyPrices := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "baserow_weekly_prices_url", Description: "Ссылка на настроенное представление Baserow с ценами по неделям. Пустое значение скрывает ссылку в карточке.", Default: "", Pattern: `^(|https?://[^\s/]+(?:/[^\s]*)?)$`})
 	e := evidence.New(a.DB(), topic, policy)
 	d := decision.New(a.DB(), topic)
 	bridge := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "signal_notifications", Description: "Установите bridge только после настройки разрешённого Airlock-канала доставки.", Default: "off", Pattern: "^(off|bridge)$"})
@@ -26,7 +27,7 @@ func newAgent() *agentsdk.Agent {
 	smtp := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "signal_smtp", Description: "Закрытая JSON-настройка внутреннего SMTP relay для одного владельца. Пустое значение отключает отправку.", Secret: true})
 	p := product.Service{Decisions: d, Evidence: e, Notifications: &product.SignalNotifications{Enabled: bridge, Topic: alerts, DB: a.DB()}, Mail: &product.SignalMail{Config: smtp, DB: a.DB()}}
 	watch := sourcewatch.Register(a)
-	h := handlers.New(p, a).WithCatalogOverview(registerCatalogOverview(a).Panel).WithDelivery(registerCustomerDelivery(a, p, watch))
+	h := handlers.New(p, a).WithCatalogOverview(registerCatalogOverview(a).Panel).WithDelivery(registerCustomerDelivery(a, p, watch)).WithBaserowURL(baserowWeeklyPrices)
 	registerPathCheck(a)
 	registerMarketIntelligence(a, e)
 	a.RegisterTool(tool.Typed[sourcewatch.Window, sourcewatch.WatchState]("start_source_watch").Description("Enable an owner-scoped weekly check. Use compare_periods for a store metric plus compare_demand for a Wordstat phrase, compare_google_trends for search interest, price_week_delta for one market SKU, family_price_week_delta for several SKUs or a family phrase, or several of these. Supply approved binding UUIDs, the percent drop threshold and the initial UTC Monday. Optional demand_drop_pct also triggers on falling search interest. Optional product_key and segment read an explicitly labelled product family snapshot instead of the live store; the family is never relabelled as store. A family price selection keeps one series per SKU and seller and never averages roubles across licences. Runs until stopped. The native job uses the owner’s explicitly bound read-only operations.").Execute(watch.Start).Build(), agentsdk.AccessUser)

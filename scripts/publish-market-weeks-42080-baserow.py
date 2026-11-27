@@ -19,6 +19,8 @@ MARKET_URL = "http://localhost:42080"
 MARKET_AGENT = "market-watch"
 DATABASE = "Market Watch"
 TABLE = "Цены по неделям"
+BACKLOG_TABLE = "Задачи бэклога · Redmine"
+SIGNALS_TABLE = "Сигналы и гипотезы"
 SKU = "KL4863RAKFS"
 FROM = "2026-11-09"
 TO = "2026-11-22"
@@ -104,6 +106,164 @@ def table_and_fields(sync, db_id):
     return table["id"], ids
 
 
+def find_table(sync, db_id, name):
+    tables = sync.api("GET", f"database/tables/database/{db_id}/")
+    table = next((row for row in tables if row["name"] == name), None)
+    if not table:
+        raise RuntimeError(f"Baserow table {name!r} is unavailable")
+    fields = {row["name"]: row for row in sync.api("GET", f"database/fields/table/{table['id']}/")}
+    return table["id"], fields
+
+
+def ensure_select(sync, table_id, fields, name, options):
+    field = fields.get(name)
+    if not field:
+        field = sync.api("POST", f"database/fields/table/{table_id}/", {
+            "name": name,
+            "type": "single_select",
+            "select_options": [{"value": value, "color": color} for value, color in options],
+        })
+        fields[name] = field
+    if field["type"] != "single_select":
+        raise RuntimeError(f"Baserow field {name!r} is not a single-select")
+    return field["id"]
+
+
+def rows_for(sync, table_id):
+    return sync.api("GET", f"database/rows/table/{table_id}/?user_field_names=true&size=200")["results"]
+
+
+def set_color_values(sync, table_id, rows, field_name, value_for):
+    base = f"database/rows/table/{table_id}/"
+    for row in rows:
+        value = value_for(row)
+        if value and row.get(field_name) != value:
+            sync.api("PATCH", base + f"{row['id']}/?user_field_names=true", {field_name: value})
+
+
+def ensure_view(sync, table_id, name, fields, *, filter_field=None, filter_type=None,
+                filter_value="", group_field=None, sort_field=None, sort_order="ASC", field_map=None):
+    path = f"database/views/table/{table_id}/"
+    views = sync.api("GET", path)
+    view = next((row for row in views if row["name"] == name), None)
+    if not view:
+        view = sync.api("POST", path, {"name": name, "type": "grid"})
+    view_id = view["id"]
+    field_options = {}
+    if field_map is None:
+        field_map = {row["name"]: row for row in sync.api("GET", f"database/fields/table/{table_id}/")}
+    mapped_fields = fields_by_name(field_map or {})
+    for order, (field_name, width, hidden) in enumerate(fields, start=1):
+        if field_name in mapped_fields:
+            field_options[str(mapped_fields[field_name])] = {
+                "order": order, "width": width, "hidden": hidden,
+            }
+    if field_options:
+        sync.api("PATCH", f"database/views/{view_id}/field-options/", {"field_options": field_options})
+    if filter_field:
+        existing = sync.api("GET", f"database/views/{view_id}/filters/")
+        if not any(x["field"] == filter_field and x["type"] == filter_type and x.get("value", "") == filter_value for x in existing):
+            sync.api("POST", f"database/views/{view_id}/filters/", {
+                "field": filter_field, "type": filter_type, "value": filter_value,
+            })
+    if group_field:
+        groups = sync.api("GET", f"database/views/{view_id}/group_bys/")
+        if not any(x["field"] == group_field for x in groups):
+            sync.api("POST", f"database/views/{view_id}/group_bys/", {"field": group_field, "order": "ASC", "width": 220})
+    if sort_field:
+        sorts = sync.api("GET", f"database/views/{view_id}/sortings/")
+        if not any(x["field"] == sort_field for x in sorts):
+            sync.api("POST", f"database/views/{view_id}/sortings/", {"field": sort_field, "order": sort_order})
+    return view_id
+
+
+def fields_by_name(fields):
+    if isinstance(fields, dict):
+        return {name: value["id"] if isinstance(value, dict) else value for name, value in fields.items()}
+    return {}
+
+
+def configure_visuals(sync, db_id, weekly_table_id, weekly_fields):
+    weekly_color = ensure_select(sync, weekly_table_id, weekly_fields, "Изменение цены · цвет", [
+        ("Снижение", "green"), ("Рост", "red"), ("Без изменения", "light-gray"),
+    ])
+    weekly_rows = rows_for(sync, weekly_table_id)
+    set_color_values(sync, weekly_table_id, weekly_rows, "Изменение цены · цвет", lambda row: (
+        "Снижение" if isinstance(row.get("Δ, %"), (int, float)) and row["Δ, %"] < 0 else
+        "Рост" if isinstance(row.get("Δ, %"), (int, float)) and row["Δ, %"] > 0 else "Без изменения"
+    ))
+    weekly_by_name = {**weekly_fields, "Изменение цены · цвет": {"id": weekly_color}}
+    ensure_view(sync, weekly_table_id, "Цены по неделям", [
+        ("Лицензия", 270, False), ("Маркировка", 90, False), ("Продавец", 140, False),
+        ("SKU", 125, False), ("Неделя с", 110, False), ("Неделя по", 110, False),
+        ("Цена, RUB", 110, False), ("Δ, %", 80, False), ("Изменение цены · цвет", 140, False),
+        ("Источник", 120, True), ("Ключ", 120, True),
+    ], filter_field=weekly_by_name["Маркировка"]["id"], filter_type="equal", filter_value="ДЕМО",
+       group_field=weekly_by_name["Продавец"]["id"], sort_field=weekly_by_name["Неделя с"]["id"], sort_order="ASC")
+    ensure_view(sync, weekly_table_id, "Снижения цен", [
+        ("Лицензия", 270, False), ("Продавец", 140, False), ("SKU", 125, False),
+        ("Неделя с", 110, False), ("Цена, RUB", 110, False), ("Δ, %", 80, False),
+        ("Изменение цены · цвет", 140, False), ("Маркировка", 90, False),
+    ], filter_field=weekly_by_name["Δ, %"]["id"], filter_type="lower_than", filter_value="0",
+       group_field=weekly_by_name["Продавец"]["id"], sort_field=weekly_by_name["Δ, %"]["id"], sort_order="ASC")
+
+    backlog_id, backlog_fields = find_table(sync, db_id, BACKLOG_TABLE)
+    pm_color = ensure_select(sync, backlog_id, backlog_fields, "Статус PM · цвет", [
+        ("В бэклоге", "blue"), ("Поддержана", "green"), ("На рассмотрении", "orange"),
+        ("Ожидает замера", "yellow"), ("Отклонена", "red"),
+    ])
+    redmine_color = ensure_select(sync, backlog_id, backlog_fields, "Статус Redmine · цвет", [
+        ("Открыта", "blue"), ("Закрыта", "green"), ("Не найдена", "light-gray"),
+    ])
+    backlog_rows = rows_for(sync, backlog_id)
+    set_color_values(sync, backlog_id, backlog_rows, "Статус PM · цвет", lambda row: {
+        "in_backlog": "В бэклоге", "supported": "Поддержана", "proposed": "На рассмотрении",
+        "awaiting_measurement": "Ожидает замера", "rejected": "Отклонена",
+    }.get(row.get("Статус PM"), "На рассмотрении"))
+    set_color_values(sync, backlog_id, backlog_rows, "Статус Redmine · цвет", lambda row: {
+        "open": "Открыта", "closed": "Закрыта", "не найдено": "Не найдена",
+    }.get(row.get("Статус Redmine"), "Не найдена"))
+    bf = {**backlog_fields, "Статус PM · цвет": {"id": pm_color}, "Статус Redmine · цвет": {"id": redmine_color}}
+    for name, filt, value in [("Задачи бэклога", None, ""), ("Открытые Redmine", bf["Статус Redmine · цвет"]["id"], "Открыта"), ("ДЕМО", bf["ДЕМО"]["id"], "true")]:
+        ensure_view(sync, backlog_id, name, [
+            ("Задача", 270, False), ("ДЕМО", 70, False), ("Статус PM · цвет", 130, False),
+            ("Статус Redmine · цвет", 140, False), ("Redmine ID", 90, False),
+            ("Цена задержки, ₽/нед", 130, False), ("Сигнал", 190, False),
+            ("Уверенность", 120, False), ("Ссылка Redmine", 120, True), ("ID гипотезы", 120, True),
+        ], filter_field=filt, filter_type="single_select_equal" if name == "Открытые Redmine" else ("boolean" if name == "ДЕМО" else None), filter_value=value,
+           group_field=bf["Статус PM · цвет"]["id"], sort_field=bf["Статус Redmine · цвет"]["id"], sort_order="ASC")
+
+    signals_id, signals_fields = find_table(sync, db_id, SIGNALS_TABLE)
+    signal_color = ensure_select(sync, signals_id, signals_fields, "Статус · цвет", [
+        ("В бэклоге", "blue"), ("Предложена", "orange"), ("Ждёт измерения", "yellow"),
+        ("Подтверждена", "green"), ("Отклонена", "red"),
+    ])
+    signal_rows = rows_for(sync, signals_id)
+    set_color_values(sync, signals_id, signal_rows, "Статус · цвет", lambda row: row.get("Статус", "Предложена"))
+    sf = {**signals_fields, "Статус · цвет": {"id": signal_color}}
+    ensure_view(sync, signals_id, "Сигналы и гипотезы", [
+        ("Гипотеза", 330, False), ("Товар", 190, False), ("Статус · цвет", 140, False),
+        ("Уверенность, %", 100, False), ("Уровень доказанности", 150, False),
+        ("Стоимость задержки, RUB/нед.", 150, False), ("Сигнал", 190, False),
+        ("Маркировка", 90, False), ("Источник PM", 220, False),
+        ("Задача Redmine", 120, True), ("Карточка PM", 120, True), ("Ключ строки", 120, True),
+    ], group_field=sf["Статус · цвет"]["id"], sort_field=sf["Стоимость задержки, RUB/нед."]["id"], sort_order="DESC")
+    ensure_view(sync, signals_id, "Требуют подтверждения", [
+        ("Гипотеза", 330, False), ("Товар", 190, False), ("Статус · цвет", 140, False),
+        ("Уверенность, %", 100, False), ("Уровень доказанности", 150, False),
+        ("Стоимость задержки, RUB/нед.", 150, False), ("Сигнал", 190, False), ("Маркировка", 90, False),
+    ], filter_field=sf["Статус · цвет"]["id"], filter_type="single_select_equal", filter_value="Предложена",
+       group_field=sf["Статус · цвет"]["id"], sort_field=sf["Уверенность, %"]["id"], sort_order="ASC")
+    ensure_view(sync, signals_id, "Есть задача Redmine", [
+        ("Гипотеза", 330, False), ("Товар", 190, False), ("Статус · цвет", 140, False),
+        ("Уверенность, %", 100, False), ("Задача Redmine", 140, False), ("Маркировка", 90, False),
+        ("Источник PM", 220, False),
+    ], filter_field=sf["Задача Redmine"]["id"], filter_type="not_empty", filter_value="",
+       group_field=sf["Статус · цвет"]["id"], sort_field=sf["Стоимость задержки, RUB/нед."]["id"], sort_order="DESC")
+
+    return {"weekly": weekly_table_id, "backlog": backlog_id, "signals": signals_id}
+
+
 def rows(history):
     result = []
     for series in history["series"]:
@@ -176,8 +336,9 @@ def main():
     sync = load_sync()
     db_id = database(sync)
     table_id, ids = table_and_fields(sync, db_id)
+    visuals = configure_visuals(sync, db_id, table_id, {name: {"id": value} for key, name, _ in FIELDS for value in [ids[key]]})
     count, updated, readback = publish(sync, table_id, ids, new_rows)
-    print(json.dumps({"database": db_id, "table": table_id, "rows": count, "readback": readback, "updated": updated, "created": count - updated}, ensure_ascii=False))
+    print(json.dumps({"database": db_id, "table": table_id, "visual_tables": visuals, "rows": count, "readback": readback, "updated": updated, "created": count - updated}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

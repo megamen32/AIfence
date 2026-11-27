@@ -27,6 +27,12 @@ type Handler struct {
 	files           *agentsdk.Agent
 	catalogOverview func(context.Context, catalogoverview.GetInput) (catalogoverview.Overview, error)
 	delivery        Delivery
+	baserowURL      *agentsdk.EnvVarHandle
+}
+
+func (h *Handler) WithBaserowURL(value *agentsdk.EnvVarHandle) *Handler {
+	h.baserowURL = value
+	return h
 }
 
 // Delivery pushes an approved card to the customer's tracker. Approve calls
@@ -426,6 +432,11 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		v.Detail, err = h.detail(ctx, rec)
 		if err != nil {
 			return v, err
+		}
+		if h.baserowURL != nil {
+			if value, getErr := h.baserowURL.Get(ctx); getErr == nil {
+				v.Detail.BaserowURL = value
+			}
 		}
 		var related []evidence.Summary
 		if q.Get("tab") == "after" {

@@ -19,7 +19,7 @@ type Decision struct {
 	CompetingExplanations                                                                                                 []string
 	MeasuredEvidence                                                                                                      []Link
 	Threshold, Operator, RuleLabel                                                                                        string
-	ID, Title, Product, Status, Action, Metric, Baseline, Rule, Control, Window, TaskID, Assessment, Version, SnapshotURL string
+	ID, Title, Product, Status, Action, Metric, Baseline, Rule, Control, Window, TaskID, Assessment, Version, SnapshotURL, BaserowURL string
 	Groups                                                                                                                []EvidenceGroup
 	Unknowns                                                                                                              []string
 }
