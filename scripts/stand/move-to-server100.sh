@@ -47,7 +47,7 @@ remote "test ! -e '$ROOT' || test -f '$ROOT/.move-managed'" || die "destination 
 remote "mkdir -p '$ROOT'/airlock '$ROOT'/build '$ROOT'/dumps '$ROOT'/volumes '$ROOT'/secrets '$ROOT'/apps '$ROOT'/pin; touch '$ROOT/.move-managed'"
 TMP=$(mktemp -d /tmp/aifence-move.XXXX)
 trap 'rm -rf "$TMP"' EXIT
-TMP_PIN="$TMP/containers.tsv"; TMP_APPS="$TMP/apps.tsv"
+TMP_PIN="$TMP/containers.tsv"; TMP_APPS="$TMP/apps.tsv"; TMP_GRANTS="$TMP/grants.tsv"
 TMP_METRIKA="$TMP/metrika.env"; TMP_AIRLOCK="$TMP/airlock.env"
 
 if ! done_phase pin; then
@@ -56,8 +56,10 @@ if ! done_phase pin; then
   [ "$source_revision" = "$CORE_SHA" ] || die "Airlock revision changed: $source_revision"
   "$D" --context "$CTX" ps --format '{{.Names}}|{{.Image}}|{{.ID}}' | sort > "$TMP_PIN"
   "$D" --context "$CTX" exec aifence-postgres-1 psql -At -F '|' -U airlock -d airlock -c "select id,slug,source_ref,image_ref from agents where status in ('active','building') order by slug" > "$TMP_APPS"
+  "$D" --context "$CTX" exec aifence-postgres-1 psql -At -F '|' -U airlock -d airlock -c "select agent_id,grantee_id,role from agent_grants order by agent_id,grantee_id,role" > "$TMP_GRANTS"
   sync_file "$TMP_PIN" "$ROOT/pin/containers.tsv"
   sync_file "$TMP_APPS" "$ROOT/pin/apps.tsv"
+  sync_file "$TMP_GRANTS" "$ROOT/pin/grants.tsv"
   remote "printf '%s\n' 'aifence_sha=$AIFENCE_SHA' 'airlock_source_sha=$AIRLOCK_SHA' 'airlock_release_sha=$CORE_SHA' 'airlock_tag=$AIRLOCK_TAG' 'agent_tag=$AGENT_TAG' > '$ROOT/pin/release.env'"
   mark pin
 fi
@@ -224,7 +226,7 @@ fi
 
 if ! done_phase reconcile; then
   log "reconcile: verify restored app generations and grants"
-  remote "pgid=\$(docker compose -p aifence-move --env-file '$ROOT/airlock/.env' -f '$ROOT/airlock/docker-compose.yml' ps -q postgres); docker exec \$pgid psql -At -U airlock -d airlock -c \"select count(*) from agents where status in ('active','building')\" > '$ROOT/pin/active-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from agent_grants' > '$ROOT/pin/agent-grants-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from resource_grants' > '$ROOT/pin/resource-grants-count'"
+  remote "pgid=\$(docker compose -p aifence-move --env-file '$ROOT/airlock/.env' -f '$ROOT/airlock/docker-compose.yml' ps -q postgres); docker exec \$pgid psql -At -F '|' -U airlock -d airlock -c \"select id,slug,source_ref,image_ref from agents where status in ('active','building') order by slug\" | sha256sum | cut -d' ' -f1 > '$ROOT/pin/actual-apps.sha256'; expected=\$(sha256sum '$ROOT/pin/apps.tsv' | cut -d' ' -f1); test \"\$(cat '$ROOT/pin/actual-apps.sha256')\" = \"\$expected\" || { echo 'Airlock app generation/source hash mismatch' >&2; exit 1; }; docker exec \$pgid psql -At -F '|' -U airlock -d airlock -c 'select agent_id,grantee_id,role from agent_grants order by agent_id,grantee_id,role' | sha256sum | cut -d' ' -f1 > '$ROOT/pin/actual-grants.sha256'; expected=\$(sha256sum '$ROOT/pin/grants.tsv' | cut -d' ' -f1); test \"\$(cat '$ROOT/pin/actual-grants.sha256')\" = \"\$expected\" || { echo 'Airlock grant hash mismatch' >&2; exit 1; }; docker exec \$pgid psql -At -U airlock -d airlock -c \"select count(*) from agents where status in ('active','building')\" > '$ROOT/pin/active-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from agent_grants' > '$ROOT/pin/agent-grants-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from resource_grants' > '$ROOT/pin/resource-grants-count'"
   mark reconcile
 fi
 
