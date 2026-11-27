@@ -35,6 +35,7 @@ type SourceSummary struct {
 type CatalogStatus struct {
 	Sources []SourceSummary `json:"sources"`
 	Total   int64           `json:"observed_offers"`
+	SKUs    int64           `json:"distinct_skus"`
 }
 
 func (s *Service) Coverage(ctx context.Context, _ struct{}) (CatalogStatus, error) {
@@ -51,6 +52,9 @@ func (s *Service) Coverage(ctx context.Context, _ struct{}) (CatalogStatus, erro
 		return CatalogStatus{}, err
 	}
 	var out CatalogStatus
+	if n, err := s.queries.CatalogSkuCount(ctx); err == nil {
+		out.SKUs = n
+	}
 	for _, src := range sources {
 		row, ok := counts[src.ID]
 		if !ok {

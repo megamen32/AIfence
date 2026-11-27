@@ -41,7 +41,7 @@ func TestCardsAndSnapshotsRenderActionsAndEvidence(t *testing.T) {
 
 func TestMonitorOverviewAndProductPanel(t *testing.T) {
 	v := HomeView{BoardURL: "./board?", Tab: "overview", Mode: "demo", Tabs: []Link{{Label: "Обзор"}}, Monitor: &Monitor{
-		Products: []MonitorProduct{{Name: "Kaspersky Small Office Security", URL: "./?monitor=demo", Origin: "Синтетические данные",
+		Products: []MonitorProduct{{Name: "Kaspersky Small Office Security", URL: "./?monitor=demo", Origin: "Набор из файла",
 			Cells: [4]MonitorCell{{Label: "Тревога", Tone: "alarm"}}}},
 		Pulse: []PulseItem{{Product: "Kaspersky Small Office Security", FirstDetected: "Впервые обнаружено 10:00", URL: "./?monitor=demo"}},
 	}}
@@ -54,16 +54,21 @@ func TestMonitorOverviewAndProductPanel(t *testing.T) {
 		return b.String()
 	}
 	overview := render(v)
-	for _, want := range []string{"Карта каталога", "./?monitor=demo", "Впервые обнаружено 10:00", "product-decisions", "Деморежим"} {
+	for _, want := range []string{"Карта каталога", "./?monitor=demo", "Впервые обнаружено 10:00", "product-decisions"} {
 		if !strings.Contains(overview, want) {
 			t.Fatal(want)
 		}
 	}
-	v.Monitor.Selected = &Investigation{Product: "Kaspersky Small Office Security", Origin: "Синтетические данные", Scale: "Не доказано",
+	for _, banned := range []string{"Деморежим", "синтетическ", "Синтетическ"} {
+		if strings.Contains(overview, banned) {
+			t.Fatalf("panel shows %q", banned)
+		}
+	}
+	v.Monitor.Selected = &Investigation{Product: "Kaspersky Small Office Security", Origin: "Набор из файла", Scale: "Не доказано",
 		Chart: Chart{Target: "30,30 570,170", Control: "30,30 570,35", Fill: "30,30 570,170 570,35 30,30", ReleaseX: "300"}}
 	v.Tab = "hypothesis"
 	product := render(v)
-	for _, want := range []string{"trend-fill", "trend-release", "Синтетические данные", "Задать допущения"} {
+	for _, want := range []string{"trend-fill", "trend-release", "Набор из файла", "Задать допущения"} {
 		if !strings.Contains(product, want) {
 			t.Fatal(want)
 		}
