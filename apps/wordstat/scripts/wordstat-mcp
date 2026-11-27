@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Launch pinned Supergateway with a file-backed bearer. stdout is MCP only."""
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import sys
+from urllib.parse import urlsplit
+
+APP = Path(__file__).resolve().parent.parent
+
+def fail(message):
+    print("Wordstat MCP: " + message, file=sys.stderr)
+    raise SystemExit(1)
+
+try:
+    settings = json.loads((APP / ".runtime/connection.json").read_text())
+    endpoint = settings["url"]
+    parsed = urlsplit(endpoint)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        fail("connection URL must be HTTPS without credentials, query or fragment")
+    token_path = APP / ".runtime/service-token"
+    if not stat.S_ISREG(token_path.stat().st_mode) or stat.S_IMODE(token_path.stat().st_mode) & 0o077:
+        fail("service-token must be a private regular file (mode 0600)")
+    token = token_path.read_text().strip()
+    if not token or "\n" in token or "\r" in token:
+        fail("service-token must contain one nonempty line")
+    node = shutil.which("node") or ("/opt/homebrew/bin/node" if Path("/opt/homebrew/bin/node").is_file() else None)
+    bridge = APP / "mcp/node_modules/supergateway/dist/index.js"
+    if not node or not bridge.is_file():
+        fail("install Node.js and run npm ci in mcp/ first")
+    env = os.environ.copy()
+    env["WORDSTAT_MCP_URL"] = endpoint
+    env["WORDSTAT_SERVICE_BEARER"] = token
+    env["ASKADS_TELEMETRY"] = "0"
+    os.execve(node, [node, str(bridge), "--config", str(APP / "mcp/remote.json")], env)
+except (OSError, ValueError, KeyError):
+    fail("connection is not configured; use scripts/configure-connection with the bearer on stdin")
