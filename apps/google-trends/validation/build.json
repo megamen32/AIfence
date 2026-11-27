@@ -1,0 +1,131 @@
+{
+  "checked_at": "2026-11-27T03:36:34.983941+00:00",
+  "command": "go tool air build",
+  "sdk_version": "0.11.0",
+  "go_version": "1.26.11",
+  "exit_code": 0,
+  "steps": [
+    "go mod tidy",
+    "templ generation",
+    "tailwind build",
+    "go test -p=1 -count=1 ./...",
+    "go build",
+    "offline manifest validation"
+  ],
+  "go_tests": [
+    "TestOfflineManifestDeclaresPrivateTypedToolsAndHeaderAuth",
+    "TestComparisonUsesOneRequestAndPreservesCommonScale",
+    "TestMeansUseSameCompleteUncensoredCohort",
+    "TestNoCommonCompleteIntervalsHasNoMean",
+    "TestProviderErrorsNeverBecomeEmptySuccessOrLeakDetails",
+    "TestFuturePeriodPreservedWithoutClientCall",
+    "TestDefaultPeriodLastTwelveCompleteMonths",
+    "TestUnexpectedShapeDiffersFromRecognizedNoData",
+    "TestRegionOfficialHasDataShapeAndUnknownFlags",
+    "TestRelatedBreakoutIsNotAnIndexOrPercent",
+    "TestNoPositionalRelabelingOfScores",
+    "TestComparisonIDIdentifiesActualReply",
+    "TestErrorClassificationUsesExplicitStatusNotRequestIDDigits",
+    "TestViewKeepsMissingZeroAndUnknownDistinct",
+    "TestChartBreaksAtMissingAndPartialValues",
+    "TestResultTemplateEscapesProviderText"
+  ],
+  "node_tests_passed": 4,
+  "provider_calls_during_build": 0,
+  "source_inputs_sha256": "f3918b62d2484004eb81f8309b7a8c96012ffd43d3ce5d654db59935a96f9b4f",
+  "source_inputs": [
+    {
+      "path": "go.mod",
+      "sha256": "3acfa7ba5ab8729d3e16c6e9c9aade568f98e8977324df7a93be979927974bb4"
+    },
+    {
+      "path": "go.sum",
+      "sha256": "530edcad85dfdcb221991277bb95aeeb868acbbfda5d831e32548dc6aa9bc125"
+    },
+    {
+      "path": "handlers/pages.go",
+      "sha256": "7b110f202b2bab2541ed2a631d3f6635d568d7866b3dcb90ce458d5f73ce4917"
+    },
+    {
+      "path": "handlers/pages_test.go",
+      "sha256": "4f45b5d37af7c65cc42cfb40b4e6c93a6a0f06c245f0fa37873f6aa06ec09a59"
+    },
+    {
+      "path": "integrations/hasdata.go",
+      "sha256": "bb5e981dd268364fbda3baff189d2058439713480f4cdaf95966a191270e9e21"
+    },
+    {
+      "path": "main.go",
+      "sha256": "ee493580a6f92a55b0fdf41896368d2034a16c5afd630bc69c3f49b27b8db853"
+    },
+    {
+      "path": "main_test.go",
+      "sha256": "881d8baf69a810b4e468c99dfaabb437c693d4050be9c56a9d7a8872561b656a"
+    },
+    {
+      "path": "mcp/runtime-config.test.mjs",
+      "sha256": "44700c9ca51ac7a097abdde528114e03d6e4e6f26f61dac49c95057e109fc1a1"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "b0b8d11a1740453fb76978f85a9d82b7f51174a461dfc1628711be4aa6f7010a"
+    },
+    {
+      "path": "package.json",
+      "sha256": "34340355cd396b535cb5a7b343c20fab779e47951cd7f6be3c6d1ef2a1b16b9b"
+    },
+    {
+      "path": "scripts/raw-mcp.mjs",
+      "sha256": "cc9f7760378b648846ad67cdc1a3650a7a3d89e34a371769e0e72a7eef5567f5"
+    },
+    {
+      "path": "scripts/runtime-config.mjs",
+      "sha256": "d510ddf026e44564eb49f222c296f80569104fe5275406c3749ac0d6a87139e1"
+    },
+    {
+      "path": "styles/app.css",
+      "sha256": "98a9779c869de48034411e12f74241444f2d3dcc17bfa3a62c202c6c3ef7f91b"
+    },
+    {
+      "path": "trends/parser.go",
+      "sha256": "d04507a77710c1f41123d91004bb45d49b84bb02e3a707eadebb174a3e2e1f9b"
+    },
+    {
+      "path": "trends/service.go",
+      "sha256": "f77fdd54cc99c47fedbad17c786bc74d4a31421edf1b59a3057f9f777b3a55e1"
+    },
+    {
+      "path": "trends/service_test.go",
+      "sha256": "3e6b1c965ca24a113db1c47479e3b7f0406c56bccb6140843809a1aabb16d972"
+    },
+    {
+      "path": "trends/tools.go",
+      "sha256": "70e1a0b4434dbb209fe74eb0eeb61b7c0fac0070ca7e0a7cc3ac9c094e6f8941"
+    },
+    {
+      "path": "trends/types.go",
+      "sha256": "6ecff42475758a32b11b70579eb85e3dfb6ff8f94688feccaed5626fe8c62c8e"
+    },
+    {
+      "path": "views/assets.go",
+      "sha256": "0d03a912ad9a7106d08c4120c0e62fb771f777baf52db5f662d27e05f32c39dc"
+    },
+    {
+      "path": "views/icons.templ",
+      "sha256": "76ede8796e3b9a6d3a6d4ab2cd660f8c155697b03c37294302471d65a89d4550"
+    },
+    {
+      "path": "views/layout.templ",
+      "sha256": "8f741f880594c2f0f146b57f5930339c5899da29820b3210424469ae3b88a732"
+    },
+    {
+      "path": "views/models.go",
+      "sha256": "b33e3e6657f26b40e874fb523c4081f69bf90c9f791ba45f474e60aa680fb09c"
+    },
+    {
+      "path": "views/page.templ",
+      "sha256": "52a56f0f0cea9bcd7514cf9c0d8b6e51bf19c550ebd0a51f3c7d07b0ecf15a6b"
+    }
+  ],
+  "runtime_validation": "pending authorized native deployment; raw Mac MCP is ready"
+}

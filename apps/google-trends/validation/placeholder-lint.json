@@ -1,0 +1,9 @@
+{
+  "checked_at": "2026-11-27T03:33:06.961093+00:00",
+  "official_command": "python3 scripts/lint-placeholder-names.py apps/google-trends/validation",
+  "repo_command_exit": 0,
+  "owned_scope_hits": [],
+  "scanned_owned_files": 32,
+  "uses_official_scan_function": true,
+  "repo_output_tail": "No placeholder product names found.\n"
+}

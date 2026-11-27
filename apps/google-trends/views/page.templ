@@ -1,0 +1,159 @@
+package views
+import "github.com/airlockrun/agentsdk/lucide"
+
+templ Page(f Form,result *ResultModel) {
+	@Layout() {
+		<header data-airlock-standalone-only class="mb-5">
+			<h1 class="text-2xl font-semibold">Google Trends</h1>
+			<p class="mt-1 text-sm opacity-75">Поисковый интерес к продуктам и рынкам</p>
+		</header>
+		<form action="/query" method="post" hx-post="/query" hx-trigger="submit" hx-target="#results" hx-swap="innerHTML" hx-disable="find button" hx-sync="this:drop" class="min-w-0 space-y-4 rounded-box border border-base-300 bg-base-100 p-4 sm:p-5">
+			<div class="grid min-w-0 gap-4 sm:grid-cols-2">
+				<label class="min-w-0">
+					<span class="mb-1 block text-sm font-medium">Что исследовать</span>
+					<select name="mode" class="select w-full min-w-0">
+						<option value="compare" selected?={ f.Mode=="compare" }>Сравнить интерес</option>
+						<option value="regions" selected?={ f.Mode=="regions" }>География</option>
+						<option value="related" selected?={ f.Mode=="related" }>Связанные запросы</option>
+					</select>
+				</label>
+				<label class="min-w-0">
+					<span class="mb-1 block text-sm font-medium">Регион</span>
+					<input name="geo" value={ f.Geo } placeholder="RU; пусто: весь мир" class="input w-full min-w-0" maxlength="16"/>
+				</label>
+			</div>
+			<label class="block min-w-0">
+				<span class="mb-1 block text-sm font-medium">Фразы, каждая с новой строки</span>
+				<textarea name="terms" rows="3" required class="textarea w-full min-w-0" maxlength="1010">{ f.Terms }</textarea>
+				<span class="mt-1 block text-xs opacity-75">Сравнение: 2–5 фраз. География: 1–5. Связанные запросы: одна фраза.</span>
+			</label>
+			<div class="grid min-w-0 gap-4 sm:grid-cols-2">
+				<label class="min-w-0"><span class="mb-1 block text-sm font-medium">Начало периода</span><input type="date" name="from" value={ f.From } required min="2004-01-01" class="input w-full min-w-0"/></label>
+				<label class="min-w-0"><span class="mb-1 block text-sm font-medium">Конец периода</span><input type="date" name="to" value={ f.To } required min="2004-01-01" class="input w-full min-w-0"/></label>
+			</div>
+			<details class="min-w-0">
+				<summary class="cursor-pointer text-sm">Параметры поиска</summary>
+				<div class="mt-3 grid min-w-0 gap-3 sm:grid-cols-3">
+					<label class="min-w-0"><span class="mb-1 block text-xs">Источник поиска</span><select name="property" class="select w-full min-w-0">
+						<option value="web" selected?={ f.Property=="web" }>Веб-поиск</option>
+						<option value="youtube" selected?={ f.Property=="youtube" }>YouTube</option>
+						<option value="news" selected?={ f.Property=="news" }>Новости</option>
+						<option value="images" selected?={ f.Property=="images" }>Картинки</option>
+						<option value="froogle" selected?={ f.Property=="froogle" }>Покупки</option>
+					</select></label>
+					<label class="min-w-0"><span class="mb-1 block text-xs">Код категории</span><input name="category" value={ f.Category } inputmode="numeric" class="input w-full min-w-0" maxlength="5"/></label>
+					<label class="min-w-0"><span class="mb-1 block text-xs">Уровень географии</span><select name="region" class="select w-full min-w-0">
+						<option value="region" selected?={ f.Region=="region" }>Регионы</option>
+						<option value="country" selected?={ f.Region=="country" }>Страны</option>
+						<option value="city" selected?={ f.Region=="city" }>Города</option>
+						<option value="dma" selected?={ f.Region=="dma" }>Медиарынки DMA</option>
+					</select></label>
+				</div>
+			</details>
+			<div class="flex flex-wrap items-center gap-3">
+				<button type="submit" class="btn btn-primary min-h-11">
+@ActionIcon("search")
+<span>Исследовать интерес</span></button>
+				<p class="text-xs opacity-75">Один запрос для всех фраз. Источник: Google Trends через HasData.</p>
+			</div>
+		</form>
+		<section id="results" class="mt-5 min-w-0" aria-live="polite">
+			if result!=nil {
+				@Results(*result)
+			} else {
+				<div class="rounded-box border border-base-300 p-5">
+					<h2 class="font-medium">Сначала внешний спрос, затем гипотеза</h2>
+					<p class="mt-2 text-sm opacity-80">Сравните продукт и рыночную формулировку в одном периоде. Динамику интереса можно сопоставить с внутренней воронкой, а региональные различия использовать для выбора следующего исследования.</p>
+					<p class="mt-2 text-xs opacity-75">Показатель 0–100 отражает относительный интерес. Пропуски данных будут показаны отдельно.</p>
+				</div>
+			}
+		</section>
+	}
+}
+templ Results(r ResultModel) {
+	<div class="min-w-0 space-y-4">
+		<div role="status" class="alert border border-base-300 bg-base-200">
+			@lucide.Icon("info","size-5 shrink-0")
+			<div class="min-w-0"><p class="font-medium break-words">{ r.Message }</p>
+				if r.Period!=" .. " {
+					<p class="mt-1 text-xs break-words">{ r.Period } · { r.Geo } · { r.Property } · категория { r.Category }</p>
+				}
+			</div>
+		</div>
+		if len(r.Metrics)>0 {
+			<div class="grid min-w-0 gap-3 sm:grid-cols-2">
+				for _,m:=range r.Metrics {
+					<div class="min-w-0 rounded-box border border-base-300 p-4">
+						<h3 class="break-words text-sm">{ m.Term }</h3>
+						<p class="my-2 text-2xl font-semibold">{ m.Value }</p>
+						<p class="text-xs opacity-75">Средний индекс · { m.Coverage }</p>
+					</div>
+				}
+			</div>
+		}
+		if len(r.Series)>0 {
+			<div class="min-w-0 rounded-box border border-base-300 p-3 sm:p-4">
+				<h3 class="text-sm font-medium">Интерес во времени · общая шкала 0–100</h3>
+				<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+					for _,s:=range r.Series {
+						<span class={ s.Class }>{ s.Name }</span>
+					}
+				</div>
+				<svg viewBox="0 0 660 210" role="img" aria-label="Относительный поисковый интерес; пропуски разрывают линии" class="mt-3 block w-full min-w-0">
+					<g class="text-base-300" stroke="currentColor" stroke-width="1">
+						<line x1="42" y1="24" x2="638" y2="24"/><line x1="42" y1="104" x2="638" y2="104"/><line x1="42" y1="184" x2="638" y2="184"/>
+					</g>
+					<g fill="currentColor" class="text-base-content" font-size="12"><text x="6" y="28">100</text><text x="12" y="108">50</text><text x="18" y="188">0</text></g>
+					for _,s:=range r.Series {
+						for _,segment:=range s.Segments {
+							<polyline points={ segment } fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" class={ s.Class }/>
+						}
+					}
+				</svg>
+				<div class="flex flex-wrap justify-between gap-2 text-xs opacity-75"><span>{ r.FirstInterval }</span><span>{ r.LastInterval }</span></div>
+				<p class="mt-2 text-xs opacity-75">Линии показывают завершенные интервалы с подтвержденными данными. Частичные и неизвестные интервалы, пропуски и «&lt;1» сохранены в таблице. Недельные интервалы могут пересекать границы выбранного периода.</p>
+			</div>
+		}
+		if len(r.Rows)>0 {
+			<details open class="min-w-0 rounded-box border border-base-300 p-3 sm:p-4">
+				<summary class="cursor-pointer text-sm font-medium">Данные источника</summary>
+				<div class="mt-3 max-w-full overflow-x-auto">
+					<table class="table table-sm">
+						<thead>
+<tr>
+<th>Интервал / регион / запрос</th>
+for _,term:=range r.Terms {
+<th class="max-w-48 whitespace-normal">{ term }</th>
+}
+</tr>
+</thead>
+						<tbody>
+							for _,row:=range r.Rows {
+								<tr><th class="min-w-40 whitespace-normal font-normal"><span>{ row.Label }</span><span class="mt-1 block text-xs opacity-65">{ row.Detail }</span></th>
+									for _,cell:=range row.Cells {
+<td class="min-w-24"><span class="font-medium">{ cell.Label }</span>
+if cell.Detail!="" {
+<span class="mt-1 block max-w-48 text-xs opacity-65">{ cell.Detail }</span>
+}
+</td>
+}
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</details>
+		}
+		for _,note:=range r.Notes {
+<p class="text-xs opacity-75">{ note }</p>
+}
+		if r.ExploreURL!="" {
+			<div class="flex flex-wrap items-center justify-between gap-3 text-xs">
+				<a href={ r.ExploreURL } target="_blank" rel="noopener noreferrer" class="link inline-flex items-center gap-1">
+@lucide.Icon("external-link","size-4")
+<span>Открыть в Google Trends</span></a>
+				<span class="break-words opacity-65">Проверено: { r.Checked }</span>
+			</div>
+		}
+	</div>
+}

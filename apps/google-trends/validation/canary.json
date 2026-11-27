@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-11-27T03:16:22.879352+00:00",
+  "request": {
+    "q": "Kaspersky Endpoint Security,Astra Linux",
+    "geo": "RU",
+    "dataType": "timeseries",
+    "date": "2026-01-01 2026-10-31",
+    "tz": 0
+  },
+  "provider_data_calls": 1,
+  "status": "ok",
+  "retry_count": 0,
+  "tool_names": [
+    "hasdata_google_trends_search_getTrendsData"
+  ],
+  "mcp_is_error": false,
+  "http_status": 200,
+  "point_count": 44,
+  "first_period": "Dec 28, 2025\u2009\u2013\u2009Jan 3, 2026",
+  "last_period": "Oct 25\u2009\u2013\u200931, 2026",
+  "request_id": "bf549a2d-5a44-47ac-9997-97388145777d",
+  "partial_points": 0,
+  "values_without_data": 2,
+  "launcher_exit_code": 0,
+  "remaining_credits": "not_returned",
+  "raw_payload": "private ignored .runtime/validation/canary-payload.json"
+}

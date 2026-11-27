@@ -1,0 +1,8 @@
+package views
+import "github.com/airlockrun/agentsdk/lucide"
+templ ActionIcon(name string) {
+	<span class="air-action-icon">
+		@lucide.Icon(name,"air-action-icon-idle")
+		<span class="loading loading-spinner air-action-icon-busy" role="status" aria-live="polite"><span class="sr-only">Получаем данные</span></span>
+	</span>
+}

@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-11-27T03:38:45.930558+00:00",
+  "reviewer": "materials_scenarios",
+  "result": "no blockers for path-only commit",
+  "reviewed": [
+    "parser envelopes and quality flags",
+    "common complete interval means",
+    "regional geoMap shape",
+    "Breakout semantics",
+    "explicit provider error status and redaction",
+    "credential preflight",
+    "private tool and route access",
+    "shared domain service",
+    "UI form state, loading, source metadata and responsive classes"
+  ],
+  "runtime_ui_acceptance": "pending native deployment",
+  "provider_calls_during_review": 0
+}
