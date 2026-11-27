@@ -29,15 +29,21 @@ import (
 // The owner starts the loop once by opening the panel; jobs then re-queue
 // themselves. Chat and model tools cannot reach these writes.
 type customerDelivery struct {
-	p       product.Service
-	db      *agentsdk.AgentDB
-	watch   *sourcewatch.Service
-	redmine *delivery.Redmine
-	dion    *delivery.Dion
-	sync    *agentsdk.JobHandle[slotInput, slotOutput]
-	morning *agentsdk.JobHandle[slotInput, slotOutput]
-	project *agentsdk.EnvVarHandle
-	public  *agentsdk.EnvVarHandle
+	p                product.Service
+	db               *agentsdk.AgentDB
+	watch            *sourcewatch.Service
+	redmine          *delivery.Redmine
+	dion             *delivery.Dion
+	sync             *agentsdk.JobHandle[slotInput, slotOutput]
+	morning          *agentsdk.JobHandle[slotInput, slotOutput]
+	project          *agentsdk.EnvVarHandle
+	public           *agentsdk.EnvVarHandle
+	syncHours        settingReader
+	morningLocalHour settingReader
+}
+
+type settingReader interface {
+	Get(context.Context) (string, error)
 }
 
 type slotInput struct {
@@ -56,6 +62,7 @@ const (
 	// 04:00 UTC is 09:00 at the owner's UTC+5 office.
 	morningHourUTC = 4
 	syncEvery      = time.Hour
+	ownerUTCOffset = 5 * time.Hour
 )
 
 func registerCustomerDelivery(a *agentsdk.Agent, p product.Service, watch *sourcewatch.Service) *customerDelivery {
@@ -67,7 +74,9 @@ func registerCustomerDelivery(a *agentsdk.Agent, p product.Service, watch *sourc
 	project := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "redmine_project", Description: "Идентификатор проекта Redmine для задач помощника.", Default: "personal", Pattern: `^[a-z0-9][a-z0-9_-]{0,99}$`})
 	public := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "redmine_public_url", Description: "Адрес Redmine для ссылок в панели.", Default: "http://redmine.localhost:42080", Pattern: `^https?://[^\s/]+(/[^\s]*)?$`})
 	chat := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "dion_test_chat", Description: "ID тестового чата Dion в UserIO (conv_…). Сводка уходит только в него; пусто = Dion выключен.", Default: "", Pattern: `^(|conv_[A-Za-z0-9]{8,64})$`})
-	d := &customerDelivery{p: p, db: a.DB(), watch: watch, project: project, public: public}
+	syncHours := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "redmine_sync_interval_hours", Description: "Интервал фоновой сверки Redmine в часах. Допустимо от 1 до 24; по умолчанию 1.", Default: "1", Pattern: `^(?:[1-9]|1[0-9]|2[0-4])$`})
+	morningLocalHour := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "dion_morning_hour_local", Description: "Час утренней заметки Dion по местному времени владельца (UTC+5), от 0 до 23. По умолчанию 9.", Default: "9", Pattern: `^(?:[0-9]|1[0-9]|2[0-3])$`})
+	d := &customerDelivery{p: p, db: a.DB(), watch: watch, project: project, public: public, syncHours: syncHours, morningLocalHour: morningLocalHour}
 	d.redmine = &delivery.Redmine{MCP: rm, DB: a.DB(), Transact: a.DB().Transaction, Tracker: "Улучшение"}
 	d.dion = &delivery.Dion{MCP: io, DB: a.DB(), Chat: chat.Get}
 	d.sync = agentsdk.RegisterJob(a, &agentsdk.Job[slotInput, slotOutput]{
@@ -118,8 +127,9 @@ func (d *customerDelivery) Ensure(ctx context.Context) {
 		return
 	}
 	now := time.Now().UTC()
+	settings := d.scheduleSettings(ctx)
 	d.queue(ctx, owner, "sync", d.sync, now.Add(5*time.Second), now)
-	d.queue(ctx, owner, "morning", d.morning, nextMorning(now), now)
+	d.queue(ctx, owner, "morning", d.morning, nextMorning(now, settings.morningHourUTC), now)
 }
 
 func (d *customerDelivery) queue(ctx context.Context, owner, kind string, job *agentsdk.JobHandle[slotInput, slotOutput], at, now time.Time) {
@@ -146,8 +156,36 @@ func (d *customerDelivery) enqueue(ctx context.Context, owner, kind string, job 
 	_, _ = d.db.ExecContext(ctx, `INSERT INTO pm_delivery_schedule (owner_id, kind, next_at) VALUES ($1,$2,$3) ON CONFLICT (owner_id, kind) DO UPDATE SET next_at = EXCLUDED.next_at`, owner, kind, at)
 }
 
-func nextMorning(now time.Time) time.Time {
-	t := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), morningHourUTC, 0, 0, 0, time.UTC)
+type deliveryScheduleSettings struct {
+	syncEvery      time.Duration
+	morningHourUTC int
+}
+
+func (d *customerDelivery) scheduleSettings(ctx context.Context) deliveryScheduleSettings {
+	return readScheduleSettings(ctx, d.syncHours, d.morningLocalHour)
+}
+
+func readScheduleSettings(ctx context.Context, syncHours, morningLocalHour settingReader) deliveryScheduleSettings {
+	settings := deliveryScheduleSettings{syncEvery: syncEvery, morningHourUTC: morningHourUTC}
+	if syncHours != nil {
+		if value, err := syncHours.Get(ctx); err == nil {
+			if hours, parseErr := strconv.Atoi(strings.TrimSpace(value)); parseErr == nil && hours >= 1 && hours <= 24 {
+				settings.syncEvery = time.Duration(hours) * time.Hour
+			}
+		}
+	}
+	if morningLocalHour != nil {
+		if value, err := morningLocalHour.Get(ctx); err == nil {
+			if hour, parseErr := strconv.Atoi(strings.TrimSpace(value)); parseErr == nil && hour >= 0 && hour <= 23 {
+				settings.morningHourUTC = (hour - int(ownerUTCOffset/time.Hour) + 24) % 24
+			}
+		}
+	}
+	return settings
+}
+
+func nextMorning(now time.Time, hourUTC int) time.Time {
+	t := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), hourUTC, 0, 0, 0, time.UTC)
 	if !t.After(now) {
 		t = t.Add(24 * time.Hour)
 	}
@@ -216,7 +254,7 @@ func (d *customerDelivery) runSync(ctx context.Context, _ agentsdk.JobContext, _
 		return slotOutput{}, err
 	}
 	out := d.syncBacklog(ctx, owner)
-	d.enqueue(ctx, owner, "sync", d.sync, time.Now().Add(syncEvery))
+	d.enqueue(ctx, owner, "sync", d.sync, time.Now().Add(d.scheduleSettings(ctx).syncEvery))
 	return out, nil
 }
 
@@ -244,7 +282,7 @@ func (d *customerDelivery) runMorning(ctx context.Context, _ agentsdk.JobContext
 	// Backlog first, so the morning note links fresh issues.
 	d.syncBacklog(ctx, owner)
 	out := d.sendMorning(ctx, owner)
-	d.enqueue(ctx, owner, "morning", d.morning, nextMorning(time.Now().Add(time.Minute)))
+	d.enqueue(ctx, owner, "morning", d.morning, nextMorning(time.Now().Add(time.Minute), d.scheduleSettings(ctx).morningHourUTC))
 	return out, nil
 }
 
@@ -314,13 +352,15 @@ func (d *customerDelivery) dionNow(w http.ResponseWriter, r *http.Request) error
 }
 
 type deliveryView struct {
-	Error    string
-	Issues   []delivery.RedmineIssue
-	Waiting  []decision.Record
-	Draft    *delivery.DionDraft
-	ChatSet  bool
-	NextSync string
-	NextDion string
+	Error        string
+	Issues       []delivery.RedmineIssue
+	Waiting      []decision.Record
+	Draft        *delivery.DionDraft
+	ChatSet      bool
+	NextSync     string
+	NextDion     string
+	SyncHours    int
+	MorningLocal int
 }
 
 func (d *customerDelivery) page(w http.ResponseWriter, r *http.Request) error {
@@ -333,7 +373,7 @@ func (d *customerDelivery) next(ctx context.Context, owner, kind string) string 
 	if err := d.db.QueryRowContext(ctx, `SELECT next_at FROM pm_delivery_schedule WHERE owner_id = $1 AND kind = $2`, owner, kind).Scan(&t); err != nil {
 		return "не запланировано"
 	}
-	return t.UTC().Add(5 * time.Hour).Format("02.01 15:04")
+	return t.UTC().Add(ownerUTCOffset).Format("02.01 15:04")
 }
 
 func (d *customerDelivery) render(w http.ResponseWriter, r *http.Request, msg string) error {
@@ -343,7 +383,8 @@ func (d *customerDelivery) render(w http.ResponseWriter, r *http.Request, msg st
 		return err
 	}
 	d.configure(ctx)
-	v := deliveryView{Error: msg, NextSync: d.next(ctx, owner, "sync"), NextDion: d.next(ctx, owner, "morning")}
+	settings := d.scheduleSettings(ctx)
+	v := deliveryView{Error: msg, NextSync: d.next(ctx, owner, "sync"), NextDion: d.next(ctx, owner, "morning"), SyncHours: int(settings.syncEvery / time.Hour), MorningLocal: (settings.morningHourUTC + int(ownerUTCOffset/time.Hour)) % 24}
 	if recs, err := d.records(ctx); err == nil {
 		for _, rec := range recs {
 			if !delivery.Eligible(rec) {
@@ -389,4 +430,8 @@ a{color:var(--accent)}form{display:inline}.tag{font-size:.8rem;border:1px solid 
 {{if not .ChatSet}}<p class="warn">Чат для сводки не подключён. Укажите получателя Dion в настройках доставки.</p>{{end}}
 {{with .Draft}}<p class="muted">{{.Day}} · {{if .Sent}}<span class="ok">отправлено</span>{{else}}<span class="warn">не отправлено</span>{{end}}</p><pre>{{.Text}}</pre>{{else}}<p class="muted">Сегодня сводка ещё не уходила.</p>{{end}}
 <p class="muted">Следующая: {{.NextDion}} <form method="post" action="./delivery/dion"><button>Отправить сейчас</button></form></p></section>
+<section><h2>Настройки доставки</h2>
+<div class="row"><span>Сверка Redmine</span><span class="muted">каждые {{.SyncHours}} ч.</span></div>
+<div class="row"><span>Утренняя заметка Dion</span><span class="muted">{{printf "%02d:00" .MorningLocal}} по местному времени (UTC+5)</span></div>
+<p class="muted">Изменить значения можно в настройках приложения.</p></section>
 </main></html>`))
