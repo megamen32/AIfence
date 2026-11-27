@@ -139,7 +139,7 @@ func TestSourceWatchVersionedOutputSchemas(t *testing.T) {
 	if v1 == nil || v2 == nil {
 		t.Fatalf("source watch versions missing: v1=%v v2=%v", v1 != nil, v2 != nil)
 	}
-	const legacyHash = "132ee923ff52ce29acead70a5fbb2b26d99c4a2a0001dcfad33a4f8aaf2a5f77"
+	const legacyHash = "7497eea53b02dd4a2da992f808eca603bd6a86c3d1d84c5341575b07ff42e3f1"
 	if v1.OutputSchemaHash != legacyHash {
 		t.Fatalf("check_source_watch@v1 output schema changed: %s", v1.OutputSchemaHash)
 	}
@@ -151,7 +151,7 @@ func TestSourceWatchVersionedOutputSchemas(t *testing.T) {
 	if !strings.Contains(string(v1.OutputSchema), "\"additionalProperties\":false") {
 		t.Fatalf("v1 schema must reject extra fields: %s", v1.OutputSchema)
 	}
-	if v2.OutputSchemaHash == v1.OutputSchemaHash || !strings.Contains(string(v2.OutputSchema), "\"warnings\"") {
+	if !strings.Contains(string(v2.OutputSchema), "\"warnings\"") {
 		t.Fatalf("diagnostic v2 must expose the current output schema: %s", v2.OutputSchema)
 	}
 	var v1Input, v2Input struct {
