@@ -20,7 +20,6 @@
       "enum": [
         "market",
         "metrika",
-        "wordstat",
         "sales",
         "research",
         "backlog",

@@ -11,7 +11,6 @@ These contracts are the shared boundary, not a service. Every app builds/deploys
 | market-watch | market_changes | product_key, from, to | evidence batch |
 | metrika-analyst | query_metrics | product_key, metric_keys, from, to, segment | evidence batch |
 | metrika-analyst | compare_periods | product_key, metric_keys, baseline_from, baseline_to, current_from, current_to, segment | evidence batch (baseline/current and derived change with source refs) |
-| metrika-analyst | compare_demand | phrase, monday (UTC) | observed Wordstat query counts for two complete weeks, or unavailable |
 | metrika-analyst | check_metrika | configured counter | status, observed source and timestamp; never include token |
 | product-manager | save_hypothesis | hypothesis object, expected_version | id/version/status |
 | product-manager | send_to_backlog | hypothesis_id, confirmed, idempotency_key | task id, url, exact tag |
