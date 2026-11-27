@@ -17,6 +17,7 @@ import (
 
 const (
 	demandFixture     = "fixtures/external-demand.json"
+	demandDirectory   = "external-demand"
 	demandImportLimit = 512 << 10
 	countMax          = 1<<53 - 1
 )
@@ -26,7 +27,7 @@ type demandInput struct {
 	Query      string `json:"query" jsonschema:"description=Exact search phrase as used by the source."`
 	Geo        string `json:"geo" jsonschema:"description=ALL for worldwide. Wordstat accepts RU or Yandex region ID. Trends uses Google Trends geo codes such as RU."`
 	Monday     string `json:"monday" jsonschema:"description=UTC Monday after the two completed Monday to Sunday weeks."`
-	SourcePath string `json:"source_path,omitempty" jsonschema:"description=Authorized evidence JSON in the caller's evidence directory. Use fixtures/external-demand.json only for explicit synthetic use."`
+	SourcePath string `json:"source_path,omitempty" jsonschema:"description=Authorized evidence JSON in the caller's external-demand or evidence directory. Use fixtures/external-demand.json only for explicit synthetic use."`
 }
 
 type demandDetails struct {
@@ -62,6 +63,10 @@ var (
 )
 
 func registerExternalDemand(a *agentsdk.Agent) {
+	a.RegisterDirectory(demandDirectory, agentsdk.DirectoryOpts{
+		Read: agentsdk.AccessUser, Write: agentsdk.AccessUser, List: agentsdk.AccessUser, Scope: agentsdk.ScopeUser,
+		Description: "Private weekly Wordstat and Google Trends snapshots supplied by the current user",
+	})
 	fetch := registerWordstatConnection(a)
 	read := func(ctx context.Context, path string) ([]byte, error) {
 		if path == demandFixture {
@@ -72,7 +77,7 @@ func registerExternalDemand(a *agentsdk.Agent) {
 			return nil, agentsdk.ErrNotFound
 		}
 		resolved, err := a.ResolveFilePath(ctx, path, agentsdk.FileOperationRead)
-		if err != nil || !strings.HasPrefix(string(resolved), "evidence/user-"+user.ID+"/") {
+		if err != nil || !ownedDemandPath(string(resolved), user.ID) {
 			return nil, agentsdk.ErrNotFound
 		}
 		f, err := a.OpenFile(ctx, string(resolved))
@@ -97,6 +102,11 @@ func registerExternalDemand(a *agentsdk.Agent) {
 		Execute(func(ctx context.Context, in demandInput) (demandBatch, error) {
 			return readDemand(ctx, in, trendsSpec, "research", time.Now(), read, fetch)
 		}).Build(), agentsdk.AccessUser)
+}
+
+func ownedDemandPath(path, userID string) bool {
+	suffix := "/user-" + userID + "/"
+	return strings.HasPrefix(path, demandDirectory+suffix) || strings.HasPrefix(path, "evidence"+suffix)
 }
 
 func readDemand(ctx context.Context, in demandInput, spec demandSpec, source string, now time.Time,

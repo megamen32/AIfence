@@ -25,6 +25,20 @@ func TestExternalDemandManifest(t *testing.T) {
 	}
 }
 
+func TestExternalDemandPath(t *testing.T) {
+	for path, want := range map[string]bool{
+		"external-demand/user-owner/case.json":       true,
+		"evidence/user-owner/case.json":              true,
+		"external-demand/user-other/case.json":       false,
+		"external-demand/user-owner-other/case.json": false,
+		"tmp/user-owner/case.json":                   false,
+	} {
+		if got := ownedDemandPath(path, "owner"); got != want {
+			t.Errorf("%s: got %t, want %t", path, got, want)
+		}
+	}
+}
+
 func TestExternalDemandWordstat(t *testing.T) {
 	const query = "Kaspersky Endpoint Security"
 	in := demandInput{ProductKey: query, Query: query, Geo: "ALL", Monday: "2026-09-28"}
