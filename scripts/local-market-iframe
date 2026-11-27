@@ -30,10 +30,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--standalone", action="store_true",
                         help="include the services key for a separate Compose file")
+    parser.add_argument("--runtime", type=Path, help="runtime source and output directory")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
-    runtime = root / ".runtime"
+    runtime = args.runtime.resolve() if args.runtime is not None else root / ".runtime"
     source = runtime / "airlock"
     config = {}
     for line in (source / ".env").read_text().splitlines():
