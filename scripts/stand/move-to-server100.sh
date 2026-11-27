@@ -10,7 +10,7 @@ ROOT=/home/roomhacker/aifence-move
 [ -n "${DEST_ROOT-}" ] && ROOT="$DEST_ROOT" || true
 HOST=move.aifence.bezrabotnyi.com
 [ -n "${PUBLIC_HOST-}" ] && HOST="$PUBLIC_HOST" || true
-PORT=44380
+PORT=44381
 [ -n "${CADDY_PORT-}" ] && PORT="$CADDY_PORT" || true
 BASEROW_NETWORK=aifence-agent-net-37aa7358-942e-44c4-acd0-b971e83e0ce9
 REDMINE_NETWORK=aifence-agent-net-358285c9-3347-436e-812d-55c6d3a61e73
@@ -295,13 +295,13 @@ EOF
   remote "cd '$ROOT/apps/redmine-mcp' && docker build --platform linux/amd64 -t aifence-redmine-mcp:2.23.0 ."
   remote "cd '$ROOT/apps/metrika' && docker build --platform linux/amd64 -t aifence-metrika-metrika-mcp:server100 -f metrika.Dockerfile ."
   remote "if docker image inspect userio-airlock:56c66260-mcp-oauth-amd64 >/dev/null 2>&1; then echo reuse-native-userio; else cd '$ROOT/apps/userio/source' && docker build --platform linux/amd64 -t userio-airlock:56c66260-arm64 --build-arg USERIO_REVISION=56c66260f2c1bf75c4b615e369fd0e032184e0ee -f Dockerfile.server100 . && docker tag userio-airlock:56c66260-arm64 userio-airlock:56c66260-pre-cabinet-amd64 && docker build --platform linux/amd64 -t userio-airlock:56c66260-demo-amd64 -f Dockerfile.demo-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-demo-ui-amd64 -f Dockerfile.demo-ui-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-qr-workers-amd64 -f Dockerfile.qr-workers-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-qr-live-amd64 -f Dockerfile.qr-live-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-mcp-oauth-amd64 -f Dockerfile.mcp-oauth-amd64 .; fi"
-  remote "cd '$ROOT/build/AIfence' && docker build --platform linux/amd64 -t aifence-app-competitor-research:$AIFENCE_SHA -f apps/competitor-research/Dockerfile apps/competitor-research || true; docker build --platform linux/amd64 -t aifence-app-market-watch:$AIFENCE_SHA -f apps/market-watch/Dockerfile apps/market-watch || true; docker build --platform linux/amd64 -t aifence-app-product-manager:$AIFENCE_SHA -f apps/product-manager/Dockerfile apps/product-manager || true"
+  remote "if test -d '$ROOT/build/AIfence'; then cd '$ROOT/build/AIfence' && docker build --platform linux/amd64 -t aifence-app-competitor-research:$AIFENCE_SHA -f apps/competitor-research/Dockerfile apps/competitor-research || true; docker build --platform linux/amd64 -t aifence-app-market-watch:$AIFENCE_SHA -f apps/market-watch/Dockerfile apps/market-watch || true; docker build --platform linux/amd64 -t aifence-app-product-manager:$AIFENCE_SHA -f apps/product-manager/Dockerfile apps/product-manager || true; fi"
   remote "for image in rustfs/rustfs:latest alpine/socat:1.8.0.3 moby/buildkit:rootless cloudflare/cloudflared:latest caddy:2-alpine; do docker image inspect \"\$image\" >/dev/null 2>&1 || docker pull --platform linux/amd64 \"\$image\"; done"
   remote "cd '$ROOT/airlock' && docker compose -p aifence-move --env-file .env -f docker-compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && docker compose -p aifence-move-redmine -f redmine.compose.yml -f redmine.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && BASEROW_PUBLIC_URL='https://$HOST' BASEROW_AIRLOCK_NETWORK='$BASEROW_NETWORK' BASEROW_PLATFORM=linux/amd64 docker compose -p aifence-move-baserow -f apps-baserow.compose.yml -f baserow.server100.yml up -d --no-build --pull never"
   remote "docker network inspect aifence-redmine-mcp_connector >/dev/null 2>&1 || docker network create aifence-redmine-mcp_connector >/dev/null; cd '$ROOT/apps/redmine-mcp' && docker compose -p aifence-move-redmine-mcp -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
-  remote "cd '$ROOT/apps/metrika' && docker compose -p aifence-move-metrika --env-file '$ROOT/secrets/metrika.env' -f metrika.compose.yml -f compose.server100.yml up -d --no-build --pull never"
+  remote "cd '$ROOT/apps/metrika' && AIFENCE_CORE_CONTAINER=aifence-move-airlock-1 docker compose -p aifence-move-metrika --env-file '$ROOT/secrets/metrika.env' -f metrika.compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT/apps/userio' && docker compose -p userio-airlock-standalone-move -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
   mark up
 fi
