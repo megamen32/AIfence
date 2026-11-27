@@ -32,7 +32,7 @@ func TestAgentComposition(t *testing.T) {
 	if len(manifest.Routes) == 0 {
 		t.Fatal("app must declare its HTTP routes")
 	}
-	for _, name := range []string{"submit_answer", "review_sales_and_prices", "save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis", "get_product_focus", "set_product_focus", "rank_hypotheses", "set_review_estimate", "private_review_link", "get_catalog_overview", "import_catalog_overview"} {
+	for _, name := range []string{"read_wordstat", "read_google_trends", "read_competitor_prices", "submit_answer", "review_sales_and_prices", "save_hypothesis", "investigate_orders", "send_to_backlog", "evaluate_hypothesis", "get_product_focus", "set_product_focus", "rank_hypotheses", "set_review_estimate", "private_review_link", "get_catalog_overview", "import_catalog_overview"} {
 		if !slices.ContainsFunc(manifest.Tools, func(tool wire.ToolDef) bool {
 			return tool.Name == name && tool.Access == wire.AccessUser && len(tool.InputSchema) > 0
 		}) {
