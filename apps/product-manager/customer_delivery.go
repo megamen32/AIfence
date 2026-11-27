@@ -257,7 +257,16 @@ func (d *customerDelivery) TaskLink(ctx context.Context, r decision.Record) (str
 func sameOrigin(next agentsdk.RouteHandlerFunc) agentsdk.RouteHandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		if origin := r.Header.Get("Origin"); origin != "" {
-			if u, err := url.Parse(origin); err != nil || u.Host != r.Host {
+			// Airlock replaces X-Forwarded-Host with the public request host
+			// before forwarding to this authenticated application runtime.
+			host := r.Host
+			if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" {
+				host = forwarded
+			}
+			u, err := url.Parse(origin)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+				u.User != nil || u.Path != "" || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" ||
+				!strings.EqualFold(u.Host, host) {
 				http.Error(w, "Запустите действие из панели Product Manager.", http.StatusForbidden)
 				return nil
 			}
