@@ -25,6 +25,7 @@ type FamilyCoverage struct {
 	ObservedSeries  int `json:"observed_series"`
 	ComparablePairs int `json:"comparable_pairs"`
 	MissingSeries   int `json:"missing_series"`
+	MissingSKUWeeks int `json:"missing_sku_weeks"`
 }
 
 // FamilyDelta aggregates counts and evidence IDs only. Absolute prices are
@@ -133,7 +134,13 @@ func aggregateFamilyDelta(out FamilyDelta, now time.Time) FamilyDelta {
 	for _, one := range out.Results {
 		out.Coverage.ObservedSeries += len(one.Series)
 		out.Coverage.ComparablePairs += one.ComparablePairs
-		out.Coverage.MissingSeries += len(one.MissingPeriods)
+		for _, missing := range one.MissingPeriods {
+			if missing.Seller == "" {
+				out.Coverage.MissingSKUWeeks++
+			} else {
+				out.Coverage.MissingSeries++
+			}
+		}
 		if one.ComparablePairs > 0 {
 			out.Coverage.SKUsWithPairs++
 		}
