@@ -36,27 +36,28 @@ type marketIntelligenceResult struct {
 }
 
 type marketIntelligenceObservation struct {
-	ID              string             `json:"id"`
-	ProductKey      string             `json:"product_key"`
-	MetricKey       string             `json:"metric_key"`
-	Kind            string             `json:"kind"`
-	Value           float64            `json:"value"`
-	Unit            string             `json:"unit"`
-	Period          evidence.Period    `json:"period"`
-	SourceRef       evidence.SourceRef `json:"source_ref"`
-	Status          string             `json:"status"`
-	Origin          string             `json:"origin,omitempty"`
-	Synthetic       bool               `json:"synthetic"`
-	AuthenticAPI    bool               `json:"authentic_api,omitempty"`
-	Normalization   string             `json:"normalization,omitempty"`
-	Geo             string             `json:"geo,omitempty"`
-	Name            string             `json:"name,omitempty"`
-	Seller          string             `json:"seller,omitempty"`
-	PriceBasis      string             `json:"price_basis,omitempty"`
-	Quantity        *float64           `json:"quantity,omitempty"`
-	MaxQuantity     *float64           `json:"max_quantity,omitempty"`
-	CapturedAt      string             `json:"captured_at,omitempty"`
-	ComparableTerms bool               `json:"comparable_terms,omitempty"`
+	ID               string             `json:"id"`
+	ProductKey       string             `json:"product_key"`
+	MetricKey        string             `json:"metric_key"`
+	Kind             string             `json:"kind"`
+	Value            float64            `json:"value"`
+	Unit             string             `json:"unit"`
+	Period           evidence.Period    `json:"period"`
+	SourceRef        evidence.SourceRef `json:"source_ref"`
+	Status           string             `json:"status"`
+	Origin           string             `json:"origin,omitempty"`
+	Synthetic        bool               `json:"synthetic"`
+	Normalization    string             `json:"normalization,omitempty"`
+	Geo              string             `json:"geo,omitempty"`
+	Name             string             `json:"name,omitempty"`
+	Seller           string             `json:"seller,omitempty"`
+	PriceBasis       string             `json:"price_basis,omitempty"`
+	Quantity         *float64           `json:"quantity,omitempty"`
+	MaxQuantity      *float64           `json:"max_quantity,omitempty"`
+	CapturedAt       string             `json:"captured_at,omitempty"`
+	ComparableTerms  bool               `json:"comparable_terms"`
+	ComparisonGroup  string             `json:"comparison_group,omitempty"`
+	ComparisonReason string             `json:"comparison_reason,omitempty"`
 }
 
 type marketIntelligence struct {
@@ -102,16 +103,29 @@ func (s marketIntelligence) read(ctx context.Context, in marketIntelligenceInput
 	if err != nil {
 		return marketIntelligenceResult{}, err
 	}
+	var unavailable marketIntelligenceResult
 	for _, snapshot := range snapshots {
 		result, err := s.readSnapshot(ctx, snapshot, in, spec)
 		if err != nil {
 			return marketIntelligenceResult{}, err
 		}
-		if result.Status == "available" || in.SnapshotID != "" || len(result.Warnings) > 0 {
+		if snapshotSearchComplete(in, result) {
 			return result, nil
 		}
+		if unavailable.SnapshotID == "" {
+			unavailable = result
+		}
+		unavailable.Warnings = uniqueStrings(append(unavailable.Warnings, result.Warnings...))
+	}
+	if unavailable.SnapshotID != "" {
+		unavailable.Warnings = uniqueStrings(append(unavailable.Warnings, "В авторизованных импортированных снимках источник не найден."))
+		return unavailable, nil
 	}
 	return marketIntelligenceResult{Status: "unavailable", Source: spec.name, Warnings: []string{"В авторизованных импортированных снимках источник не найден."}}, nil
+}
+
+func snapshotSearchComplete(in marketIntelligenceInput, result marketIntelligenceResult) bool {
+	return in.SnapshotID != "" || result.Status == "available"
 }
 
 func (s marketIntelligence) snapshotCandidates(ctx context.Context, requested string) ([]evidence.Summary, error) {
@@ -166,7 +180,8 @@ func (s marketIntelligence) readSnapshot(ctx context.Context, snapshot evidence.
 func selectIntelligenceRows(rows []evidence.Row, spec intelligenceSpec) []marketIntelligenceObservation {
 	out := make([]marketIntelligenceObservation, 0, len(rows))
 	for _, row := range rows {
-		if row.Source != spec.source || row.Metric != spec.metric || row.Status != "observed" {
+		allowedStatus := row.Status == "observed" || spec.market && row.Status == "incomparable"
+		if row.Source != spec.source || row.Metric != spec.metric || !allowedStatus {
 			continue
 		}
 		if !spec.market && !slices.Contains(spec.sourceIDs, row.Ref.SourceID) {
@@ -176,7 +191,7 @@ func selectIntelligenceRows(rows []evidence.Row, spec intelligenceSpec) []market
 			continue
 		}
 		value, err := strconv.ParseFloat(row.Value, 64)
-		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || (!spec.market && row.Unit != spec.unit) {
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || (!spec.market && row.Unit != spec.unit) || (spec.market && (value <= 0 || len(row.Unit) != 3)) {
 			continue
 		}
 		if (spec.unit == "count" && (value > 9007199254740991 || value != math.Trunc(value))) || (spec.unit == "index" && value > 100) {
@@ -188,9 +203,6 @@ func selectIntelligenceRows(rows []evidence.Row, spec intelligenceSpec) []market
 			ID: row.ID, ProductKey: row.Product, MetricKey: row.Metric, Kind: row.Kind, Value: value, Unit: row.Unit, Period: row.Period, SourceRef: row.Ref, Status: row.Status,
 			Origin: origin, Synthetic: detailBool(details, "synthetic") || origin == "synthetic_fixture", Normalization: detailString(details, "normalization"), Geo: detailString(details, "geo"),
 		}
-		if row.Ref.SourceID == "yandex-wordstat:search-api" && row.Metric == "search_queries" && row.Unit == "count" {
-			item.AuthenticAPI = true
-		}
 		if spec.market {
 			item.Name = detailString(details, "name")
 			item.Seller = detailString(details, "seller")
@@ -198,10 +210,13 @@ func selectIntelligenceRows(rows []evidence.Row, spec intelligenceSpec) []market
 				item.Seller = row.Ref.SourceID
 			}
 			item.PriceBasis = detailString(details, "price_basis")
-			item.Quantity = detailNumber(details, "quantity")
-			item.MaxQuantity = detailNumber(details, "max_quantity")
+			item.Quantity = detailPositiveInteger(details, "quantity")
+			item.MaxQuantity = detailPositiveInteger(details, "max_quantity")
 			item.CapturedAt = detailString(details, "captured_at")
-			item.ComparableTerms = item.PriceBasis != "" && item.Quantity != nil
+			comparison := detailObject(details, "market_comparison")
+			item.ComparisonGroup = detailString(comparison, "group")
+			item.ComparisonReason = detailString(comparison, "reason")
+			item.ComparableTerms, item.ComparisonReason = comparablePriceTerms(item, row.Status, detailBool(comparison, "comparable"))
 		}
 		out = append(out, item)
 	}
@@ -256,12 +271,38 @@ func detailBool(details map[string]any, key string) bool {
 	return value
 }
 
-func detailNumber(details map[string]any, key string) *float64 {
+func detailPositiveInteger(details map[string]any, key string) *float64 {
 	value, ok := details[key].(float64)
-	if !ok || value < 0 {
+	if !ok || value <= 0 || value != math.Trunc(value) {
 		return nil
 	}
 	return &value
+}
+
+func detailObject(details map[string]any, key string) map[string]any {
+	value, _ := details[key].(map[string]any)
+	return value
+}
+
+func comparablePriceTerms(item marketIntelligenceObservation, status string, sourceComparable bool) (bool, string) {
+	switch {
+	case status == "incomparable":
+		return false, "Источник пометил условия как несопоставимые."
+	case item.Quantity == nil:
+		return false, "Магазин не указал положительное целое количество."
+	case item.PriceBasis != "per_unit" && item.PriceBasis != "displayed_total":
+		return false, "Базис цены неизвестен."
+	case item.PriceBasis == "per_unit" && (item.MaxQuantity == nil || *item.MaxQuantity < *item.Quantity):
+		return false, "Не указана корректная верхняя граница количества."
+	case item.ComparisonGroup == "":
+		return false, "Сопоставимость не подтверждена импортированным источником."
+	case !sourceComparable:
+		if item.ComparisonReason != "" {
+			return false, item.ComparisonReason
+		}
+		return false, "Импортированный источник не подтвердил сопоставимость."
+	}
+	return true, ""
 }
 
 func pageBounds(offset, limit, total int) (int, int) {

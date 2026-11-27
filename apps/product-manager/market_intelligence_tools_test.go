@@ -39,6 +39,9 @@ func TestMarketIntelligenceToolContracts(t *testing.T) {
 		if strings.Contains(output, "cause") || strings.Contains(output, "oracle") {
 			t.Fatalf("%s output exposes a conclusion field: %s", name, output)
 		}
+		if strings.Contains(output, "authentic_api") {
+			t.Fatalf("%s output turns a declared source into an authenticity claim: %s", name, output)
+		}
 	}
 }
 
@@ -52,7 +55,7 @@ func TestDemandReadersAcceptOnlyDeclaredImportedSources(t *testing.T) {
 		intelligenceRow("not-a-number", "research", "metric", "search_queries", "NaN", "count", "wordstat", `{}`),
 	}
 	wordstat := selectIntelligenceRows(rows, intelligenceSpec{source: "research", metric: "search_queries", unit: "count", sourceIDs: []string{"wordstat", "yandex-wordstat:search-api"}})
-	if len(wordstat) != 1 || !wordstat[0].AuthenticAPI || wordstat[0].Origin != "authorized_import" || wordstat[0].Geo != "RU" || wordstat[0].Synthetic {
+	if len(wordstat) != 1 || wordstat[0].SourceRef.SourceID != "yandex-wordstat:search-api" || wordstat[0].Origin != "authorized_import" || wordstat[0].Geo != "RU" || wordstat[0].Synthetic {
 		t.Fatalf("unexpected Wordstat rows: %+v", wordstat)
 	}
 	trends := selectIntelligenceRows(rows, intelligenceSpec{source: "research", metric: "search_interest", unit: "index", sourceIDs: []string{"google_trends"}})
@@ -63,16 +66,31 @@ func TestDemandReadersAcceptOnlyDeclaredImportedSources(t *testing.T) {
 
 func TestCompetitorPricesKeepUnknownQuantitiesIncomparable(t *testing.T) {
 	rows := []evidence.Row{
-		intelligenceRow("known", "market", "offer", "displayed_price", "4000.5", "RUB", "softline", `{"name":"Endpoint license","seller":"Softline","price_basis":"per_unit","quantity":10,"max_quantity":14,"captured_at":"2026-11-26T08:00:00Z","origin":"authorized_import"}`),
+		intelligenceRow("known", "market", "offer", "displayed_price", "4000.5", "RUB", "softline", `{"name":"Endpoint license","seller":"Softline","price_basis":"per_unit","quantity":10,"max_quantity":14,"captured_at":"2026-11-26T08:00:00Z","origin":"authorized_import","market_comparison":{"group":"same-license","comparable":true}}`),
 		intelligenceRow("unknown", "market", "offer", "displayed_price", "4445", "RUB", "softmagazin", `{"name":"Endpoint license","seller":"softmagazin","price_basis":"displayed_offer_price","captured_at":"2026-11-26T08:05:00Z"}`),
+		intelligenceRowWithStatus("source-incomparable", "market", "offer", "displayed_price", "4100", "RUB", "store", "incomparable", `{"price_basis":"displayed_total","quantity":1,"market_comparison":{"group":"same-license","comparable":true}}`),
+		intelligenceRow("per-unit-no-max", "market", "offer", "displayed_price", "4200", "RUB", "store", `{"price_basis":"per_unit","quantity":10,"market_comparison":{"group":"same-license","comparable":true}}`),
+		intelligenceRow("zero-quantity", "market", "offer", "displayed_price", "4300", "RUB", "store", `{"price_basis":"displayed_total","quantity":0,"market_comparison":{"group":"same-license","comparable":true}}`),
+		intelligenceRow("zero-price", "market", "offer", "displayed_price", "0", "RUB", "store", `{"price_basis":"displayed_total","quantity":1,"market_comparison":{"group":"same-license","comparable":true}}`),
+		intelligenceRow("bad-currency", "market", "offer", "displayed_price", "100", "RUBLE", "store", `{"price_basis":"displayed_total","quantity":1,"market_comparison":{"group":"same-license","comparable":true}}`),
 		intelligenceRow("wrong-kind", "market", "metric", "displayed_price", "100", "RUB", "store", `{}`),
 	}
 	prices := selectIntelligenceRows(rows, intelligenceSpec{source: "market", metric: "displayed_price", market: true})
-	if len(prices) != 2 || !prices[0].ComparableTerms || prices[1].ComparableTerms || prices[0].Quantity == nil || *prices[0].Quantity != 10 || prices[1].Quantity != nil {
+	if len(prices) != 5 || !prices[0].ComparableTerms || prices[1].ComparableTerms || prices[2].ComparableTerms || prices[3].ComparableTerms || prices[4].ComparableTerms || prices[0].Quantity == nil || *prices[0].Quantity != 10 {
 		t.Fatalf("unexpected price rows: %+v", prices)
 	}
-	if prices[0].SourceRef.URL == "" || prices[1].SourceRef.Locator == "" || prices[0].Seller != "Softline" || prices[1].PriceBasis == "" {
+	if prices[0].SourceRef.URL == "" || prices[1].SourceRef.Locator == "" || prices[0].Seller != "Softline" || prices[1].PriceBasis == "" || prices[2].Status != "incomparable" || prices[2].ComparisonReason == "" || prices[3].ComparisonReason == "" || prices[4].ComparisonReason == "" {
 		t.Fatal("price identity, terms or source locator was lost")
+	}
+}
+
+func TestSnapshotWarningsDoNotStopAutomaticSearch(t *testing.T) {
+	in := marketIntelligenceInput{ProductKey: "kaspersky_endpoint_security"}
+	if snapshotSearchComplete(in, marketIntelligenceResult{Status: "unavailable", Warnings: []string{"other source unavailable"}}) {
+		t.Fatal("warning from an irrelevant snapshot stopped automatic search")
+	}
+	if !snapshotSearchComplete(in, marketIntelligenceResult{Status: "available"}) || !snapshotSearchComplete(marketIntelligenceInput{SnapshotID: "chosen"}, marketIntelligenceResult{Status: "unavailable"}) {
+		t.Fatal("available or explicitly selected snapshot did not stop search")
 	}
 }
 
@@ -88,12 +106,16 @@ func TestAvailableProductSearchAndPagination(t *testing.T) {
 }
 
 func intelligenceRow(id, source, kind, metric, value, unit, sourceID, details string) evidence.Row {
+	return intelligenceRowWithStatus(id, source, kind, metric, value, unit, sourceID, "observed", details)
+}
+
+func intelligenceRowWithStatus(id, source, kind, metric, value, unit, sourceID, status, details string) evidence.Row {
 	var valid map[string]any
 	if json.Unmarshal([]byte(details), &valid) != nil {
 		panic("invalid test details")
 	}
 	return evidence.Row{
-		ID: id, Source: source, Kind: kind, Metric: metric, Product: "kaspersky_endpoint_security", Value: value, Unit: unit, Status: "observed",
+		ID: id, Source: source, Kind: kind, Metric: metric, Product: "kaspersky_endpoint_security", Value: value, Unit: unit, Status: status,
 		Period: evidence.Period{From: "2026-11-01", To: "2026-11-30"},
 		Ref:    evidence.SourceRef{SourceID: sourceID, Locator: "row/" + id, URL: "https://example.invalid/" + id}, Details: details,
 	}
