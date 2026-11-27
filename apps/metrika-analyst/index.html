@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Metrika Analyst</title>
 <style>
-:root{color-scheme:dark;--aif-font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--aif-content-max:72rem;--aif-page-pad:clamp(1rem,3vw,2.25rem);--aif-radius-control:.65rem;--aif-radius-card:.9rem;--aif-motion-base:420ms;--bg:#16181b;--surface:#1f2226;--surface-2:#272b30;--line:#33383f;--text:#f1f3f6;--muted:#98a1ad;--faint:#6d7580;--coral:#f07a6e;--coral-bg:#f07a6e22;--blue:#7aa7ff;--green:#5fd19a;--green-bg:#5fd19a1f;--amber:#e8b64f;--amber-bg:#e8b64f1f;--grey:#8d96a3}
-@media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f4f6f8;--surface:#fff;--surface-2:#eef1f4;--line:#dde3e8;--text:#17212b;--muted:#5f6b77;--faint:#8b96a1;--coral:#c9483f;--coral-bg:#c9483f17;--blue:#2f6bd6;--green:#1c8a5a;--green-bg:#1c8a5a14;--amber:#a46b00;--amber-bg:#a46b0014;--grey:#7b8592}}
+:root{color-scheme:dark;--aif-font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--aif-content-max:72rem;--aif-page-pad:clamp(1rem,3vw,2.25rem);--aif-radius-control:.65rem;--aif-radius-card:.9rem;--aif-motion-base:420ms;--bg:#17181a;--surface:#1f2124;--surface-2:#27292d;--line:#34373c;--text:#ececec;--muted:#a3a8b0;--faint:#7b818a;--coral:#ff6f66;--coral-bg:#ff6f662e;--blue:#7fb2ff;--green:#4fcf8f;--green-bg:#4fcf8f24;--amber:#e7b558;--amber-bg:#e7b55824;--grey:#8f9aa8}
+@media(prefers-color-scheme:light){:root{color-scheme:light;--bg:#f4f5f7;--surface:#fff;--surface-2:#f0f2f5;--line:#dfe3e8;--text:#1c2026;--muted:#5f6773;--faint:#8d95a1;--coral:#d6453d;--coral-bg:#d6453d1c;--blue:#2f6fd6;--green:#1f9a62;--green-bg:#1f9a6218;--amber:#b7801c;--amber-bg:#b7801c18;--grey:#7c8796}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 var(--aif-font-sans);font-variant-numeric:tabular-nums}
 .shell{max-width:var(--aif-content-max);margin:0 auto;padding:var(--aif-page-pad) var(--aif-page-pad) 32px;display:grid;gap:var(--aif-space-4)}
@@ -29,7 +29,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 var(--aif-fon
 .tile svg{width:100%;height:34px;margin-top:4px;overflow:visible}
 .spark{fill:none;stroke:var(--grey);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:400;stroke-dashoffset:400;animation:draw 1.1s .25s ease-out forwards}
 .tile.down .spark{stroke:var(--coral)}.tile.up .spark{stroke:var(--green)}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--aif-radius-card);padding:16px;min-width:0;box-shadow:0 12px 34px #00000012}
 .card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
 .card-head h2{font-size:15px;margin:0;font-weight:640}
 .legend{display:flex;gap:12px;color:var(--muted);font-size:12px}
@@ -59,7 +59,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 var(--aif-fon
 .notes li:before{content:"○ ";color:var(--amber)}
 .empty{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:12px;padding:18px 18px 16px;display:grid;gap:6px;animation:rise .5s ease-out both}
 .empty strong{font-size:17px}.empty p{margin:0;color:var(--muted);max-width:680px}.empty .do{color:var(--text)}
-details{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:var(--aif-radius-card);box-shadow:0 12px 34px #0000000d}
 summary{cursor:pointer;padding:12px 16px;font-weight:620;list-style:none;display:flex;justify-content:space-between}
 summary::-webkit-details-marker{display:none}summary:after{content:"＋";color:var(--muted)}details[open] summary:after{content:"−"}
 form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:8px;align-items:end;padding:0 16px 16px}
