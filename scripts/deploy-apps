@@ -2,8 +2,24 @@
 # Stage tracked app sources outside the checkout; never bypass SDK source CAS.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin:$PATH"
+export PATH="$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin"
+python_bin="${AIFENCE_PYTHON:-/opt/homebrew/bin/python3}"
+if [[ ! -x "$python_bin" ]]; then python_bin="$(command -v python3)"; fi
 export GOMAXPROCS="${GOMAXPROCS:-2}" GOFLAGS="${GOFLAGS:--p=1}"
+verify_main_release() {
+  "$python_bin" - "$ROOT" "$commit" <<'VERIFY_MAIN'
+import pathlib, subprocess, sys
+root, commit = pathlib.Path(sys.argv[1]), sys.argv[2]
+main = subprocess.check_output(["git", "-C", str(root), "rev-parse", "refs/heads/main"], text=True).strip()
+if commit != main:
+    sys.exit("Live deployment requires the current main commit; build integration candidates with personal-build-apps.py --commit")
+for name in ("scripts/deploy-apps", "scripts/personal-build-apps.py", "scripts/personal-source-bundle.go", "platform/personal-release.lock.json"):
+    data = subprocess.check_output(["git", "-C", str(root), "show", commit + ":" + name])
+    path = root / name
+    if path.is_symlink() or not path.is_file() or path.read_bytes() != data:
+        sys.exit(name + " differs from the selected main commit; commit the deployment inputs first")
+VERIFY_MAIN
+}
 usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager" >&2; exit 2; }
 dry=0 create=0 auto=0 slug=""
 for arg in "$@"; do
@@ -22,8 +38,9 @@ if [[ -z "$slug" ]]; then
   exit 0
 fi
 commit="$(git -C "$ROOT" rev-parse --verify --end-of-options "${AIFENCE_DEPLOY_COMMIT:-HEAD}^{commit}")"
+if [[ "$dry" == 0 ]]; then verify_main_release; fi
 url="${AIRLOCK_URL:-http://localhost:42080}"
-origin_key="$(python3 - "$url" <<'ORIGIN'
+origin_key="$("$python_bin" - "$url" <<'ORIGIN'
 import hashlib, sys, urllib.parse
 u = urllib.parse.urlsplit(sys.argv[1])
 if u.scheme not in ('http', 'https') or not u.hostname or u.username or u.password or u.path not in ('', '/') or u.query or u.fragment:
@@ -38,27 +55,36 @@ if port and port != (443 if u.scheme == 'https' else 80): host += ':' + str(port
 print(hashlib.sha256((u.scheme.lower() + '://' + host).encode()).hexdigest())
 ORIGIN
 )"
-base="$ROOT/.runtime/deploy-apps"
-mkdir -p "$base/state" "$base/stages"
-chmod 700 "$base" "$base/state" "$base/stages"
-lock="$base/state/$origin_key-$slug.lock"
-if ! mkdir "$lock" 2>/dev/null; then echo "Another deployment owns $lock; inspect before removing it." >&2; exit 1; fi
-stage="$(mktemp -d "$base/stages/$slug.XXXXXXXX")"
+common_git_dir="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
+base="$common_git_dir/aifence-deploy"
+mkdir -p "$base/stages"
+chmod 700 "$base" "$base/stages"
+lock=""
 state="$base/state/$origin_key/$slug"
+if [[ "$dry" == 0 ]]; then
+  mkdir -p "$base/state"
+  chmod 700 "$base/state"
+  lock="$base/state/$origin_key-$slug.lock"
+  if ! mkdir "$lock" 2>/dev/null; then echo "Another deployment owns $lock; inspect before removing it." >&2; exit 1; fi
+fi
+stage=""
 cleanup() {
   result=$?
-  if [[ "$dry" == 0 && -f "$stage/.airlock/local/agent.toml" ]]; then
+  if [[ "$dry" == 0 && -n "$stage" && -f "$stage/.airlock/local/agent.toml" ]]; then
     mkdir -p "$state"
     chmod 700 "$state"
-    cp "$stage/.airlock/local/agent.toml" "$state/agent.toml"
-    chmod 600 "$state/agent.toml"
+    cp "$stage/.airlock/local/agent.toml" "$state/agent.toml.tmp.$$"
+    chmod 600 "$state/agent.toml.tmp.$$"
+    mv "$state/agent.toml.tmp.$$" "$state/agent.toml"
+    if [[ "$result" == 0 ]]; then printf '%s\n' "$commit" > "$state/deployed-commit"; fi
   fi
-  rmdir "$lock"
-  echo "Staging retained: $stage" >&2
+  if [[ -n "$lock" ]]; then rmdir "$lock"; fi
+  if [[ -n "$stage" ]]; then echo "Staging retained: $stage" >&2; fi
   exit "$result"
 }
 trap cleanup EXIT
-python3 - "$ROOT" "$slug" "$stage" "$commit" <<'PY'
+stage="$(mktemp -d "$base/stages/$slug.XXXXXXXX")"
+"$python_bin" - "$ROOT" "$slug" "$stage" "$commit" <<'PY'
 import os, pathlib, shutil, subprocess, sys, tomllib
 root, slug, stage, commit = pathlib.Path(sys.argv[1]), sys.argv[2], pathlib.Path(sys.argv[3]), sys.argv[4]
 prefix = f'apps/{slug}/'
@@ -130,12 +156,39 @@ if [[ "$dry" == 1 ]]; then
   echo "Dry run: no build, login, upload, or deployment."
   exit 0
 fi
+# Build the pinned native profile and unpack the exact validated source bundle.
+# The builder's recursive --dry-run only stages sources and never takes this lock.
+release_dir="$(mktemp -d "$base/stages/$slug-release.XXXXXXXX")"
+"$python_bin" "$ROOT/scripts/personal-build-apps.py" --commit "$commit" --app "$slug" --output "$release_dir/packages"
+native_stage="$(mktemp -d "$base/stages/$slug-native.XXXXXXXX")"
+"$python_bin" - "$release_dir/packages/apps.json" "$slug" "$commit" "$native_stage" <<'UNPACK_NATIVE'
+import hashlib, json, pathlib, sys, tarfile
+receipt, slug, commit, destination = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3], pathlib.Path(sys.argv[4])
+record = json.loads(receipt.read_text())
+packages = [p for p in record["packages"] if p["app"] == slug]
+if record["source_commit"] != commit or len(packages) != 1 or packages[0]["source_commit"] != commit:
+    sys.exit("Native source bundle does not match the selected commit")
+package = packages[0]
+if package["file"] != slug + ".tar.gz":
+    sys.exit("Unexpected native source bundle name")
+archive_path = receipt.parent / package["file"]
+with archive_path.open("rb") as stream:
+    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+if digest != package["sha256"] or archive_path.stat().st_size != package["size"]:
+    sys.exit("Native source bundle differs from its build receipt")
+with tarfile.open(archive_path) as archive:
+    archive.extractall(destination, filter="data")
+UNPACK_NATIVE
+stage="$native_stage"
+verify_main_release
+# Import only an actual synchronized SDK binding. Never manufacture or refresh
+# its source ETag to make a stale workspace pass the server's source CAS.
 mkdir -p "$stage/.airlock/local"
 if [[ -f "$state/agent.toml" ]]; then
   cp "$state/agent.toml" "$stage/.airlock/local/agent.toml"
 elif [[ -n "${AIFENCE_BINDING_FILE:-}" ]]; then
   [[ -f "$AIFENCE_BINDING_FILE" ]] || { echo 'AIFENCE_BINDING_FILE does not exist' >&2; exit 1; }
-  python3 - "$AIFENCE_BINDING_FILE" "$url" <<'CHECK_BINDING'
+  "$python_bin" - "$AIFENCE_BINDING_FILE" "$url" <<'CHECK_BINDING'
 import sys, tomllib, urllib.parse
 with open(sys.argv[1], 'rb') as f: binding = tomllib.load(f)
 def origin(value):
@@ -151,15 +204,9 @@ fi
 if [[ "$create" == 1 && -f "$stage/.airlock/local/agent.toml" ]]; then
   echo 'Refusing --create with existing binding; inspect state first.' >&2; exit 1
 fi
-# SDK build mutates go.mod/go.sum and generates files. Keep the upload tree
-# unchanged by running validation on a separate private copy.
-build_stage="$(mktemp -d "$base/stages/$slug-build.XXXXXXXX")"
-cp -R "$stage/." "$build_stage/"
-(cd "$build_stage"; go tool air toolchain install; go tool air build)
-echo "Build staging retained: $build_stage" >&2
 cd "$stage"
 if [[ "$auto" == 1 ]]; then
-  decision="$( (go tool air status --url "$url" --agent "$slug" --json || true) | python3 -c '
+  decision="$( (go tool air status --target production --url "$url" --agent "$slug" --json || true) | "$python_bin" -c '
 import json, sys
 try: d = json.load(sys.stdin)
 except (ValueError, OSError): sys.exit("Cannot inspect target; refusing automatic creation")
@@ -172,9 +219,13 @@ fi
 if [[ "$create" == 1 && -f "$stage/.airlock/local/agent.toml" ]]; then
   echo 'Refusing --create with existing binding; inspect state first.' >&2; exit 1
 fi
+verify_main_release
+mkdir -p "$state"
+chmod 700 "$state"
+printf '%s\n' "$commit" > "$state/desired-commit"
 if [[ "$create" == 1 ]]; then
-  go tool air deploy --url "$url" --create --name "$slug" --slug "$slug" -m "AIfence $slug" --wait
+  go tool air deploy --target production --url "$url" --create --name "$slug" --slug "$slug" -m "AIfence $slug $commit" --wait
 else
-  go tool air deploy --url "$url" --agent "$slug" -m "AIfence $slug" --wait
+  go tool air deploy --target production --url "$url" --agent "$slug" -m "AIfence $slug $commit" --wait
 fi
-go tool air status --url "$url" --agent "$slug" --wait
+go tool air status --target production --url "$url" --agent "$slug" --wait

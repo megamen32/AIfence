@@ -110,6 +110,10 @@ func Register(a *agentsdk.Agent) *Service {
 		Instructions: reviewInstructions,
 		Capabilities: &agentsdk.AgentCapabilityPolicy{}, Budget: &agentsdk.AgentBudget{Steps: 4, Timeout: 90 * time.Second, Tokens: 4000},
 		MaxAttempts: 2, MaxConcurrency: 1,
+		Review: &agentsdk.AgentReview[ReviewInput, ReviewOutput]{
+			Version: 1, Timeout: 10 * time.Second, MaxAttempts: 2,
+			MaxConcurrency: 2, MaxCorrections: 2, Handler: reviewSubmission,
+		},
 	})
 	s := &Service{queries: db.New(a.DB()), policy: policy, task: task}
 	s.job = agentsdk.RegisterJob(a, &agentsdk.Job[JobInput, Outcome]{Name: "check_source_watch", Version: 1, Description: "Read explicitly bound source operations for a user's weekly store watch.", Timeout: 2 * time.Minute, MaxAttempts: 3, MaxConcurrency: 2, Handler: s.run})
@@ -131,20 +135,10 @@ func state(row db.PmSourceWatch) (WatchState, error) {
 	return out, err
 }
 
-// ErrUnsupported reports that this Airlock host cannot call bound app
-// operations from a job. JobContext in the pinned SDK v0.11.0 has no
-// ReadAppTool, so this is a host limitation and not a transient read failure.
-var ErrUnsupported = errors.New("unsupported: this Airlock host does not expose owner-scoped app tool reads to jobs")
-
-// HostSupportsAppRead reports whether the build can call bound app operations
-// from a job. It is a build-time constant so the UI and tools state the truth.
-const HostSupportsAppRead = false
-
-// unsupportedRead is the pinned-SDK v0.11.0 host adapter. It never borrows
-// another identity or falls back to a manual read.
-func unsupportedRead(context.Context, string, any, any) error {
-	return ErrUnsupported
-}
+// This build uses the matching personal SDK. ReadAppTool requires the active
+// job delivery context and the owner's exact binding; no alternate credential
+// or manual read path is used.
+const HostSupportsAppRead = true
 
 func (s *Service) List(ctx context.Context, _ struct{}) (WatchList, error) {
 	owner, err := human(ctx)
@@ -239,6 +233,11 @@ func (s *Service) Stop(ctx context.Context, in WatchRef) (WatchRef, error) {
 func (s *Service) enqueue(ctx context.Context, owner, watchID string, monday time.Time) error {
 	in := JobInput{WatchID: watchID, Monday: monday.Format(time.DateOnly)}
 	id := ID(owner, "delivery", in)
+	// A replacement delivery has a different source run. Observe an already
+	// accepted next job before attempting to enqueue the same durable ID.
+	if _, err := s.job.Get(ctx, id); err == nil {
+		return nil
+	}
 	_, err := s.job.EnqueueAt(ctx, id, monday.Add(6*time.Hour), in)
 	if err != nil {
 		if _, lookup := s.job.Get(ctx, id); lookup != nil {
@@ -291,19 +290,18 @@ func (s *Service) run(ctx context.Context, job agentsdk.JobContext, in JobInput)
 		return Outcome{}, errors.Join(err, reportErr)
 	}
 	// Even a revoked source or unavailable model must leave the following check scheduled.
-	policy, err := s.policy.Get(ctx)
 	var outcome Outcome
+	pinned, err := s.pinnedOccurrence(ctx, owner, in)
 	if err == nil {
-		outcome, err = Check(ctx, w.Config, policy == "approved", unsupportedRead, s.launcher(owner, in))
+		var policy string
+		policy, err = s.policy.Get(ctx)
+		if err == nil {
+			outcome, err = checkOrResume(ctx, w.Config, policy == "approved", job.ReadAppTool, s.launcher(owner, in), pinned)
+		}
 	}
 	label := outcome.Status
 	if err != nil {
 		label = "failed"
-	}
-	// A host limitation is a stable journal status, not a retryable failure.
-	if errors.Is(err, ErrUnsupported) {
-		label, outcome = "unsupported", Outcome{Status: "unsupported"}
-		err = nil
 	}
 	reportErr := s.queries.ReportSourceWatch(ctx, db.ReportSourceWatchParams{OwnerID: owner, WatchID: in.WatchID, LastMonday: in.Monday, LastStatus: label, AnalysisRunID: outcome.AnalysisRunID})
 	if reportErr != nil {
@@ -315,7 +313,7 @@ func (s *Service) run(ctx context.Context, job agentsdk.JobContext, in JobInput)
 // launcher pins the signal under the owner and starts review_source_signal once.
 func (s *Service) launcher(owner string, in JobInput) Launch {
 	return func(ctx context.Context, sig Signal) (string, error) {
-		sig.SignalID = ID(owner, "signal", []string{in.WatchID, sig.ObservationID, sig.Trigger})
+		sig.SignalID = occurrenceSignalID(owner, in)
 		raw, err := MarshalReview(ReviewInput{Signal: sig, EvidenceIDs: ReviewSignalIDs(sig)})
 		if err != nil {
 			return "", err
@@ -433,4 +431,23 @@ func (s *Service) Approve(ctx context.Context, in ApproveRef) (Draft, error) {
 		return Draft{}, err
 	}
 	return draft, nil
+}
+
+func (s *Service) pinnedOccurrence(ctx context.Context, owner string, in JobInput) (*ReviewInput, error) {
+	id := occurrenceSignalID(owner, in)
+	row, err := s.queries.GetSourceWatchSignal(ctx, db.GetSourceWatchSignalParams{OwnerID: owner, SignalID: id})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var original ReviewInput
+	if err := json.Unmarshal(row.Document, &original); err != nil {
+		return nil, err
+	}
+	if original.Signal.SignalID != id {
+		return nil, errors.New("pinned source signal does not match this occurrence")
+	}
+	return &original, nil
 }

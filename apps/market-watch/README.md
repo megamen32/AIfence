@@ -21,13 +21,10 @@ The main route provides Catalog, Comparison, Price history and Sources. The cata
 
 ## Local Airlock on Mac M1
 
-Run from this directory. Create the app once and update later using the same remote and binding.
+Native cross-app reads use the pinned M1 build profile in [personal releases](../../docs/personal-releases.md). Deploy the verified commit from repository root through the shared deployment state; the existing app keeps its identity and resources.
 
 ```sh
-go tool air build
-go tool air login http://localhost:42080
-go tool air deploy --remote default --target production --create --name 'Market Watch' --slug market-watch -m 'Install Market Watch' --wait
-go tool air status
+AIFENCE_DEPLOY_COMMIT="$(git rev-parse main)" scripts/deploy-apps market-watch
 ```
 
 For updates omit the creation flags. Start a stopped runtime with `go tool air start --target production`.

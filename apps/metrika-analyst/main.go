@@ -9,6 +9,7 @@ import (
 	"github.com/airlockrun/goai/tool"
 	"html/template"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,10 +28,76 @@ func embeddedEvidence(path string) ([]byte, bool) {
 	return b, err == nil
 }
 
+func metricValue(o Observation) string {
+	if o.Value == nil {
+		return "—"
+	}
+	v := *o.Value
+	if math.Abs(v) >= 1000 {
+		return fmt.Sprintf("%.0f", v)
+	}
+	text := strconv.FormatFloat(v, 'f', 2, 64)
+	text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	if text == "-0" {
+		return "0"
+	}
+	return text
+}
+
+func metricStatus(status string) string {
+	switch status {
+	case "observed":
+		return "Наблюдается"
+	case "estimated":
+		return "Оценка"
+	case "incomparable":
+		return "Несопоставимо"
+	case "missing":
+		return "Нет данных"
+	default:
+		return status
+	}
+}
+
+func metricTone(o Observation) string {
+	switch o.Status {
+	case "observed":
+		return "good"
+	case "estimated", "incomparable":
+		return "warn"
+	default:
+		return "muted"
+	}
+}
+
+func chartX(i int) int { return 52 + i*82 }
+
+func chartHeight(o Observation) int {
+	if o.Value == nil {
+		return 14
+	}
+	v := math.Abs(*o.Value)
+	h := int(math.Round(28 + math.Min(150, math.Log10(v+1)*54)))
+	if h < 18 {
+		return 18
+	}
+	return h
+}
+
+func chartY(o Observation) int { return 222 - chartHeight(o) }
+
+func chartLabel(o Observation) string {
+	label := o.MetricKey
+	if len(label) > 12 {
+		return label[:12] + "…"
+	}
+	return label
+}
+
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
 	a := agentsdk.New(agentsdk.Config{Description: "В текущем чате самостоятельно исследует выбранный пользователем набор через инструменты Airlock. Находит доступные измерения, изменения и ссылки на источники даже по общему вопросу. Пользователю не нужно переходить в другое приложение, уточнять путь, метрику или даты.", Icon: "📊"})
-	m := a.RegisterMCP(&agentsdk.MCP{Slug: "yandex_metrika", Name: "Yandex Metrika (BoxLab, read-only MCP)", URL: "http://metrika-mcp:8000/mcp", AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared})
+	m := a.RegisterMCP(&agentsdk.MCP{Slug: "yandex_metrika", Name: "Yandex Metrika (BoxLab, read-only MCP)", URL: "http://127.0.0.1:8000/mcp", AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared})
 	counter := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "counter_id", Description: "ID счётчика магазина", Pattern: "^[0-9]+$"})
 	ec := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "ecommerce_confirmed", Description: "Подтверждена непрерывная инструментация e-commerce за анализируемые периоды", Default: "false", Pattern: "^(true|false)$"})
 	file := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "evidence_path", Description: "Необязательный путь к явно выбранному evidence-v1 JSON в файлах Airlock; пусто — live MCP"})
@@ -103,7 +170,7 @@ func newAgent() *agentsdk.Agent {
 	instructions, _ := assets.ReadFile("INSTRUCTIONS.md")
 	a.AddInstruction(&agentsdk.Instruction{Text: string(instructions)})
 	a.RegisterTool(tool.Typed[Query, Batch]("query_metrics").Description("Read exact period metrics from configured MCP or explicitly selected historical evidence file.").Execute(s.Query).Build(), agentsdk.AccessUser)
-	a.RegisterTool(tool.Typed[Compare, Batch]("compare_periods").Description("Compare equal non-overlapping periods; output evidence-v1 including changes.").Execute(s.Compare).Build(), agentsdk.AccessUser)
+	a.RegisterTool(tool.Typed[Compare, Batch]("compare_periods").Description("Compare equal non-overlapping periods; output evidence-v1 including changes.").Execute(s.Compare).Build(), agentsdk.AccessUser, agentsdk.WithReadOnly())
 	a.RegisterTool(tool.Typed[CheckInput, CheckResult]("check_metrika").Description("Check authorized counter or historical file. Never returns token.").Execute(s.Check).Build(), agentsdk.AccessUser)
 	registerWatch(a, Watch{series: s, contextPath: func(ctx context.Context) string {
 		p, _ := watchContext.Get(ctx)
@@ -114,7 +181,16 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Что изменилось?", Prompt: "Сравни две последние полные недели. Покажи источники, отклонения и ограничения."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Оценить релиз", Prompt: "Помоги оценить результат релиза: уточни дату, критерий успеха и сопоставимые периоды."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Проверить источник", Prompt: "Проверь подключение Метрики или выбранную выгрузку."})
-	page := template.Must(template.ParseFS(assets, "index.html"))
+	page := template.Must(template.New("index.html").Funcs(template.FuncMap{
+		"metricValue":  metricValue,
+		"metricStatus": metricStatus,
+		"metricTone":   metricTone,
+		"chartX":       chartX,
+		"chartHeight":  chartHeight,
+		"chartY":       chartY,
+		"chartLabel":   chartLabel,
+		"add":          func(a, b int) int { return a + b },
+	}).ParseFS(assets, "index.html"))
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Description: "Сравнение показателей", Handler: func(w http.ResponseWriter, r *http.Request) error {
 		data := struct {
 			Batch *Batch

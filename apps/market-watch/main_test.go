@@ -21,3 +21,19 @@ func TestAgentComposition(t *testing.T) {
 		t.Fatal("missing direct weekly price tools")
 	}
 }
+
+func TestWeeklyPriceToolsReadOnlyManifest(t *testing.T) {
+	want := map[string]bool{"price_week_delta": true, "family_price_week_delta": true}
+	for _, definition := range newAgent().Manifest().Tools {
+		if !want[definition.Name] {
+			continue
+		}
+		if !definition.ReadOnly || len(definition.InputSchema) == 0 || len(definition.OutputSchema) == 0 {
+			t.Fatalf("cross-app source %s must be read-only and have typed schemas", definition.Name)
+		}
+		delete(want, definition.Name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing cross-app sources: %v", want)
+	}
+}

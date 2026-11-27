@@ -12,7 +12,7 @@ Goal: increase store profit/margin by locating a supported opportunity, checking
 
 ## Existing platform capabilities
 
-Airlock provides authentication, the assistant loop, model slots, storage, scheduling and file access under the current user’s grants. The applications exchange evidence through the user’s file catalog. The collection workflow uses read-only source tools in the hosted user context. Tracker, mail and browser adapters can be configured separately. Until tracker access is available, Product Manager can use a clearly labelled native backlog with tagged tasks. For research, use a deterministic search or index with source locators.
+Airlock provides authentication, the assistant loop, model slots, storage, scheduling and file access under the current user’s grants. The installed native M1 profile is pinned in `platform/personal-release.lock.json`. Its applications are built from a committed `main` revision with the matching SDK/Sol profile in [native releases](personal-releases.md). Scheduled Product Manager jobs read source tools through native app bindings under the approved grants. The applications exchange evidence through the user’s file catalog. The collection workflow uses read-only source tools in the hosted user context. Tracker, mail and browser adapters can be configured separately. Until tracker access is available, Product Manager can use a clearly labelled native backlog with tagged tasks. For research, use a deterministic search or index with source locators.
 
 ## Data flow
 
@@ -23,7 +23,7 @@ Airlock provides authentication, the assistant loop, model slots, storage, sched
 
 Missing data is explicit null with a reason. Source references include file, row or page, or a public URL and version. Keep source originals unchanged and keep held-out answer sheets outside the analysis inputs.
 
-Use the approved partner materials in the closed environment; public fixtures remain wholly synthetic. Do not depend on internal personal Airlock installations or private code. Where Airlock SDK cannot reach a resource, report unavailable and use explicitly labeled local historical import; don't simulate real external integration as success.
+Use the approved partner materials in the closed environment; public fixtures remain wholly synthetic. Private platform dependencies are pinned build inputs kept outside Git; source access uses the configured authorized runtime and grants. Where Airlock SDK cannot reach a resource, report unavailable and use explicitly labeled local historical import; don't simulate real external integration as success.
 
 ## Scope for 48 hours
 

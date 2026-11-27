@@ -91,17 +91,17 @@ func registerExternalDemand(a *agentsdk.Agent) {
 		Description("Read Wordstat counts for a phrase, all regions and devices, in the two completed UTC weeks before Monday. For the sourcewatch binding.").
 		Execute(func(ctx context.Context, in wordstatInput) (demandBatch, error) {
 			return readDemand(ctx, demandInput{ProductKey: in.Phrase, Query: in.Phrase, Geo: "ALL", Monday: in.Monday}, wordstatSpec, "wordstat", time.Now(), read, fetch)
-		}).Build(), agentsdk.AccessUser)
+		}).Build(), agentsdk.AccessUser, agentsdk.WithReadOnly())
 	a.RegisterTool(tool.Typed[demandInput, demandBatch]("compare_wordstat").
 		Description("Compare counts from Wordstat for the exact query and geo across two completed weeks. Reads official API history or the explicitly selected authorized snapshot.").
 		Execute(func(ctx context.Context, in demandInput) (demandBatch, error) {
 			return readDemand(ctx, in, wordstatSpec, "research", time.Now(), read, fetch)
-		}).Build(), agentsdk.AccessUser)
+		}).Build(), agentsdk.AccessUser, agentsdk.WithReadOnly())
 	a.RegisterTool(tool.Typed[demandInput, demandBatch]("compare_google_trends").
 		Description("Read two weekly 0–100 Google Trends indices for one query and geo from a single authorized export with a common normalization. Requires source_path.").
 		Execute(func(ctx context.Context, in demandInput) (demandBatch, error) {
 			return readDemand(ctx, in, trendsSpec, "research", time.Now(), read, fetch)
-		}).Build(), agentsdk.AccessUser)
+		}).Build(), agentsdk.AccessUser, agentsdk.WithReadOnly())
 }
 
 func ownedDemandPath(path, userID string) bool {

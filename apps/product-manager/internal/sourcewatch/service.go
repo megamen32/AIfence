@@ -83,9 +83,6 @@ func (w Window) Validate() (time.Time, error) {
 	if (w.MarketBinding != "" && !familySelected && (!bounded(w.SKU, 128) || strings.TrimSpace(w.SKU) != w.SKU)) || (w.MarketBinding == "" && w.SKU != "") {
 		return time.Time{}, errors.New("set an exact SKU with the market binding")
 	}
-	if w.TrendsBinding != "" && w.TrendsGeo == "" {
-		w.TrendsGeo = "RU"
-	}
 	usesPhrase := w.WordstatBinding != "" || w.TrendsBinding != ""
 	if w.ProductKey != "" && (!bounded(w.ProductKey, 128) || strings.TrimSpace(w.ProductKey) != w.ProductKey) {
 		return time.Time{}, errors.New("product_key must be an exact family key without outer whitespace")
@@ -230,33 +227,37 @@ type PriceFamily struct {
 }
 
 type Signal struct {
-	SignalID       string          `json:"signal_id"`
-	Trigger        string          `json:"trigger"`
-	Metric         string          `json:"store_metric"`
-	ChangePct      float64         `json:"change_pct"`
-	BaselineFrom   string          `json:"baseline_from"`
-	BaselineTo     string          `json:"baseline_to"`
-	CurrentFrom    string          `json:"current_from"`
-	CurrentTo      string          `json:"current_to"`
-	ObservationID  string          `json:"observation_id"`
-	ObservationRef string          `json:"observation_ref,omitempty"`
-	Demand         *Demand         `json:"demand,omitempty"`
-	Trends         *Trends         `json:"trends,omitempty"`
-	TrendsStatus   string          `json:"trends_status,omitempty"`
-	WordstatStatus string          `json:"wordstat_status,omitempty"`
-	MarketStatus   string          `json:"market_status"`
-	ContextSKU     string          `json:"market_sku,omitempty"`
-	PriceFamilies  []PriceFamily   `json:"price_families,omitempty"`
-	MissingPeriods []missingPeriod `json:"missing_periods,omitempty"`
-	ProductKey     string          `json:"product_key,omitempty"`
-	Segment        string          `json:"segment,omitempty"`
-	FamilyChange   *FamilyChange   `json:"family_change,omitempty"`
-	PriceCoverage  *familyCoverage `json:"price_coverage,omitempty"`
+	SignalID               string          `json:"signal_id"`
+	Trigger                string          `json:"trigger"`
+	Metric                 string          `json:"store_metric"`
+	ChangePct              float64         `json:"change_pct"`
+	StoreDropThresholdPct  float64         `json:"store_drop_threshold_pct"`
+	DemandDropThresholdPct float64         `json:"demand_drop_threshold_pct"`
+	SourceWarnings         []string        `json:"source_warnings,omitempty"`
+	BaselineFrom           string          `json:"baseline_from"`
+	BaselineTo             string          `json:"baseline_to"`
+	CurrentFrom            string          `json:"current_from"`
+	CurrentTo              string          `json:"current_to"`
+	ObservationID          string          `json:"observation_id"`
+	ObservationRef         string          `json:"observation_ref,omitempty"`
+	Demand                 *Demand         `json:"demand,omitempty"`
+	Trends                 *Trends         `json:"trends,omitempty"`
+	TrendsStatus           string          `json:"trends_status,omitempty"`
+	WordstatStatus         string          `json:"wordstat_status,omitempty"`
+	MarketStatus           string          `json:"market_status"`
+	ContextSKU             string          `json:"market_sku,omitempty"`
+	PriceFamilies          []PriceFamily   `json:"price_families,omitempty"`
+	MissingPeriods         []missingPeriod `json:"missing_periods,omitempty"`
+	ProductKey             string          `json:"product_key,omitempty"`
+	Segment                string          `json:"segment,omitempty"`
+	FamilyChange           *FamilyChange   `json:"family_change,omitempty"`
+	PriceCoverage          *familyCoverage `json:"price_coverage,omitempty"`
 }
 
 type Outcome struct {
-	Status        string `json:"status"`
-	AnalysisRunID string `json:"analysis_run_id,omitempty"`
+	Status        string   `json:"status"`
+	AnalysisRunID string   `json:"analysis_run_id,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
 }
 
 // Read performs one owner-scoped call to an approved bound app operation.
@@ -270,6 +271,9 @@ type Launch func(ctx context.Context, signal Signal) (string, error)
 // configured operations, validates every row against the requested window and
 // only then decides whether a review is warranted.
 func Check(ctx context.Context, w Window, approved bool, read Read, launch Launch) (Outcome, error) {
+	if err := ctx.Err(); err != nil {
+		return Outcome{}, err
+	}
 	monday, err := w.Validate()
 	if err != nil {
 		return Outcome{}, err
@@ -279,6 +283,9 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	var metrika, wordstat, trends batch
 	var market weekDelta
 	var family familyDelta
+	var warnings []string
+	familySelected := len(w.SKUs) > 0 || w.Family != ""
+	marketReadFailed := false
 	// Fixed source parameters keep filesystem selection and arbitrary connector calls out of this job.
 	target := w.ProductKey
 	if target == "" {
@@ -296,25 +303,40 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		return Outcome{}, errors.New("Metrika binding returned an unexpected contract")
 	}
 	if w.MarketBinding != "" {
-		if len(w.SKUs) > 0 || w.Family != "" {
+		if familySelected {
 			err = read(ctx, w.MarketBinding, map[string]any{"skus": w.SKUs, "family": w.Family, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &family)
-			if err != nil {
-				return Outcome{}, fmt.Errorf("read family price week delta: %w", err)
+		} else {
+			err = read(ctx, w.MarketBinding, map[string]string{"product_key": w.SKU, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &market)
+		}
+		if err != nil {
+			if stop := interruptedRead(ctx, err); stop != nil {
+				return Outcome{}, fmt.Errorf("read price week delta: %w", stop)
 			}
+			// A failed read may have partially decoded output. None of it is evidence.
+			market = weekDelta{Status: "unavailable"}
+			family = familyDelta{Status: "unavailable"}
+			marketReadFailed = true
+			warnings = append(warnings, "market_watch: source read failed; price evidence is unavailable")
+		} else if familySelected {
 			if family.Coverage.SelectedSKUs == 0 || family.Status == "" {
 				return Outcome{}, errors.New("market binding returned an unexpected family contract")
 			}
 			if family.BaselineWeek != before || family.CurrentWeek != current {
 				return Outcome{}, errors.New("family price delta returned different weeks")
 			}
+			if family.Status == "partial" {
+				warnings = append(warnings, "market_watch: price history is incomplete for some seller series")
+			}
 		} else {
-			err = read(ctx, w.MarketBinding, map[string]string{"product_key": w.SKU, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &market)
-		}
-		if err != nil {
-			return Outcome{}, fmt.Errorf("read price week delta: %w", err)
-		}
-		if len(w.SKUs) == 0 && w.Family == "" && (market.SKU == "" || market.Status == "") {
-			return Outcome{}, errors.New("market binding returned an unexpected contract")
+			if market.SKU == "" || market.Status == "" {
+				return Outcome{}, errors.New("market binding returned an unexpected contract")
+			}
+			if market.SKU != w.SKU || market.BaselineWeek != before || market.CurrentWeek != current {
+				return Outcome{}, errors.New("market binding returned a different SKU or comparison window")
+			}
+			if market.Status == "partial" {
+				warnings = append(warnings, "market_watch: price history is incomplete for some seller series")
+			}
 		}
 	}
 	var demand *Demand
@@ -322,39 +344,62 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	if w.WordstatBinding != "" {
 		err = read(ctx, w.WordstatBinding, map[string]string{"phrase": w.Phrase, "monday": w.Monday}, &wordstat)
 		if err != nil {
-			return Outcome{}, fmt.Errorf("read demand comparison: %w", err)
-		}
-		if wordstat.SchemaVersion != "aifence.v1" || wordstat.Source != "wordstat" {
-			return Outcome{}, errors.New("Wordstat binding returned an unexpected contract")
-		}
-		demand = extractDemand(wordstat, w.Phrase, before, current)
-		if demand == nil {
-			demandUnavailable = wordstat.unavailableFor(monday)
-			if !demandUnavailable {
-				return Outcome{Status: "incomplete"}, nil
+			if stop := interruptedRead(ctx, err); stop != nil {
+				return Outcome{}, fmt.Errorf("read demand comparison: %w", stop)
+			}
+			wordstat = batch{Status: "unavailable"}
+			demandUnavailable = true
+			warnings = append(warnings, "wordstat: source read failed; query counts are unavailable")
+		} else {
+			if wordstat.SchemaVersion != "aifence.v1" || wordstat.Source != "wordstat" {
+				return Outcome{}, errors.New("Wordstat binding returned an unexpected contract")
+			}
+			demand = extractDemand(wordstat, w.Phrase, before, current)
+			if demand == nil {
+				demandUnavailable = wordstat.unavailableFor(monday)
+				if !demandUnavailable {
+					return Outcome{Status: "incomplete", Warnings: append(warnings, "wordstat: the requested weekly comparison is incomplete")}, nil
+				}
+				warnings = append(warnings, "wordstat: query counts for the requested weeks are unavailable")
 			}
 		}
 	}
 	var trendsObs *Trends
 	trendsUnavailable := false
 	if w.TrendsBinding != "" {
-		err = read(ctx, w.TrendsBinding, map[string]string{"product_key": w.Phrase, "query": w.Phrase, "geo": w.TrendsGeo, "monday": w.Monday}, &trends)
+		geo := w.TrendsGeo
+		if geo == "" {
+			geo = "RU"
+		}
+		err = read(ctx, w.TrendsBinding, map[string]string{"product_key": w.Phrase, "query": w.Phrase, "geo": geo, "monday": w.Monday}, &trends)
 		if err != nil {
-			return Outcome{}, fmt.Errorf("read search interest: %w", err)
-		}
-		if trends.SchemaVersion != "aifence.v1" || trends.Source != "research" {
-			return Outcome{}, errors.New("Google Trends binding returned an unexpected contract")
-		}
-		trendsObs = extractTrends(trends, w.Phrase, before, current)
-		if trendsObs == nil {
-			trendsUnavailable = trends.unavailableFor(monday)
-			if !trendsUnavailable {
-				return Outcome{Status: "incomplete"}, nil
+			if stop := interruptedRead(ctx, err); stop != nil {
+				return Outcome{}, fmt.Errorf("read search interest: %w", stop)
+			}
+			trends = batch{Status: "unavailable"}
+			trendsUnavailable = true
+			warnings = append(warnings, "google_trends: source read failed; search interest is unavailable")
+		} else {
+			if trends.SchemaVersion != "aifence.v1" || trends.Source != "research" {
+				return Outcome{}, errors.New("Google Trends binding returned an unexpected contract")
+			}
+			trendsObs = extractTrends(trends, w.Phrase, before, current)
+			if trendsObs == nil {
+				trendsUnavailable = trends.unavailableFor(monday)
+				if !trendsUnavailable {
+					return Outcome{Status: "incomplete", Warnings: append(warnings, "google_trends: the requested weekly comparison is incomplete")}, nil
+				}
+				warnings = append(warnings, "google_trends: search interest for the requested weeks is unavailable")
+			} else {
+				trendsObs.Geo = geo
 			}
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return Outcome{}, err
+	}
 	marketStatus := market.Status
-	if len(w.SKUs) > 0 || w.Family != "" {
+	if familySelected {
 		marketStatus = family.Status
 	}
 	// A market answer that names the weeks it lacks is a valid observation of
@@ -363,7 +408,7 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	// Only a malformed envelope, or no evidence from any source, is incomplete.
 	marketUsable := marketStatus == "ok" || marketStatus == "partial" || marketStatus == "unavailable"
 	if metrika.Status != "ok" || (w.MarketBinding != "" && !marketUsable) {
-		return Outcome{Status: "incomplete"}, nil
+		return Outcome{Status: "incomplete", Warnings: warnings}, nil
 	}
 	var delta *observation
 	var computed *FamilyChange
@@ -379,13 +424,13 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		}
 	}
 	if delta == nil && computed == nil {
-		return Outcome{Status: "incomplete"}, nil
+		return Outcome{Status: "incomplete", Warnings: warnings}, nil
 	}
 	changePct, observationID, observationRef := 0.0, "", ""
 	if delta != nil {
 		changePct, observationID, observationRef = *delta.Value, delta.ID, delta.SourceRef.Locator
 	} else if computed.ChangePct == nil {
-		return Outcome{Status: "incomplete"}, nil
+		return Outcome{Status: "incomplete", Warnings: warnings}, nil
 	} else {
 		changePct, observationID, observationRef = *computed.ChangePct, computed.CurrentID, computed.CurrentRef
 	}
@@ -413,33 +458,46 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		}
 	}
 	if trigger == "" {
-		if demandUnavailable || trendsUnavailable {
-			return Outcome{Status: "incomplete"}, nil
+		if marketReadFailed || demandUnavailable || trendsUnavailable {
+			return Outcome{Status: "incomplete", Warnings: warnings}, nil
 		}
-		return Outcome{Status: "quiet"}, nil
+		return Outcome{Status: "quiet", Warnings: warnings}, nil
 	}
 	if !approved {
-		return Outcome{Status: "model_route_unapproved"}, nil
+		return Outcome{Status: "model_route_unapproved", Warnings: warnings}, nil
 	}
 	sig := Signal{
 		Trigger: trigger, Metric: w.Metric, ChangePct: changePct, BaselineFrom: before.From, BaselineTo: before.To,
+		StoreDropThresholdPct: w.DropPct, DemandDropThresholdPct: w.DemandDropPct, SourceWarnings: warnings,
 		CurrentFrom: current.From, CurrentTo: current.To, ObservationID: observationID, ObservationRef: observationRef,
 		ProductKey: w.ProductKey, Segment: w.Segment, FamilyChange: computed,
 		Demand: demand, Trends: trendsObs, TrendsStatus: trends.Status, WordstatStatus: wordstat.Status,
 		ContextSKU: w.SKU, MarketStatus: marketStatus,
 		MissingPeriods: market.MissingPeriods,
 	}
-	if len(w.SKUs) > 0 || w.Family != "" {
+	if familySelected && !marketReadFailed {
 		sig.PriceFamilies, sig.MissingPeriods = familyPriceFamilies(family)
 		sig.PriceCoverage = &family.Coverage
-	} else if w.MarketBinding != "" {
+	} else if w.MarketBinding != "" && !marketReadFailed {
 		sig.PriceFamilies = priceFamilies(market, w.SKU)
 	}
 	id, err := launch(ctx, sig)
 	if err != nil {
 		return Outcome{}, err
 	}
-	return Outcome{Status: "submitted", AnalysisRunID: id}, nil
+	return Outcome{Status: "submitted", AnalysisRunID: id, Warnings: warnings}, nil
+}
+
+// interruptedRead separates an interrupted check from one unavailable optional source.
+// Provider errors are never copied into public warnings: they can contain credentials.
+func interruptedRead(ctx context.Context, err error) error {
+	if stopped := ctx.Err(); stopped != nil {
+		return stopped
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return nil
 }
 
 func bounded(s string, n int) bool { return strings.TrimSpace(s) != "" && len(s) <= n }

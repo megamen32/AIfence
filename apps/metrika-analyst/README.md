@@ -8,21 +8,31 @@ BoxLab `yandex-metrica-mcp@1.0.1` (исследованный исходник 6
 
 Живое сравнение вызывает `run_comparison` BoxLab и нормализует результат в контракт evidence-v1. При работе с историческими агрегатами из файлов Airlock выполняются детерминированные расчёты. Нет подмены live синтетическими данными.
 
-## Подключение
+## Сборка и выпуск
 
-1. В отдельной закрытой сети каждого заказчика запустить готовые пакеты командой ниже. Задать `YANDEX_METRIKA_TOKEN` (только metrika:read) и отдельный `SUPERGATEWAY_API_KEY` из защищённого окружения. Не публиковать порт наружу и не передавать секреты в чат. `YANDEX_METRIKA_ENABLE_WRITE=false`.
-2. SDK объявляет штатный MCP-ресурс `yandex_metrika`, `http://metrika-mcp:8000/mcp`, с token-auth. В credentials Airlock указать ключ шлюза, не токен Яндекса. MCP-прокси должен видеть DNS-имя metrika-mcp в закрытой сети.
+Нативные фоновые чтения используют закреплённые SDK/Sol из [профиля M1](../../docs/personal-releases.md). Из корня репозитория публикуйте проверенный коммит `main` командой `AIFENCE_DEPLOY_COMMIT="$(git rev-parse main)" scripts/deploy-apps metrika-analyst`. Сборщик проверяет тот же архив, который передаётся в Airlock. Примеры отдельных Go-проверок ниже выполняются в распакованном пакете этого профиля с его закреплёнными зависимостями.
+
+## Подключение в локальной dev-установке Airlock
+
+Этот Compose-рецепт предназначен для Airlock с `PUBLIC_URL=http://localhost:42080`. Действующая политика core допускает HTTP на настоящий loopback. Шлюз слушает `127.0.0.1:8000` в сетевом пространстве работающего core-контейнера; Compose не публикует порт.
+
+1. Выбрать работающий core-контейнер через `AIFENCE_CORE_CONTAINER`; в этой установке это `aifence-airlock-1`. Порт 8000 в его сетевом пространстве должен быть свободен. Задать `YANDEX_METRIKA_TOKEN` с областью `metrika:read` и отдельный `SUPERGATEWAY_API_KEY` из защищённого окружения. `YANDEX_METRIKA_ENABLE_WRITE=false`.
+2. SDK объявляет штатный MCP-ресурс `yandex_metrika`, `http://127.0.0.1:8000/mcp`, с token-auth. В credentials Airlock указать ключ шлюза, не токен Яндекса.
 3. Указать `counter_id`, `ecommerce_confirmed=true` только после проверки полноты инструментации. Для файлов явно выбрать `evidence_path` или `source_path` (evidence-v1 JSON).
 4. `check_metrika` → `compare_periods`. Live-метрики магазина: `product_key=store`, сегмент `all` или `filter:<проверенный фильтр API>` (предварительно уточнить значения через отчёты MCP). Денежные показатели RUB для MVP; SKU и цели требуют явной конфигурации или отдельного прямого запроса MCP.
 
 ```sh
-# AIFENCE_MCP_NETWORK — существующая закрытая сеть прокси Airlock.
-# YANDEX_METRIKA_TOKEN и SUPERGATEWAY_API_KEY — из защищённого окружения.
-docker compose -f metrika.compose.yml up -d --build
-go test ./...
-AIRLOCK_AGENT_MODE=manifest go run .
-go tool air build
+# YANDEX_METRIKA_TOKEN и SUPERGATEWAY_API_KEY берутся из защищённого окружения.
+AIFENCE_CORE_CONTAINER=aifence-airlock-1 docker --context colima-aifence compose -p aifence-metrika -f metrika.compose.yml up -d --build
 ```
+
+После пересоздания core-контейнера при обновлении пересоздайте gateway той же Compose-командой, чтобы он присоединился к сетевому пространству текущего core:
+
+```sh
+AIFENCE_CORE_CONTAINER=aifence-airlock-1 docker --context colima-aifence compose -p aifence-metrika -f metrika.compose.yml up -d --force-recreate
+```
+
+Удалённые установки используют доверенный HTTPS MCP-ресурс; его URL должен совпадать с декларацией `yandex_metrika`.
 
 Шлюз публикует только get_metadata, describe_counter, run_report, run_comparison, run_timeseries, run_drilldown. Выгрузка сырых событий, административные операции и записи не входят в MVP. Внутри приложения: query_metrics, compare_periods, check_metrika; возврат evidence-v1. Равные непересекающиеся окна; абсолютные, относительные и п.п. изменения; null при отсутствии данных/нулевой базе; семплирование помечается. UI / выводит таблицу со ссылками на факты. Интерпретация — чат.
 
@@ -251,7 +261,7 @@ collect и в `details` соответствующей строки `watchdog.al
 
 Для `sourcewatch` сохранён вызов `compare_demand({phrase, monday})` с `source: wordstat`, `product_key: <phrase>`, источником `yandex-wordstat:search-api` и пустым массивом для `unavailable`. Новые результаты с `source: research` совместимы с импортом evidence-v1 в Product Manager. Существующие `read_wordstat` и `read_google_trends` работают со снимками Product Manager.
 
-Локальная проверка связки и происхождения данных в `apps/metrika-analyst`:
+Локальная проверка связки и происхождения данных в распакованном пакете M1:
 
 ```sh
 GOMAXPROCS=2 GOFLAGS=-p=1 go test -run '^TestExternalDemand' -count=1 .

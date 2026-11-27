@@ -63,7 +63,9 @@ func TestCheckZeroBaselineIsIncompleteWithoutPanic(t *testing.T) {
 				familyRow("c", "mobile", familyCurrent.From, familyCurrent.To, 182, "week=13"),
 			}}
 		case marketBinding:
-			*output.(*weekDelta) = deltaEnvelope(true, 0)
+			market := deltaEnvelope(true, 0)
+			market.BaselineWeek, market.CurrentWeek = familyBefore, familyCurrent
+			*output.(*weekDelta) = market
 		}
 		return nil
 	}

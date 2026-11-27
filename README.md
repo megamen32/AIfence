@@ -2,7 +2,15 @@
 
 An AI product manager for an online store: market observation + web analytics + research + decisions + feedback. Hackathon project. The contest version uses synthetic metrics and may include public SKUs and prices.
 
-## Local start
+## Native M1 build and deployment
+
+The installed M1 uses the approved native profile pinned in `platform/personal-release.lock.json`. Its application source is canonical `main`. Build a committed integration candidate with `/opt/homebrew/bin/python3 scripts/personal-build-apps.py --commit <sha> --output <private-output-directory>` and Go 1.26.11 first in PATH. The script validates the exact source bundle with the matching pinned SDK and Sol. See [native builds and releases](docs/personal-releases.md) for cache configuration and prerequisites.
+
+After integration, set `AIFENCE_DEPLOY_COMMIT` to the verified `main` SHA and run `./scripts/deploy-apps`. It uses the same native builder, checks `main` again before upload, and preserves SDK source CAS. Deployment locks and bindings are shared across worktrees in the Git common directory. `./scripts/deploy-apps --dry-run` only stages committed sources. Record the source SHA and target runtime for acceptance. [Stand and deployment instructions](docs/submission/deployment.md).
+
+### Original platform bootstrap for a separate installation
+
+The following bootstrap uses the original v0.8.15 platform pin for a separate installation. The existing M1 native runtime and its app releases use the pinned native profile above.
 
 ```sh
 ./scripts/up
@@ -10,15 +18,14 @@ An AI product manager for an online store: market observation + web analytics + 
 
 This starts the authorized private Airlock upstream at the exact revision in platform/airlock.lock.json, compiled locally, with isolated local state. On Mac with Colima it selects/starts profile `aifence`, not the existing default profile. The upstream builder has amd64-specific toolchain assets; builds use AMD64 emulation on Apple Silicon. On Linux use an already running Docker/Compose. Open http://localhost:42080 . First-time activation and model setup are interactive, as required by upstream. To see the local activation code, execute `./scripts/activation-code` in your own terminal; never commit the code.
 
-After activation and normal CLI login, run `./scripts/deploy-apps --dry-run` to stage sources from the selected commit, then use `./scripts/deploy-apps` for local development. Iteration checks run on the Mac. See the submission schedule for fixed-revision checks and the jury browser check. [Stand and deployment instructions](docs/submission/deployment.md).
-
 For another authorized machine, set AIRLOCK_UPSTREAM_URL before the first run. The checkout is fetched at the exact lock revision; local enterprise images are built from that source. The private source and all activation/model credentials remain ignored.
 
 ## Architecture
 
-Product Manager is the only application orchestrating investigations. Market Watch and Metrika Analyst supply evidence as source modules. The collection workflow writes a versioned snapshot to the shared Airlock file catalog in the hosted user context. The pinned stand rejects the saved-file executor’s structured arguments. See the [workflow invocation and import instructions](workflows/README.md). The conversation reads that snapshot and passes its JSON to `Product Manager.import_evidence`. Product Manager can also work with authorized imported snapshots.
+Product Manager is the only application orchestrating investigations. On native M1, its scheduled jobs call authorized read-only tools in Market Watch and Metrika Analyst through native app bindings. Market Watch and Metrika Analyst supply evidence as source modules. The collection workflow writes a versioned snapshot to the shared Airlock file catalog in the hosted user context. The pinned stand rejects the saved-file executor’s structured arguments. See the [workflow invocation and import instructions](workflows/README.md). The conversation reads that snapshot and passes its JSON to `Product Manager.import_evidence`. Product Manager can also work with authorized imported snapshots.
 
-- `platform/airlock.lock.json`: exact upstream pin; authorized private checkout is in ignored .runtime/airlock. Do not modify platform code.
+- `platform/personal-release.lock.json`: exact installed native M1 dependencies; app source and release recipes live in `main`.
+- `platform/airlock.lock.json`: original bootstrap pin; authorized private checkout is in ignored .runtime/airlock. Do not modify platform code.
 - `apps/market-watch/`: standalone market research/monitoring.
 - `apps/metrika-analyst/`: standalone analytics and measurement.
 - `apps/product-manager/`: hypothesis lifecycle, cross-source synthesis, prioritization, decision and feedback.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -87,18 +88,18 @@ func TestSourceWatchComposition(t *testing.T) {
 	if !slices.ContainsFunc(m.JobHandlers, func(h wire.JobHandlerDef) bool { return h.Name == "check_source_watch" && h.Version == 1 }) {
 		t.Fatal("missing source watch job")
 	}
-	for _, name := range []string{"start_source_watch", "stop_source_watch", "list_source_watches", "review_source_watch"} {
+	for _, name := range []string{"start_source_watch", "rebind_source_watch", "stop_source_watch", "list_source_watches", "review_source_watch"} {
 		if !slices.ContainsFunc(m.Tools, func(t wire.ToolDef) bool { return t.Name == name && t.Access == wire.AccessUser }) {
 			t.Errorf("missing user tool %s", name)
 		}
 	}
 	if !slices.ContainsFunc(m.AgentDefinitions, func(d wire.AgentDefinition) bool {
-		return d.Slug == "review_source_signal" && d.ModelSlot == "source_watch_analysis" && d.Capabilities != nil && len(d.Capabilities.Allow) == 0 && len(d.Tools) == 0 && len(d.InputSchema) > 0 && len(d.OutputSchema) > 0
+		return d.Slug == "review_source_signal" && d.ModelSlot == "source_watch_analysis" && d.Review != nil && d.Review.MaxCorrections == 2 && d.Capabilities != nil && len(d.Capabilities.Allow) == 0 && len(d.Tools) == 0 && len(d.InputSchema) > 0 && len(d.OutputSchema) > 0
 	}) {
 		t.Fatal("signal agent must be restricted to supplied evidence")
 	}
-	if sourcewatch.HostSupportsAppRead {
-		t.Fatal("pinned SDK v0.11.0 must report owner-scoped job reads as unsupported")
+	if !sourcewatch.HostSupportsAppRead {
+		t.Fatal("native source watch must use owner-scoped job reads")
 	}
 	for _, tool := range m.Tools {
 		if tool.Name == "approve_source_signal" {
@@ -110,4 +111,33 @@ func TestSourceWatchComposition(t *testing.T) {
 			t.Fatal("the deferred Redmine draft must not ship as an HTTP action")
 		}
 	}
+}
+
+func TestSourceWatchJobRetainsQueuedInputContract(t *testing.T) {
+	for _, job := range newAgent().Manifest().JobHandlers {
+		if job.Name != "check_source_watch" {
+			continue
+		}
+		if job.Version != 1 {
+			t.Fatal("queued source watches require version 1")
+		}
+		var schema struct {
+			Properties map[string]struct{ Type string }
+			Required   []string
+		}
+		if err := json.Unmarshal(job.InputSchema, &schema); err != nil {
+			t.Fatal(err)
+		}
+		if len(schema.Properties) != 2 || schema.Properties["watch_id"].Type != "string" || schema.Properties["monday"].Type != "string" || !slices.Contains(schema.Required, "watch_id") || !slices.Contains(schema.Required, "monday") {
+			t.Fatalf("changed the input of already queued jobs: %s", job.InputSchema)
+		}
+		if err := json.Unmarshal(job.OutputSchema, &schema); err != nil {
+			t.Fatal(err)
+		}
+		if schema.Properties["warnings"].Type != "array" {
+			t.Fatal("native version 1 retains its admitted warnings output")
+		}
+		return
+	}
+	t.Fatal("missing queued source-watch handler")
 }

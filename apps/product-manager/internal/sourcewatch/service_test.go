@@ -36,7 +36,7 @@ func deltaEnvelope(comparable bool, pct float64) weekDelta {
 		series[0].Reason = "quantity unknown"
 		series[0].Current = nil
 	}
-	return weekDelta{SKU: "KL4141RCEFS", Status: "ok", ComparablePairs: 1, Series: series, MissingPeriods: []missingPeriod{}}
+	return weekDelta{SKU: "KL4141RCEFS", BaselineWeek: period{"2026-11-09", "2026-11-15"}, CurrentWeek: period{"2026-11-16", "2026-11-22"}, Status: "ok", ComparablePairs: 1, Series: series, MissingPeriods: []missingPeriod{}}
 }
 
 func TestCheckTriggersOnObservedStoreDropWithPriceDelta(t *testing.T) {
@@ -141,27 +141,23 @@ func TestCheckTrendsUsesSameWeekContract(t *testing.T) {
 	}
 }
 
-func TestCheckReportsUnsupportedHostWithoutFakeRead(t *testing.T) {
+func TestCheckPropagatesStoreReadFailure(t *testing.T) {
 	w := Window{MetrikaBinding: metBinding, MarketBinding: marketBinding, SKU: "KL4141RCEFS", Metric: "visits", Monday: "2026-11-23", DropPct: 20}
-	out, err := Check(t.Context(), w, true, unsupportedRead, func(context.Context, Signal) (string, error) {
-		t.Fatal("unsupported host must not launch a review")
+	failure := errors.New("store comparison unavailable")
+	calls := 0
+	read := func(_ context.Context, binding string, _, _ any) error {
+		calls++
+		if binding != metBinding {
+			t.Fatal("must stop when the authoritative store source cannot be read")
+		}
+		return failure
+	}
+	out, err := Check(t.Context(), w, true, read, func(context.Context, Signal) (string, error) {
+		t.Fatal("missing store evidence must not launch a review")
 		return "", nil
 	})
-	if err == nil || !strings.Contains(err.Error(), "unsupported") || out.Status != "" {
-		t.Fatalf("expected explicit unsupported, got %+v err=%v", out, err)
-	}
-	if HostSupportsAppRead {
-		t.Fatal("pinned SDK v0.11.0 has no JobContext.ReadAppTool")
-	}
-}
-
-func TestUnsupportedIsADistinctTypedLimit(t *testing.T) {
-	// The journal must tell a host limitation apart from an ordinary failure.
-	if !errors.Is(unsupportedRead(context.Background(), metBinding, nil, nil), ErrUnsupported) {
-		t.Fatal("unsupported read must wrap ErrUnsupported")
-	}
-	if errors.Is(errors.New("binding revoked"), ErrUnsupported) {
-		t.Fatal("an unrelated read error must not be classified as unsupported")
+	if !errors.Is(err, failure) || out.Status != "" || calls != 1 {
+		t.Fatalf("expected store read error, got %+v err=%v calls=%d", out, err, calls)
 	}
 }
 

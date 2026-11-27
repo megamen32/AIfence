@@ -39,3 +39,11 @@ RETURNING issue_id, document AS document;
 
 -- name: ReportInitialWatchEnqueue :exec
 UPDATE pm_source_watches SET last_status=$3 WHERE owner_id=$1 AND watch_id=$2 AND last_monday='';
+
+-- name: RebindSourceWatch :one
+UPDATE pm_source_watches
+SET config = config || sqlc.arg(binding_patch)::jsonb
+WHERE owner_id = sqlc.arg(owner_id)
+  AND watch_id = sqlc.arg(watch_id)
+  AND config = sqlc.arg(expected_config)::jsonb
+RETURNING *;

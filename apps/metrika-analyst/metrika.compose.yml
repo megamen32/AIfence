@@ -7,11 +7,6 @@ services:
       YANDEX_METRIKA_TOKEN: ${YANDEX_METRIKA_TOKEN:?Supply authorized read-only token in environment}
       SUPERGATEWAY_API_KEY: ${SUPERGATEWAY_API_KEY:?Supply a separate gateway key; configure it in Airlock MCP credentials}
       YANDEX_METRIKA_ENABLE_WRITE: "false"
-    networks:
-      - private
+    network_mode: "container:${AIFENCE_CORE_CONTAINER:?Select the running local Airlock core container}"
     stdin_open: true
     restart: unless-stopped
-networks:
-  private:
-    external: true
-    name: ${AIFENCE_MCP_NETWORK:?Select existing private Airlock proxy network}

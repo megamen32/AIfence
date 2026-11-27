@@ -4,7 +4,7 @@
 
 ## Запуск на Mac M1
 
-Локальный Airlock из корня проекта должен работать на http://localhost:42080. Используются Go 1.26.11 и Agent SDK v0.11.0, штатная сессия Airlock CLI и собственная схема PostgreSQL приложения.
+Локальный Airlock из корня проекта должен работать на http://localhost:42080. Используются Go 1.26.11, закреплённые личные версии Agent SDK/Sol из platform/personal-release.lock.json, штатная сессия Airlock CLI и собственная схема PostgreSQL приложения. Нативный sourcewatch собирается из корня через scripts/personal-build-apps.py; этот рецепт подставляет согласованные зависимости в отдельную staging-копию.
 
 ```sh
 cd /Users/user/AIfence
