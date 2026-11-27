@@ -34,7 +34,7 @@ templ MonitorPanel(m *Monitor) {
 		<section class="dashboard-exceptions" aria-label="Открытые исключения">
 			<div class="dashboard-heading"><h2>Открытые исключения</h2><small>Потенциал в ₽/нед</small></div>
 			if len(m.Pulse) == 0 {
-				<p class="dashboard-empty">В этом режиме нет открытых исключений.</p>
+				<p class="dashboard-empty">Отклонений нет: продажи всех товаров идут вровень с контролем. Новые появятся здесь после следующей недельной проверки или когда вы спросите в чате «Что требует внимания?».</p>
 			}
 			for _, p := range m.Pulse {
 				<article class="dashboard-alert">
@@ -97,7 +97,7 @@ templ investigationPanel(v *Investigation) {
 		if v.Chart.Target != "" {
 			@trend(v.Chart, v.Control)
 		} else {
-			<p class="monitor-empty">Для графика нужны сопоставимые замеры продукта.</p>
+			<p class="monitor-empty">Для графика нужны хотя бы две сопоставимые недели продаж товара и контроля. Спросите в чате «Что изменилось за неделю?», агент дочитает продажи.</p>
 		}
 		if v.ReleaseDate != "" {
 			<p class="monitor-release">
@@ -222,7 +222,7 @@ templ purchasePanel(v *Investigation) {
 	<section class="dashboard-screen" aria-label="Путь покупки">
 		<div class="dashboard-heading"><h2>Путь покупки</h2><small>{ v.Product }</small></div>
 		if len(v.Frames) == 0 {
-			<p class="dashboard-empty">Для этого среза нет браузерной проверки.</p>
+			<p class="dashboard-empty">Путь покупки этого товара ещё не проверяли. Попросите в чате «Проверь путь покупки», агент пройдёт его в браузере и приложит кадры.</p>
 		} else {
 			<div class="monitor-film">
 				for _, f := range v.Frames {
@@ -254,7 +254,7 @@ templ afterPanel(v *Investigation, decision *Decision) {
 		if v.Assessment != "" {
 			<p>{ v.Assessment }</p>
 		} else {
-			<p class="dashboard-empty">Результат появится после сопоставимого замера.</p>
+			<p class="dashboard-empty">После релиза нужна хотя бы одна полная неделя продаж. Результат появится здесь сам после следующего снимка.</p>
 		}
 		if decision != nil {
 			for _, source := range decision.MeasuredEvidence {

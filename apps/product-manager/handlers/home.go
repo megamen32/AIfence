@@ -356,6 +356,18 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		if err != nil {
 			return v, err
 		}
+		// The panel has one view. When the owner's live sources have produced
+		// nothing yet, it opens on the loaded file sets instead of an empty screen.
+		if !demo && q.Get("mode") == "" && monitorEmpty(v.Monitor) {
+			v.Tabs = nil
+			setupPanel(&v, panelQuery, true, selected != "")
+			if alt, altErr := h.monitor(ctx, index.Snapshots, records.Records, selected, snap, q.Get("alert"), v.Tab != "overview" && q.Get("overview") == "", true); altErr == nil && !monitorEmpty(alt) {
+				demo, v.Monitor = true, alt
+			} else {
+				v.Tabs = nil
+				setupPanel(&v, panelQuery, false, selected != "")
+			}
+		}
 		h.loadOverview(ctx, v.Monitor, q, v.Tab, v.Mode)
 		if v.Monitor.Selected != nil {
 			v.Monitor.Selected.Mode = panelMode(demo)
@@ -377,7 +389,7 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 		if err != nil {
 			return v, err
 		}
-		demo := v.Card.Origin == "Синтетические данные"
+		demo := v.Card.Origin == preparedOrigin
 		if q.Get("tab") == "overview" {
 			demo = panelDemo(q, demo)
 		}
