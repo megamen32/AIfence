@@ -9,6 +9,7 @@ import (
 	"github.com/airlockrun/goai/tool"
 	"html/template"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,6 +26,72 @@ func embeddedEvidence(path string) ([]byte, bool) {
 	}
 	b, err := assets.ReadFile(path)
 	return b, err == nil
+}
+
+func metricValue(o Observation) string {
+	if o.Value == nil {
+		return "—"
+	}
+	v := *o.Value
+	if math.Abs(v) >= 1000 {
+		return fmt.Sprintf("%.0f", v)
+	}
+	text := strconv.FormatFloat(v, 'f', 2, 64)
+	text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	if text == "-0" {
+		return "0"
+	}
+	return text
+}
+
+func metricStatus(status string) string {
+	switch status {
+	case "observed":
+		return "Наблюдается"
+	case "estimated":
+		return "Оценка"
+	case "incomparable":
+		return "Несопоставимо"
+	case "missing":
+		return "Нет данных"
+	default:
+		return status
+	}
+}
+
+func metricTone(o Observation) string {
+	switch o.Status {
+	case "observed":
+		return "good"
+	case "estimated", "incomparable":
+		return "warn"
+	default:
+		return "muted"
+	}
+}
+
+func chartX(i int) int { return 52 + i*82 }
+
+func chartHeight(o Observation) int {
+	if o.Value == nil {
+		return 14
+	}
+	v := math.Abs(*o.Value)
+	h := int(math.Round(28 + math.Min(150, math.Log10(v+1)*54)))
+	if h < 18 {
+		return 18
+	}
+	return h
+}
+
+func chartY(o Observation) int { return 222 - chartHeight(o) }
+
+func chartLabel(o Observation) string {
+	label := o.MetricKey
+	if len(label) > 12 {
+		return label[:12] + "…"
+	}
+	return label
 }
 
 func main() { newAgent().Serve() }
@@ -113,7 +180,16 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Что изменилось?", Prompt: "Сравни две последние полные недели. Покажи источники, отклонения и ограничения."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Оценить релиз", Prompt: "Помоги оценить результат релиза: уточни дату, критерий успеха и сопоставимые периоды."})
 	a.RegisterSuggestedPrompt(agentsdk.SuggestedPrompt{Title: "Проверить источник", Prompt: "Проверь подключение Метрики или выбранную выгрузку."})
-	page := template.Must(template.ParseFS(assets, "index.html"))
+	page := template.Must(template.New("index.html").Funcs(template.FuncMap{
+		"metricValue":  metricValue,
+		"metricStatus": metricStatus,
+		"metricTone":   metricTone,
+		"chartX":       chartX,
+		"chartHeight":  chartHeight,
+		"chartY":       chartY,
+		"chartLabel":   chartLabel,
+		"add":          func(a, b int) int { return a + b },
+	}).ParseFS(assets, "index.html"))
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Description: "Сравнение показателей", Handler: func(w http.ResponseWriter, r *http.Request) error {
 		data := struct {
 			Batch *Batch
