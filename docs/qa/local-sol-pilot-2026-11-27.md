@@ -12,3 +12,19 @@
 В 01 модель только запросила описание `submit_answer`, но фактический вызов не доказан. В 06 она вызвала `submit_answer` через `run_js`, но результатом стала ошибка исполнения с child run `ea832781-744d-42d1-b831-f6312efc1acb`; чтение child run от имени владельца вернуло HTTP 403. Финальный текст чата проверен отдельно и сохранён, несмотря на ошибку отправки структурированного ответа.
 
 Оба пилота не достигли семантической причины, поэтому переход к полному пакету не подтверждён. Никакие значения в вопросе или исходных наборах после неудачи не менялись. Закрытые запросы, выводы инструментов, ответы и хеши — в `.runtime/blind-director/local-source-package/`, в `case-01/sol-chat`, `case-06/sol-chat` и `pilot-frozen.json`.
+
+## Повтор после переноса сигналов
+
+На локальном `42082` установлен PM `9f386b4`. Перед новыми чатами прямой сбор перенёс все подходящие `controlled_decline` с контролем: в 01 один из пяти кандидатов, в 06 восемь из тринадцати. Отбор по эталону не применялся. Метрика и контроль имеют синтетическое происхождение; это не фактические измерения бизнеса.
+
+| Кейс | Измерения в прямой сводке: изменение / контроль; локатор |
+|---|---|
+| 01 | −21,9% / Astra +10,4%; `week=14;family=kaspersky_endpoint_security;device=mobile;metric=orders` |
+| 06 | −22,1% / Dr.Web +3,3%, `week=13;family=myoffice_private_cloud;device=desktop;metric=card_views`; −23,5% / Astra +7,6%, `week=5;family=kaspersky_endpoint_security;device=desktop;metric=orders`; −20,9% / Kaspersky Small Office +3,5%, `week=3;family=myoffice_private_cloud;device=mobile;metric=orders`; −21,2% / Kaspersky Small Office +0,7%, `week=3;family=microsoft_365_business_premium;device=mobile;metric=revenue`; −22,0% / Red Hat +3,0%, `Продажи!row 43`; −22,7% / Red Hat +3,6%, `week=2;family=myoffice_private_cloud;device=mobile;metric=orders`; −21,6% / Microsoft 365 +0,7%, `week=1;family=astra_linux_special_edition;device=desktop;metric=checkouts`; −23,3% / Red Hat −3,4%, `week=0;family=kaspersky_small_office_security;device=mobile;metric=orders` |
+
+| Кейс | Новый чат / run | Итог после freeze |
+|---|---|---|
+| 01 | `5dca0e5d-59ed-4fbf-8104-e241256cd3da` / `19701503-ad90-4b56-befc-5b8b21663412` | Не снижать цену без подтверждения; отказался использовать синтетические проценты как реальные. Переименование не найдено. |
+| 06 | `42b8cac8-fb4a-4cba-a3b8-b5e4d5af81a5` / `92482fe1-52f6-4018-981a-f68be8e4e56a` | Назвал два падения и контроль, предупредил о старых периодах; сдвиг A/B и необходимость разреза вариантов не указаны. |
+
+Попадание в семантическую причину: 0/2. По новому указанию владельца оба результата сохранены, а запуск тридцати кейсов больше не зависит от их семантического успеха. Сырые ответы и хеши: `.runtime/blind-director/local-source-package/pilot-retest-9f-freeze.json`; прямые квитанции — в `case-01/collect-all-9f/` и `case-06/collect-all-9f/`.
