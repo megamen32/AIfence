@@ -24,17 +24,17 @@ log(){ printf '[move-to-server100] %s\n' "$*" >&2; }
 die(){ echo "move-to-server100: $*" >&2; exit 1; }
 remote(){ ssh -o BatchMode=yes -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=120 "$REMOTE" "$@"; }
 sync_file(){
-  src="$1"; dst="$2"; n=1
+  local src="$1" dst="$2" attempt=1
   while ! rsync -a --partial --timeout=900 -e 'ssh -o BatchMode=yes -o ControlMaster=no -o ControlPath=none -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=120' "$src" "$REMOTE:$dst"; do
-    [ "$n" -ge 5 ] && return 1
-    n=$((n+1)); sleep 5
+    [ "$attempt" -ge 5 ] && return 1
+    attempt=$((attempt+1)); sleep 5
   done
 }
 retry(){
-  cmd="$1"; n=1
+  local cmd="$1" attempt=1
   while ! remote "$cmd"; do
-    [ "$n" -ge 5 ] && return 1
-    n=$((n+1)); sleep 5
+    [ "$attempt" -ge 5 ] && return 1
+    attempt=$((attempt+1)); sleep 5
   done
 }
 mark(){ remote "mkdir -p '$ROOT/.phases' && touch '$ROOT/.phases/$1'"; }
@@ -103,7 +103,7 @@ if ! done_phase state; then
   sync_file "$TMP_AIRLOCK" "$ROOT/secrets/airlock.env"
   remote "chmod -R go-rwx '$ROOT/secrets'; find '$ROOT/secrets' -type d -exec chmod u+rwx,go-rwx {} +; find '$ROOT/secrets' -type f -exec chmod u+rw,go-rwx {} +"
   dump(){
-    c="$1"; u="$2"; mode="$3"; p="$4"
+    local c="$1" u="$2" mode="$3" p="$4" q db safe
     if [ "$mode" = peer ]; then q=$("$D" --context "$CTX" exec -u postgres "$c" psql -At -U postgres -d postgres -c 'select datname from pg_database where datistemplate=false')
     elif [ "$mode" = secret ]; then q=$("$D" --context "$CTX" exec "$c" sh -c "PGPASSWORD=\$(cat /run/secrets/db-password) psql -At -U '$u' -d postgres -c \"select datname from pg_database where datistemplate=false\"")
     else q=$("$D" --context "$CTX" exec "$c" sh -c "PGPASSWORD=\$POSTGRES_PASSWORD psql -At -U '$u' -d postgres -c \"select datname from pg_database where datistemplate=false\"")
@@ -123,7 +123,7 @@ if ! done_phase state; then
   dump aifence-personal-redmine-database-1 redmine secret redmine
   dump aifence-baserow-baserow-1 postgres peer baserow
   volume_archive(){
-    n="$1"; out="$TMP/vol-$n.tar.gz"
+    local n="$1" out="$TMP/vol-$n.tar.gz"
     if [ "$n" = aifence-baserow_data ]; then
       "$D" --context "$CTX" run --rm -v "$n:/from:ro" caddy:2-alpine sh -c 'tar -C /from --exclude=./postgres -czf - .' > "$out"
     else
