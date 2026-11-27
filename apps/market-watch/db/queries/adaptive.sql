@@ -1,5 +1,5 @@
 -- name: AdaptiveStoreIDs :many
-SELECT id FROM adaptive_stores ORDER BY id;
+SELECT id FROM adaptive_stores WHERE coalesce(metadata->>'legacy_source','')='' ORDER BY id;
 -- name: AdaptiveStoreMeta :one
 SELECT metadata,revision FROM adaptive_stores WHERE id=$1;
 -- name: AdaptiveTaskRows :many
@@ -47,3 +47,21 @@ SELECT payload FROM adaptive_tasks
 WHERE store_id=sqlc.arg(store_id) AND state IN ('queued','retry','done')
 AND next_attempt<=sqlc.arg(as_of)::timestamptz
 ORDER BY (state='done'),next_attempt,url LIMIT sqlc.arg(max_rows)::integer;
+-- name: LockMigrationStore :one
+SELECT metadata FROM adaptive_stores WHERE id=$1 FOR UPDATE;
+-- name: InsertMigrationBatch :execrows
+INSERT INTO adaptive_migration_batches(store_id,snapshot,digest,row_count,kind)
+VALUES(sqlc.arg(store_id),sqlc.arg(snapshot),sqlc.arg(digest),sqlc.arg(row_count),sqlc.arg(kind))
+ON CONFLICT DO NOTHING;
+-- name: LegacyMigrationCounts :many
+SELECT s.id,
+ coalesce(s.metadata->>'legacy_source','')::text AS source,
+ coalesce(s.metadata->>'migration_snapshot','')::text AS snapshot,
+ (SELECT count(*) FROM adaptive_tasks t WHERE t.store_id=s.id)::bigint AS tasks,
+ (SELECT count(*) FROM adaptive_tasks t WHERE t.store_id=s.id AND t.payload ? 'failure')::bigint AS failures,
+ (SELECT count(*) FROM adaptive_responses r WHERE r.store_id=s.id)::bigint AS responses,
+ (SELECT count(*) FROM adaptive_responses r WHERE r.store_id=s.id AND r.payload->>'archive_state'='local_pending')::bigint AS raw_pending,
+ (SELECT count(*) FROM adaptive_migration_batches b WHERE b.store_id=s.id)::bigint AS batches,
+ (SELECT coalesce(sum(b.row_count),0) FROM adaptive_migration_batches b WHERE b.store_id=s.id AND b.kind='tasks')::bigint AS task_receipts,
+ (SELECT coalesce(sum(b.row_count),0) FROM adaptive_migration_batches b WHERE b.store_id=s.id AND b.kind='responses')::bigint AS response_receipts
+FROM adaptive_stores s WHERE coalesce(s.metadata->>'legacy_source','')<>'' ORDER BY source;

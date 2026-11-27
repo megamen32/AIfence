@@ -87,6 +87,9 @@ func (s *Service) readAdaptivePG(ctx context.Context, id string) (AdaptiveStore,
 		if e = json.Unmarshal(meta.Metadata, &a); e != nil {
 			return e
 		}
+		if a.LegacySource != "" {
+			return fmt.Errorf("legacy migration is staged and cannot be collected or learned before cutover")
+		}
 		a.Revision = meta.Revision
 		a.Tasks = map[string]AdapterTask{}
 		a.savedTasks = map[string]string{}

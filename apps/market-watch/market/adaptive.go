@@ -77,24 +77,26 @@ type AdaptiveStudy struct {
 	Phase     string               `json:"phase"`
 }
 type AdaptiveStore struct {
-	Study         *AdaptiveStudy `json:"study,omitempty"`
-	ReplayPending bool           `json:"replay_pending,omitempty"`
-	Revision      int64          `json:"-"`
-	savedTasks    map[string]string
-	savedReceipts map[string]bool
-	ID            string                   `json:"id"`
-	Host          string                   `json:"host"`
-	Root          string                   `json:"root"`
-	Status        string                   `json:"status"`
-	ActiveVersion string                   `json:"active_version,omitempty"`
-	Versions      []string                 `json:"versions"`
-	LastDecision  *catalog.AdapterDecision `json:"last_decision,omitempty"`
-	Samples       []AdapterReceipt         `json:"samples"`
-	Tasks         map[string]AdapterTask   `json:"tasks"`
-	Sitemaps      []string                 `json:"sitemaps,omitempty"`
-	LastStudy     time.Time                `json:"last_study"`
-	LastStudyKey  string                   `json:"last_study_key,omitempty"`
-	PauseUntil    time.Time                `json:"pause_until"`
+	LegacySource      string         `json:"legacy_source,omitempty"`
+	MigrationSnapshot string         `json:"migration_snapshot,omitempty"`
+	Study             *AdaptiveStudy `json:"study,omitempty"`
+	ReplayPending     bool           `json:"replay_pending,omitempty"`
+	Revision          int64          `json:"-"`
+	savedTasks        map[string]string
+	savedReceipts     map[string]bool
+	ID                string                   `json:"id"`
+	Host              string                   `json:"host"`
+	Root              string                   `json:"root"`
+	Status            string                   `json:"status"`
+	ActiveVersion     string                   `json:"active_version,omitempty"`
+	Versions          []string                 `json:"versions"`
+	LastDecision      *catalog.AdapterDecision `json:"last_decision,omitempty"`
+	Samples           []AdapterReceipt         `json:"samples"`
+	Tasks             map[string]AdapterTask   `json:"tasks"`
+	Sitemaps          []string                 `json:"sitemaps,omitempty"`
+	LastStudy         time.Time                `json:"last_study"`
+	LastStudyKey      string                   `json:"last_study_key,omitempty"`
+	PauseUntil        time.Time                `json:"pause_until"`
 }
 type AdaptiveStoreView struct {
 	Storage        string                   `json:"storage"`
@@ -444,14 +446,11 @@ func (s *Service) learn(ctx context.Context, a *AdaptiveStore) (bool, error) {
 		training.Pages = append(training.Pages, catalog.TrainingPage(sample))
 		return nil
 	}
-	for i := len(corpus) - 1; i >= 0 && len(training.Pages) < 6; i-- {
-		if a.Tasks[corpus[i].URL].State == "repair" {
-			if e = add(corpus[i]); e != nil {
-				return false, e
-			}
-		}
+	ranked, e := s.rankedTrainingPages(ctx, *a, corpus)
+	if e != nil {
+		return false, e
 	}
-	for _, r := range corpus {
+	for _, r := range ranked {
 		if e = add(r); e != nil {
 			return false, e
 		}
@@ -837,6 +836,9 @@ func (s *Service) RepairAdaptiveStore(ctx context.Context, in AdapterActionInput
 	}
 	if a.ReplayPending {
 		return s.publishAdaptive(ctx, &a)
+	}
+	if e = s.expandInitialStudy(ctx, &a); e != nil {
+		return a.view(), e
 	}
 	ok, e := s.learn(ctx, &a)
 	if e != nil || !ok {

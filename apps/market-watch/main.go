@@ -3,6 +3,7 @@ package main
 import (
 	collector "agent/collector"
 	"agent/handlers"
+	"agent/internal/db"
 	"agent/market"
 	"agent/views"
 	"context"
@@ -20,6 +21,11 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterDirectory("adapter-state", agentsdk.DirectoryOpts{Read: agentsdk.AccessInternal, List: agentsdk.AccessInternal, Write: agentsdk.AccessInternal, Description: "Private versioned adaptive store rules and captured HTML evidence"})
 	s := market.NewWithCatalog(a, a.DB())
 	s.SetAdapterProposer(proposeStoreAdapter(a))
+	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/migration/stage", Handler: s.StageLegacyMigration, Access: agentsdk.AccessAdmin, Description: "Stage an idempotent verified batch of legacy task metadata; no network collection or activation"})
+	a.RegisterTool(tool.Typed[struct{}, []db.LegacyMigrationCountsRow]("legacy_migration_status").Description("Count staged legacy task/failure/response metadata and pending raw archive objects. Staging never enables a crawler.").Execute(s.LegacyMigrationStatus).Build(), agentsdk.AccessAdmin)
+
+	a.RegisterTool(tool.Typed[market.AdapterActionInput, market.StudyEvidence]("inspect_store_study").Description("Inspect archived training evidence and held-out price-evidence counts. Does not fetch or activate a store.").Execute(s.InspectAdaptiveStudy).Build(), agentsdk.AccessAdmin)
+
 	agentsdk.RegisterAsyncTool(a, &agentsdk.AsyncTool[market.AddStoreInput, market.AdaptiveJobResult]{Access: agentsdk.AccessAdmin, Job: &agentsdk.Job[market.AddStoreInput, market.AdaptiveJobResult]{Name: "add_store", Version: 1, Description: "Study a new public software store and validate its adapter; returns a durable task handle.", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.AddAdaptiveJobResult}})
 	a.RegisterTool(tool.Typed[struct{}, []market.AdaptiveStoreView]("list_adaptive_stores").Description("Inspect adaptive stores, active versions, unfinished URL tasks, archive and validation state.").Execute(s.AdaptiveStores).Build(), agentsdk.AccessUser)
 	agentsdk.RegisterAsyncTool(a, &agentsdk.AsyncTool[market.AdapterActionInput, market.AdaptiveJobResult]{Access: agentsdk.AccessAdmin, Job: &agentsdk.Job[market.AdapterActionInput, market.AdaptiveJobResult]{Name: "repair_store_adapter", Version: 1, Description: "Resume learning from the store archive and validate a new adapter in a durable job.", Timeout: 10 * time.Minute, MaxAttempts: 2, MaxConcurrency: 1, Handler: s.RepairAdaptiveJobResult}})
