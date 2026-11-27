@@ -165,3 +165,17 @@ Grade every run on these points; each is pass / fail / unknown with a quote from
 ## 5. When the agent fails
 
 Fix the system prompt, tools, data contracts or evidence, then rerun the same vague request. Never make the request more specific to get a pass. Record the failure and the fix in the track README.
+
+## Definition of done
+
+Completion requires live verification on the deployed 42080 stand. Log in through a dedicated browser profile, open the changed application, and verify the user-visible behavior on screen. Save a 1440px screenshot as evidence.
+
+When a change touches the background loop, rerun the full chain on 42080 in order:
+
+1. Source application.
+2. Product Manager signal.
+3. Hypothesis.
+4. Redmine task.
+5. Dion digest queued.
+
+Confirm every chain step on screen and save screenshot evidence. If a step fails, fix it, redeploy through the single deployer, rerun the chain, and continue until it passes. Never report completion while a required step remains unverified. In the final reply and the session `REPORT.md`, list every unverified step and explain why it could not be verified.

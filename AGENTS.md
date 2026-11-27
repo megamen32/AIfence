@@ -15,7 +15,7 @@ Read README.md, docs/architecture.md, contracts/README.md and your assigned docs
 
 ## Product QA and demo rules (owner decision, 26.11)
 
-Full checklist, few-shot prompts and grading: `.agents/skills/qa-testing/SKILL.md`. Load it before writing any demo, video, test or acceptance prompt.
+Full checklist, few-shot prompts and grading are in [.agents/skills/qa-testing/SKILL.md](.agents/skills/qa-testing/SKILL.md). Load it before writing any demo, video, test or acceptance prompt.
 
 - **No solution prompts.** A user request in a demo, video script, test or acceptance run must not contain tool names, parameters, date windows, as_of, fixture paths, file formats, metric names, target/control names, SKUs or step order, and must not pre-approve actions. Write it as a non-analyst director of digital channels would say it: vague, colloquial, sometimes wrong or with extra noise ("эээ, слушайте, по Касперскому продажи просели вроде?"). The agent chooses product, control group, windows, sources and tools itself.
 - **Mechanical check before any test query.** It may contain no IDs, SKUs, file names, paths, metric names, tool or app names (Market Watch, Metrika Analyst, Product Manager), dates or windows, no named control group, no hinted conclusion ("цены относятся к разным товарам") and no restriction ("только чтение"). If even one item matches, rewrite the query. Bad examples with analysis: `.agents/skills/qa-testing/SKILL.md`, section 3.
