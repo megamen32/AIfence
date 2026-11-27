@@ -196,6 +196,10 @@ EOF
   cat > "$TMP/redmine-mcp.override.yml" <<EOF
 services:
   redmine-mcp: {platform: linux/amd64}
+networks:
+  aifence: {external: true, name: airlock}
+  redmine: {external: true, name: aifence-move-redmine_backend}
+  connector: {external: true, name: aifence-redmine-mcp_connector}
 EOF
   sync_file "$TMP/redmine-mcp.override.yml" "$ROOT/apps/redmine-mcp/compose.server100.yml"
   cat > "$TMP/metrika.override.yml" <<EOF
@@ -211,7 +215,9 @@ services:
   userio:
     platform: linux/amd64
     image: userio-airlock:56c66260-mcp-oauth-amd64
-  mcp-local: {platform: linux/amd64}
+  mcp-local:
+    platform: linux/amd64
+    network_mode: container:aifence-move-airlock-1
 EOF
   sync_file "$TMP/userio.override.yml" "$ROOT/apps/userio/compose.server100.yml"
   remote "cd '$ROOT/apps/redmine-mcp' && docker build --platform linux/amd64 -t aifence-redmine-mcp:2.23.0 ."
@@ -221,7 +227,7 @@ EOF
   remote "cd '$ROOT/airlock' && docker compose -p aifence-move --env-file .env -f docker-compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && docker compose -p aifence-move-redmine -f redmine.compose.yml -f redmine.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && BASEROW_PUBLIC_URL='https://$HOST' BASEROW_AIRLOCK_NETWORK='$BASEROW_NETWORK' BASEROW_PLATFORM=linux/amd64 docker compose -p aifence-move-baserow -f apps-baserow.compose.yml -f baserow.server100.yml up -d --no-build --pull never"
-  remote "cd '$ROOT/apps/redmine-mcp' && docker compose -p aifence-move-redmine-mcp -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
+  remote "docker network inspect aifence-redmine-mcp_connector >/dev/null 2>&1 || docker network create aifence-redmine-mcp_connector >/dev/null; cd '$ROOT/apps/redmine-mcp' && docker compose -p aifence-move-redmine-mcp -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT/apps/metrika' && docker compose -p aifence-move-metrika --env-file '$ROOT/secrets/metrika.env' -f metrika.compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT/apps/userio' && docker compose -p userio-airlock-standalone-move -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
   mark up
