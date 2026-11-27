@@ -184,8 +184,10 @@ func (h Pages) Home(w http.ResponseWriter, r *http.Request) error {
 		p.To = now.Format(time.DateOnly)
 	}
 	partial := strings.EqualFold(r.Header.Get("HX-Request"), "true") && r.Header.Get("HX-History-Restore-Request") != "true"
+	var status market.CatalogStatus
 	if !partial || p.Tab == "sources" {
-		status, err := h.Market.Coverage(r.Context(), struct{}{})
+		var err error
+		status, err = h.Market.Coverage(r.Context(), struct{}{})
 		if err != nil {
 			return err
 		}
@@ -205,6 +207,9 @@ func (h Pages) Home(w http.ResponseWriter, r *http.Request) error {
 	var err error
 	switch p.Tab {
 	case "catalog":
+		if !partial {
+			h.overview(r.Context(), &p, status, now)
+		}
 		err = h.catalog(r.Context(), &p, q.Get("page"))
 	case "compare":
 		err = h.compare(r.Context(), &p, q.Get("qty"))
@@ -336,4 +341,15 @@ func (h Pages) sources(ctx context.Context, p *views.Page) error {
 		}
 	}
 	return nil
+}
+
+// overview fills the block above the catalog search from stored observations. A failed
+// price-change lookup leaves that part out; the catalog list below still renders.
+func (h Pages) overview(ctx context.Context, p *views.Page, status market.CatalogStatus, now time.Time) {
+	var week *market.Evidence
+	ev, err := h.Market.Changes(ctx, market.ChangesInput{From: now.AddDate(0, 0, -6).Format(time.DateOnly), To: now.Format(time.DateOnly)})
+	if err == nil {
+		week = &ev
+	}
+	p.Overview = buildOverview(status, week)
 }

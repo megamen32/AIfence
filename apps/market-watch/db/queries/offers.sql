@@ -34,6 +34,9 @@ LIMIT sqlc.arg(maxrows)::int OFFSET sqlc.arg(skip_rows)::bigint;
 SELECT l.source,count(*) AS offers,max(l.observed_at)::timestamptz AS observed_at
 FROM latest_offers l GROUP BY l.source ORDER BY l.source;
 
+-- name: CatalogSkuCount :one
+SELECT count(DISTINCT upper(l.sku))::bigint AS skus FROM latest_offers l WHERE l.sku <> '';
+
 -- name: OfferChanges :many
 SELECT prior.offer::jsonb AS old_offer, cur.offer::jsonb AS new_offer
 FROM observations cur
