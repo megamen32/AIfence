@@ -1,6 +1,6 @@
 {
   "kind": "wordstat_ui_redesign_candidate",
-  "checked_at": "2026-11-27T05:47:16.487362+00:00",
+  "checked_at": "2026-11-27T05:56:59.661365+00:00",
   "base_commit": "6465b54317647931ef229cea538f3b4f417e42f4",
   "scope": "apps/wordstat",
   "statistical_provider_calls_during_redesign": 0,
@@ -16,7 +16,7 @@
     "sdk_version": "0.11.0",
     "go_version": "1.26.11",
     "log": ".runtime/validation/ui-redesign-build.log",
-    "log_sha256": "77ba9cae558c6a4bfe41750bd59b4dc0b175588a08d61e105979d5cab07cc2ca"
+    "log_sha256": "bf4044eb31333d05e1f477c3fd2fc430d8dc99bba1133d1f5cc7e1097b004109"
   },
   "placeholder_lint": {
     "implementation": "official project scan/main",
@@ -202,15 +202,84 @@
     "Provider, plain HTTP and network errors preserve the previous result and context."
   ],
   "source_sha256": {
-    "handlers/home.go": "af4cae857d8d0e7a0147b76691ffc96eba4d7f364d64291b48a208b1de6bb9f1",
-    "handlers/home_test.go": "d1ecf04b89a9ab90a4b7acc0c60dfedc237238e7c6b17e85dfbbb5891798f340",
-    "views/viewmodel.go": "56d7cfdf8249bc08d3288dce79b7a1a95fc6ec5cdba76bc7d7ef7dc7f1291575",
+    "handlers/home.go": "388aa92827e5294bbb04365f3a7daca6d62f1220c10ebc2f26cf4414f9d43e89",
+    "handlers/home_test.go": "1dfe88d6463be0e0e44de96a03cd856688de7abe789701fe668e259ff0fceaa6",
+    "views/viewmodel.go": "a7164e0c77dfa19238312ff42dabe3fc7e697aa1b7aa343a8624aa5edfaa08e2",
     "views/assets.go": "1c2724b04dcad495443aeebdb76623192d7d668cf05e7166613c1e1380e6a2f8",
-    "views/index.templ": "80920f3068cc812e052bc9dcde05cccc4453d20361ad4afbeb132f4bed87204b",
+    "views/index.templ": "1f51d673f8c156e8b86ad56453c0a5941e90c5ae9dba1e6633d1c1e1c877e530",
     "views/layout.templ": "0b6ed5005ad6289d3eb57d2186245f706fad819b49ab851f4bb60de727cc2a0c",
     "views/static/explorer.js": "a589e0fbb7e4d3e233af2b493c753da51aaa4206b9694da7b900de37833f51f2",
     "views/static/region-catalog.json": "51af323d7b4d5e3a8a0572172dcd73b18bcceaae30b1812eaf74731335fa1e36",
     "styles/app.css": "ef49c037d3c45da6caaba1c884ab8e3bcaa98c75e83b3cc2e550666b7b4890f7",
     "main.go": "f8b4a03dab9bc6f80beef0fa26ed976967bb56da081a2d1eaf8ce454774f7907"
+  },
+  "scale_fix": {
+    "observed_defect": "A maximum count of 910 used an upper axis bound of 2000.",
+    "change": "Adaptive integer tick spacing, including 2.5 times a power of ten; zero baseline; shared tick/grid positions.",
+    "checks": {
+      "910_upper": 1000,
+      "0_upper": 1,
+      "1_upper": 1,
+      "negative_counts_not_plotted": true,
+      "labels_integer_unique_nonnegative": true
+    },
+    "targeted_red_exit_code": 1,
+    "targeted_green_exit_code": 0,
+    "red_log": ".runtime/validation/scale-red.log",
+    "green_log": ".runtime/validation/scale-green.log",
+    "independent_review": {
+      "scope": "scale_only",
+      "provider_calls": 0,
+      "started_at": "2026-11-27T05:54:55.903Z",
+      "css_url": "/static/app.4aa27e6e6bba.css",
+      "peak": {
+        "month": "2026-05",
+        "label": "май 2026",
+        "rawDate": "2026-05-01T00:00:00Z",
+        "count": "910",
+        "y": 0.91,
+        "state": "observed"
+      },
+      "axis": [
+        "1000",
+        "750",
+        "500",
+        "250",
+        "0"
+      ],
+      "grid": [
+        "0.00",
+        "75.00",
+        "150.00",
+        "225.00",
+        "300.00"
+      ],
+      "screenshot": {
+        "path": ".runtime/validation/redesign-review/desktop-1440-scale.jpg",
+        "width": 1440,
+        "height": 900,
+        "bytes": 61900
+      },
+      "status": "passed",
+      "contexts_closed": true,
+      "finished_at": "2026-11-27T05:54:57.442Z"
+    }
+  },
+  "latest_assets": {
+    "css_url": "/static/app.4aa27e6e6bba.css",
+    "dynamics_source": "offline_quality_fixture",
+    "js_url": "/static/explorer.a72005703255.js",
+    "kind": "offline_browser_fixture",
+    "pages": [
+      "home.html",
+      "top.html",
+      "index.html",
+      "regions.html",
+      "edge.html"
+    ],
+    "provider_calls": 0,
+    "region_source": "saved_native_response",
+    "regions": 116,
+    "top_source": "saved_mac_mcp_receipt"
   }
 }

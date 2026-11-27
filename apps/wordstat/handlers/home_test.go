@@ -308,3 +308,46 @@ func TestRenderWordstatInteractionFixtures(t *testing.T) {
 	raw, _ := json.MarshalIndent(summary, "", "  ")
 	write("fixture.json", raw)
 }
+
+func TestAbsoluteScaleTightCeilingAndIntegerLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		count int64
+		upper string
+		ticks int
+	}{
+		{"zero", 0, "1", 2},
+		{"one", 1, "1", 2},
+		{"ninety_percent", 910, "1\u00a0000", 5},
+		{"invalid_negative", -1, "1", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := demand.Result{Status: "ok", Kind: "dynamics", Phrase: "касперский для бизнеса", RequestedPeriod: &demand.Period{From: "2026-09", To: "2026-09", Granularity: "monthly"}, Rows: []demand.Row{{Label: "2026-09-01", Count: countPointer(tc.count)}}}
+			view := resultView(result)
+			if len(view.Axis) != tc.ticks || view.Axis[0] != tc.upper {
+				t.Fatalf("count %d: axis=%v, want upper %q with %d ticks", tc.count, view.Axis, tc.upper, tc.ticks)
+			}
+			if len(view.GridY) != len(view.Axis) || view.GridY[0] != "0.00" || view.GridY[len(view.GridY)-1] != "300.00" {
+				t.Fatalf("grid and tick labels disagree: axis=%v grid=%v", view.Axis, view.GridY)
+			}
+			seen := map[string]bool{}
+			for _, label := range view.Axis {
+				clean := strings.ReplaceAll(label, "\u00a0", "")
+				if clean == "" || strings.IndexFunc(clean, func(r rune) bool { return r < '0' || r > '9' }) >= 0 || seen[clean] {
+					t.Fatalf("noninteger, negative or duplicate tick: %q", label)
+				}
+				seen[clean] = true
+			}
+			var chart views.Chart
+			if err := json.Unmarshal([]byte(view.ChartJSON), &chart); err != nil {
+				t.Fatal(err)
+			}
+			if tc.count >= 0 && (chart.Points[0].Y == nil || *chart.Points[0].Y < 0 || *chart.Points[0].Y > 1) {
+				t.Fatalf("observation outside scale: %+v", chart.Points[0])
+			}
+			if tc.count < 0 && chart.Points[0].Y != nil {
+				t.Fatal("invalid negative frequency was plotted")
+			}
+		})
+	}
+}

@@ -63,6 +63,7 @@ type ResultView struct {
 	Segments                                    []string
 	Dots                                        []ChartDot
 	Axis                                        []string
+	GridY                                       []string
 	PointCount, ObservedCount                   int
 	HasChart                                    bool
 }

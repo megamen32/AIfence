@@ -224,7 +224,12 @@ func integer(value any) (int64, bool) {
 	return n, err == nil
 }
 func countText(n int64) string {
-	s := strconv.FormatInt(n, 10)
+	return groupedDigits(strconv.FormatInt(n, 10))
+}
+func axisCountText(n float64) string {
+	return groupedDigits(strconv.FormatFloat(n, 'f', 0, 64))
+}
+func groupedDigits(s string) string {
 	start := 0
 	if strings.HasPrefix(s, "-") {
 		start = 1
@@ -318,7 +323,7 @@ func buildChart(v *views.ResultView, out demand.Result) {
 		}
 		chart.Points = append(chart.Points, p)
 	}
-	max := niceMax(maxCount)
+	max, step := niceScale(maxCount)
 	for i := range chart.Points {
 		p := &chart.Points[i]
 		if p.State != "observed" {
@@ -327,8 +332,10 @@ func buildChart(v *views.ResultView, out demand.Result) {
 		y := float64(*byMonth[p.Month].Count) / max
 		p.Y = &y
 	}
-	for i := 4; i >= 0; i-- {
-		v.Axis = append(v.Axis, countText(int64(math.Round(max*float64(i)/4))))
+	for i := int(math.Round(max / step)); i >= 0; i-- {
+		value := step * float64(i)
+		v.Axis = append(v.Axis, axisCountText(value))
+		v.GridY = append(v.GridY, fmt.Sprintf("%.2f", 300*(1-value/max)))
 	}
 	var segment []string
 	flush := func() {
@@ -371,16 +378,18 @@ func buildChart(v *views.ResultView, out demand.Result) {
 	v.PointCount = len(chart.Points)
 	v.ChartJSON = views.JSON(chart)
 }
-func niceMax(n int64) float64 {
+func niceScale(n int64) (max, step float64) {
 	if n <= 4 {
-		return 4
+		return math.Max(1, float64(n)), 1
 	}
 	raw := float64(n) / 4
 	unit := math.Pow(10, math.Floor(math.Log10(raw)))
-	for _, multiple := range []float64{1, 2, 5, 10} {
-		if unit*multiple >= raw {
-			return 4 * unit * multiple
+	for _, multiple := range []float64{1, 2, 2.5, 5, 10} {
+		candidate := math.Max(1, math.Ceil(unit*multiple))
+		if candidate >= raw {
+			return math.Ceil(float64(n)/candidate) * candidate, candidate
 		}
 	}
-	return 4 * unit * 10
+	step = math.Ceil(unit * 10)
+	return math.Ceil(float64(n)/step) * step, step
 }
