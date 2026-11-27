@@ -14,3 +14,16 @@ func TestAgentComposition(t *testing.T) {
 		t.Fatal("missing runtime declarations")
 	}
 }
+
+func TestPriceWeekDeltaReadOnlyManifest(t *testing.T) {
+	for _, definition := range newAgent().Manifest().Tools {
+		if definition.Name != "price_week_delta" {
+			continue
+		}
+		if !definition.ReadOnly || len(definition.InputSchema) == 0 || len(definition.OutputSchema) == 0 {
+			t.Fatalf("price_week_delta must declare a typed read-only contract: %+v", definition)
+		}
+		return
+	}
+	t.Fatal("price_week_delta missing from manifest")
+}
