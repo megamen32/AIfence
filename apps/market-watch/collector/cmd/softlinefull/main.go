@@ -30,12 +30,14 @@ type inventory struct {
 	Families, Products []string
 }
 type check struct {
-	Page     string
-	Title    string `json:",omitempty"`
-	At       time.Time
-	Products []softlinefamily.Product
-	State    string
-	Error    string `json:",omitempty"`
+	Page          string
+	Title         string `json:",omitempty"`
+	At            time.Time
+	Products      []softlinefamily.Product
+	State         string
+	Error         string `json:",omitempty"`
+	ParserVersion int    `json:"parser_version,omitempty"`
+	BodyHash      string `json:"body_sha256,omitempty"`
 }
 type report struct {
 	AsOf              time.Time      `json:"as_of"`
@@ -166,12 +168,14 @@ func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, erro
 }
 
 type survey struct {
-	cfg      inventory
-	dir, out string
-	families int
-	covered  map[string]softlinefamily.Product
-	known    map[string]bool
-	prior    map[string]catalog.Offer
+	cfg        inventory
+	dir, out   string
+	families   int
+	covered    map[string]softlinefamily.Product
+	known      map[string]bool
+	prior      map[string]catalog.Offer
+	verified   verifiedBatch
+	batchByURL map[string]catalog.Offer
 }
 
 func rank(p softlinefamily.Product) int {
@@ -191,6 +195,9 @@ func (s *survey) merge(c check) {
 			p.Offer.MaxQuantity = catalog.PublicMaxQuantity(p.Offer.Quantity, p.Offer.MaxQuantity)
 		}
 		v, ok := s.covered[p.URL]
+		if ok && p.Offer != nil && v.Offer != nil && p.Offer.CapturedAt < v.Offer.CapturedAt {
+			continue
+		}
 		if !ok || rank(p) >= rank(v) {
 			s.covered[p.URL] = p
 		}
@@ -253,90 +260,10 @@ func (s *survey) snapshot() error {
 	stat.Complete = stat.Covered == stat.Inventory && stat.FamiliesProcessed == stat.Families
 	return save(filepath.Join(s.out, "inventory.json"), stat)
 }
-func (s *survey) scan(ctx context.Context, urls []string, family bool, get fetch) error {
-	cache := filepath.Join(s.dir, "product")
-	if family {
-		cache = filepath.Join(s.dir, "family")
-	}
-	if e := os.MkdirAll(cache, 0755); e != nil {
-		return e
-	}
-	last := time.Now()
-	batch := 0
-	for _, page := range urls {
-		if e := ctx.Err(); e != nil {
-			return e
-		}
-		if !family {
-			if p, ok := s.covered[page]; ok && rank(p) >= 2 {
-				continue
-			}
-		}
-		path := checkpoint(cache, page)
-		var c check
-		e := read(path, &c)
-		if e != nil && !errors.Is(e, os.ErrNotExist) {
-			return fmt.Errorf("reading %s: %w", path, e)
-		}
-		cached := e == nil && c.Page == page && (c.Error == "" || time.Since(c.At) < 3*time.Hour)
-		if !cached {
-			b, err := get(ctx, source, page)
-			c = check{Page: page, At: time.Now().UTC(), State: "observed"}
-			if err == nil {
-				if family {
-					c.Products, err = softlinefamily.Extract(page, b, c.At)
-					if err == nil {
-						c.Title, c.State = softlinefamily.Describe(b, c.Products)
-					}
-				} else {
-					c.Products, err = direct(page, b, c.At)
-				}
-			}
-			if err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				var status *catalog.HTTPStatus
-				c.State = "error"
-				c.Error = err.Error()
-				if errors.As(err, &status) {
-					switch status.Code {
-					case 404, 410:
-						c.State = "unavailable"
-						c.Error = ""
-						if !family {
-							c.Products = []softlinefamily.Product{{URL: page, State: "unavailable"}}
-						}
-					case 403, 429, 503:
-						if e := s.recordPause(status); e != nil {
-							return e
-						}
-						return fmt.Errorf("source paused: %w", err)
-					}
-				}
-			}
-			if e = save(path, c); e != nil {
-				return e
-			}
-			batch++
-		}
-		if family && c.Error == "" {
-			s.families++
-		}
-		s.merge(c)
-		if batch > 0 && (batch >= 50 || time.Since(last) > time.Minute) {
-			if e = s.snapshot(); e != nil {
-				return e
-			}
-			last = time.Now()
-			batch = 0
-		}
-	}
-	return s.snapshot()
-}
 func run() error {
 	out := flag.String("out", ".runtime/market-catalog/softline", "export folder")
 	runID := flag.String("cycle", "", "explicit checkpoint generation; normally resume automatically")
+	batchFile := flag.String("verified-batch", "", "authorized normalized price batch with exact sitemap URLs; persisted in current generation")
 	flag.Parse()
 	if *runID != "" && (filepath.Base(*runID) != *runID || *runID == "." || *runID == "..") {
 		return fmt.Errorf("invalid cycle")
@@ -427,6 +354,9 @@ func run() error {
 			inv.Families[0], inv.Families[i] = v, inv.Families[0]
 			break
 		}
+	}
+	if e = s.loadVerifiedBatch(*batchFile); e != nil {
+		return e
 	}
 	if e = s.scan(ctx, inv.Families, true, http.Fetch); e == nil {
 		e = s.scan(ctx, inv.Products, false, http.Fetch)
