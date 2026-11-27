@@ -52,3 +52,7 @@ The owner must be able to leave the laptop while agents work. Any keychain dialo
 - Playwright/Chromium: keep Playwright's default `--use-mock-keychain` and `--password-store=basic`. If you pass `ignore_default_args`, a persistent context or a real Chrome channel, add both flags explicitly. Never point automation at the owner's real Chrome profile.
 - Do not run `codesign`, `security unlock-keychain`, keychain imports or `git credential-osxkeychain` from agents. Git push uses SSH (`git@github.com`), no credential helper is needed.
 - If a dialog still appears, stop and record which item/app it names in the track README instead of retrying.
+
+## Deploy to the stand
+
+- Выкатка приложений на стенд 42080 (путь, ловушки, проверка Ready): `.agents/skills/stand-deploy/SKILL.md`. Вход на стенды 42080/42082: раздел 0 в `.agents/skills/qa-testing/SKILL.md`.
