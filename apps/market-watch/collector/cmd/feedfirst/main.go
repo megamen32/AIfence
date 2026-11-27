@@ -19,13 +19,16 @@ import (
 )
 
 type result struct {
-	RequestedSKUs []string          `json:"requested_skus"`
-	Pages         int               `json:"pages"`
-	Offers        int               `json:"offers"`
-	Sources       map[string]int    `json:"sources"`
-	Missing       []string          `json:"missing_skus"`
-	Failures      map[string]string `json:"failures"`
-	CapturedAt    string            `json:"captured_at"`
+	RequestedSKUs  []string                     `json:"requested_skus"`
+	Status         string                       `json:"status"`
+	CandidatePages int                          `json:"candidate_pages"`
+	Pages          int                          `json:"pages"`
+	Offers         int                          `json:"offers"`
+	Sources        map[string]int               `json:"sources"`
+	Coverage       map[string]map[string]string `json:"coverage"`
+	Missing        []string                     `json:"missing_skus"`
+	Failures       map[string]string            `json:"failures"`
+	CapturedAt     string                       `json:"captured_at"`
 }
 
 func main() {
@@ -33,15 +36,16 @@ func main() {
 	out := flag.String("out", "", "separate output directory for the bounded slice")
 	skus := flag.String("skus", "", "comma-separated exact SKUs, up to 20")
 	family := flag.String("family", "", "case-insensitive title phrase for SKU discovery")
-	limit := flag.Int("max-pages", 12, "maximum public pages to request, 1 to 12")
+	competitors := flag.Bool("include-competitors", false, "also check the two vetted seed-only competitor pages")
+	limit := flag.Int("max-pages", 20, "maximum public pages to request, 1 to 20")
 	flag.Parse()
-	if *root == "" || *out == "" || *limit < 1 || *limit > 12 || (*skus == "") == (*family == "") {
-		fmt.Fprintln(os.Stderr, "specify -root, -out, 1..12 max pages and exactly one of -skus or -family")
+	if *root == "" || *out == "" || *limit < 1 || *limit > 20 || (*skus == "") == (*family == "") {
+		fmt.Fprintln(os.Stderr, "specify -root, -out, 1..20 max pages and exactly one of -skus or -family")
 		os.Exit(2)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	got, err := collect(ctx, *root, *out, *skus, *family, *limit, collector.NewHTTP().Fetch)
+	got, err := collect(ctx, *root, *out, *skus, *family, *limit, *competitors, collector.NewHTTP().Fetch)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -49,10 +53,21 @@ func main() {
 	_ = json.NewEncoder(os.Stdout).Encode(got)
 }
 
-func collect(ctx context.Context, root, out, skuCSV, family string, maxPages int, fetch collector.Fetch) (result, error) {
-	r := result{Sources: map[string]int{}, Failures: map[string]string{}, Missing: []string{}}
-	if maxPages < 1 || maxPages > 12 {
-		return r, fmt.Errorf("max-pages must be 1..12")
+func collect(ctx context.Context, root, out, skuCSV, family string, maxPages int, includeCompetitors bool, fetch collector.Fetch) (result, error) {
+	r := result{Sources: map[string]int{}, Coverage: map[string]map[string]string{}, Failures: map[string]string{}, Missing: []string{}}
+	if maxPages < 1 || maxPages > 20 {
+		return r, fmt.Errorf("max-pages must be 1..20")
+	}
+	rootPath, err := filepath.Abs(root)
+	if err != nil {
+		return r, err
+	}
+	outPath, err := filepath.Abs(out)
+	if err != nil {
+		return r, err
+	}
+	if rootPath == outPath {
+		return r, fmt.Errorf("output must be separate from the existing feed")
 	}
 	sources, err := collector.Sources()
 	if err != nil {
@@ -109,15 +124,37 @@ func collect(ctx context.Context, root, out, skuCSV, family string, maxPages int
 		r.RequestedSKUs = append(r.RequestedSKUs, sku)
 	}
 	sort.Strings(r.RequestedSKUs)
+	if includeCompetitors {
+		for _, profile := range collector.CompetitorProfiles() {
+			selected[profile.ID] = map[string]bool{}
+			for _, url := range profile.Seeds {
+				for _, sku := range r.RequestedSKUs {
+					selected[profile.ID][url+"\x00"+sku] = true
+				}
+			}
+			sources = append(sources, profile)
+		}
+	}
 	// Revisit only URLs already tied to selected SKUs. Round-robin source
 	// ordering lets a small page budget reach multiple sellers.
 	queues := map[string][]string{}
+	pageSKUs := map[string]map[string][]string{}
 	for _, src := range sources {
+		pageSKUs[src.ID] = map[string][]string{}
+		r.Coverage[src.ID] = map[string]string{}
+		for _, sku := range r.RequestedSKUs {
+			r.Coverage[src.ID][sku] = "not_in_existing_feed"
+			if src.ID == "allsoft" || src.ID == "syssoft" {
+				r.Coverage[src.ID][sku] = "not_on_seed_page"
+			}
+		}
 		urls := map[string]bool{}
 		for pair := range selected[src.ID] {
 			url, sku, _ := strings.Cut(pair, "\x00")
 			if wanted[sku] {
 				urls[url] = true
+				pageSKUs[src.ID][url] = append(pageSKUs[src.ID][url], sku)
+				r.Coverage[src.ID][sku] = "skipped_budget"
 			}
 		}
 		ordered := make([]string, 0, len(urls))
@@ -126,6 +163,7 @@ func collect(ctx context.Context, root, out, skuCSV, family string, maxPages int
 		}
 		sort.Strings(ordered)
 		queues[src.ID] = ordered
+		r.CandidatePages += len(ordered)
 	}
 	bySource := map[string][]collector.Offer{}
 	for index := 0; r.Pages < maxPages; index++ {
@@ -136,6 +174,15 @@ func collect(ctx context.Context, root, out, skuCSV, family string, maxPages int
 			}
 			remaining = true
 			url := queues[src.ID][index]
+			for _, sku := range pageSKUs[src.ID][url] {
+				if r.Coverage[src.ID][sku] == "observed" {
+					continue
+				}
+				r.Coverage[src.ID][sku] = "no_verified_price"
+				if src.ID == "allsoft" || src.ID == "syssoft" {
+					r.Coverage[src.ID][sku] = "not_on_seed_page"
+				}
+			}
 			if err := ctx.Err(); err != nil {
 				return r, err
 			}
@@ -143,17 +190,34 @@ func collect(ctx context.Context, root, out, skuCSV, family string, maxPages int
 			body, err := fetch(ctx, src, url)
 			if err != nil {
 				r.Failures[url] = err.Error()
+				for _, sku := range pageSKUs[src.ID][url] {
+					if r.Coverage[src.ID][sku] != "observed" {
+						r.Coverage[src.ID][sku] = "fetch_failed"
+					}
+				}
 				continue
 			}
-			rows, err := collector.Extract(src, url, bytes.NewReader(body), time.Now().UTC())
+			var rows []collector.Offer
+			if src.ID == "softmagazin" {
+				page, inspectErr := collector.InspectPage(src, url, bytes.NewReader(body), time.Now().UTC())
+				rows, err = page.Offers, inspectErr
+			} else {
+				rows, err = collector.Extract(src, url, bytes.NewReader(body), time.Now().UTC())
+			}
 			if err != nil {
 				r.Failures[url] = err.Error()
+				for _, sku := range pageSKUs[src.ID][url] {
+					if r.Coverage[src.ID][sku] != "observed" {
+						r.Coverage[src.ID][sku] = "parse_failed"
+					}
+				}
 				continue
 			}
 			for _, offer := range rows {
 				if wanted[strings.ToUpper(offer.SKU)] && offer.PriceMinor > 0 && offer.Currency == "RUB" && collector.Allowed(src, offer.URL) {
 					bySource[src.ID] = append(bySource[src.ID], offer)
 					refreshed[strings.ToUpper(offer.SKU)] = true
+					r.Coverage[src.ID][strings.ToUpper(offer.SKU)] = "observed"
 				}
 			}
 		}
@@ -175,6 +239,17 @@ func collect(ctx context.Context, root, out, skuCSV, family string, maxPages int
 		}
 	}
 	r.CapturedAt = time.Now().UTC().Format(time.RFC3339)
+	r.Status = "ok"
+	if len(r.Missing) > 0 || len(r.Failures) > 0 || r.Pages < r.CandidatePages {
+		r.Status = "partial"
+	}
+	for _, sourceCoverage := range r.Coverage {
+		for _, status := range sourceCoverage {
+			if status != "observed" {
+				r.Status = "partial"
+			}
+		}
+	}
 	return r, nil
 }
 
