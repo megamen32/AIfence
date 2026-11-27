@@ -10,7 +10,7 @@ An AI product manager for an online store: market observation + web analytics + 
 
 This starts the authorized private Airlock upstream at the exact revision in platform/airlock.lock.json, compiled locally, with isolated local state. On Mac with Colima it selects/starts profile `aifence`, not the existing default profile. The upstream builder has amd64-specific toolchain assets; builds use AMD64 emulation on Apple Silicon. On Linux use an already running Docker/Compose. Open http://localhost:42080 . First-time activation and model setup are interactive, as required by upstream. To see the local activation code, execute `./scripts/activation-code` in your own terminal; never commit the code.
 
-After activation and normal CLI login, run `./scripts/deploy-apps --dry-run` to stage sources from the selected commit, then use `./scripts/deploy-apps` for local development. Iteration checks run on the Mac. The public stand is reserved for final acceptance after freeze and owner approval. [Stand and deployment instructions](docs/submission/deployment.md).
+After activation and normal CLI login, run `./scripts/deploy-apps --dry-run` to stage sources from the selected commit, then use `./scripts/deploy-apps` for local development. Iteration checks run on the Mac. See the submission schedule for fixed-revision checks and the jury browser check. [Stand and deployment instructions](docs/submission/deployment.md).
 
 For another authorized machine, set AIRLOCK_UPSTREAM_URL before the first run. The checkout is fetched at the exact lock revision; local enterprise images are built from that source. The private source and all activation/model credentials remain ignored.
 
@@ -30,7 +30,7 @@ Product Manager is the only application orchestrating investigations. Market Wat
 
 Private inputs: `материалы/`, `materials/`, `data/`, `private/`; all ignored by Git. Keep them local and read-only. Import only within authorized closed workspace and configured non-training model provider. Never send raw customer data or credentials to third parties or publish them. The repository remains private until the owner decides how to share the contest version.
 
-Start with [architecture](docs/architecture.md), [contracts](contracts/README.md), and [track assignments](docs/tracks/README.md). The [submission pack](docs/submission/README.md) contains the jury access instructions, video script, economics, licenses and verified limits. Integration closes on 27 November at 18:00, code freezes at 22:00, and submission is due on 28 November 2026 at 12:00, all in UTC+5. Record after the freeze, using the final results table and after owner approval.
+Start with [architecture](docs/architecture.md), [contracts](contracts/README.md), and [track assignments](docs/tracks/README.md). The [submission pack](docs/submission/README.md) contains the jury access instructions, video script, economics, licenses and verified limits. On 27 November, KT1 finishes model-free reads by 11:00, and KT5 checks 3–5 cases on a fixed revision from 18:00 to 21:30. Record after 22:00 using the final results table. On 28 November 2026, check access in a clean browser at 09:00. Planned submission is at 10:00. All times are UTC+5. External publication and submission require separate owner approval.
 
 ### Optional authorized image cache
 
