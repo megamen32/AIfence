@@ -45,9 +45,10 @@ def platform_components(release):
     return {name: digest(release.get(field), 40, "release " + field)
             for name, field in (("airlock", "core"), ("agentsdk", "agentsdk"), ("sol", "sol"))}
 
-def approved_release():
+def approved_release(approved=None):
     # Policy comes only from the installed copy of the published channel.
-    approved = RUNTIME / "personal-releases/current"
+    if approved is None:
+        approved = RUNTIME / "personal-releases/current"
     _, channel = release_object(approved / "channel.json")
     approved_bytes, release = release_object(approved / "release.json")
     frozen = channel.get("frozen", False)
