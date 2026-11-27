@@ -78,3 +78,26 @@ func TestWeekDeltaDoesNotCountUnknownPriceBasis(t *testing.T) {
 		t.Fatalf("unknown price basis counted as a numeric change: %+v", out)
 	}
 }
+
+func TestWeekDeltaUsesDisplayedRublesAtClosedWeekBoundaries(t *testing.T) {
+	baseline := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+	current := baseline.AddDate(0, 0, 7)
+	lastBaseline := deltaOffer("softline", baseline.AddDate(0, 0, 6).Add(23*time.Hour+59*time.Minute), 10000, "https://store.softline.ru/kes/")
+	lastCurrent := deltaOffer("softline", current.AddDate(0, 0, 6).Add(23*time.Hour+59*time.Minute), 11000, "https://store.softline.ru/kes/")
+	firstAfterCurrent := deltaOffer("softline", current.AddDate(0, 0, 14), 12000, "https://store.softline.ru/kes/")
+
+	out := GroupWeekDelta([]catalog.Offer{lastBaseline, lastCurrent, firstAfterCurrent}, lastBaseline.SKU, baseline, current, current.AddDate(0, 0, 14))
+	if out.ComparablePairs != 1 || len(out.Evidence.Observations) != 1 {
+		t.Fatalf("boundary observations were not paired exactly once: %+v", out)
+	}
+	series := out.Series[0]
+	if series.Baseline == nil || series.Baseline.Value != 100 || series.Current == nil || series.Current.Value != 110 {
+		t.Fatalf("minor units were not converted to displayed RUB: %+v", series)
+	}
+	if series.Delta == nil || *series.Delta != 10 || series.DeltaPct == nil || *series.DeltaPct != 10 {
+		t.Fatalf("unexpected displayed-price delta: %+v", series)
+	}
+	if out.Evidence.Observations[0].TaxBasis != "unknown" {
+		t.Fatalf("weekly delta must not invent a VAT adjustment: %+v", out.Evidence.Observations[0])
+	}
+}
