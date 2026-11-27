@@ -11,7 +11,7 @@ import (
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: "Google Trends: сравнение поискового интереса к продуктам, динамика и региональные гипотезы.", Icon: "📈"})
+	a := agentsdk.New(agentsdk.Config{Description: "Тренды поиска: сравнение интереса к продуктам, динамика и регионы.", Icon: "📈"})
 	mcp := a.RegisterMCP(&agentsdk.MCP{
 		Slug: "hasdata_google_trends", Name: "Google Trends · HasData", URL: trends.Endpoint,
 		AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared,

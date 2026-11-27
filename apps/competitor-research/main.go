@@ -9,7 +9,7 @@ func main() { newAgent().Serve() }
 
 func newAgent() *agentsdk.Agent {
 	a := agentsdk.New(agentsdk.Config{
-		Description: "Отдельное приложение для конкурентного анализа: web-поиск, проверяемые наблюдения и CSV-таблица с источниками.",
+		Description: "Конкуренты: поиск по сайтам, проверяемые наблюдения и таблица с источниками.",
 		Icon:        "🔎",
 	})
 	a.RegisterModel(&agentsdk.ModelSlot{Slug: "competitor_search", Capability: agentsdk.CapSearch, Description: "Web-поиск кандидатов и публичных источников конкурентов"})

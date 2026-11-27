@@ -11,7 +11,7 @@ import (
 func main() { newAgent().Serve() }
 
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: "Wordstat: поисковый спрос, динамика и регионы. Исторические данные Яндекса с явным периодом и состоянием источника.", Icon: "📊"})
+	a := agentsdk.New(agentsdk.Config{Description: "Яндекс Вордстат: поисковый спрос, динамика и регионы с указанием периода и состояния источника.", Icon: "📊"})
 	mcp := a.RegisterMCP(&agentsdk.MCP{Slug: "wordstat", Name: "Яндекс Wordstat", URL: configuredMCPEndpoint(), AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared})
 	service := demand.New(mcp)
 	pages := handlers.New(service)

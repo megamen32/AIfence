@@ -248,7 +248,7 @@ func (s *service) create(c context.Context, i createIn) (result, error) {
 	return s.api(c, "POST", fmt.Sprintf("/api/database/rows/table/%d/?user_field_names=true", i.TableID), i.Fields)
 }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: "Baserow — таблицы, каталог товаров и характеристики", Icon: "📋"})
+	a := agentsdk.New(agentsdk.Config{Description: "Таблицы и каталог: товары, цены и характеристики в Baserow.", Icon: "📋"})
 	s := &service{provision: &provisioner{store: identityStore{db: a.DB()}, client: safeNativeClient(), base: upstream, origin: func() (*url.URL, error) { return appOrigin(a) }, sessions: make(map[string]nativeSession)}}
 	routes(a, s)
 

@@ -15,7 +15,7 @@ import (
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: "Market Watch - live public prices and catalog snapshots", Icon: "📊"})
+	a := agentsdk.New(agentsdk.Config{Description: "Цены и каталог: актуальные цены, предложения магазинов и история наблюдений.", Icon: "📊"})
 	a.RegisterDirectory("tmp/attachments", agentsdk.DirectoryOpts{Read: agentsdk.AccessUser, Write: agentsdk.AccessUser, List: agentsdk.AccessUser, Scope: agentsdk.ScopeUser, RetentionHours: 24, Description: "Caller-scoped temporary price evidence for hosted chats"})
 	a.RegisterDirectory("catalog", agentsdk.DirectoryOpts{Read: agentsdk.AccessUser, List: agentsdk.AccessUser, Write: agentsdk.AccessInternal, Description: "Featured-page refresh history"})
 	a.RegisterDirectory("adapter-state", agentsdk.DirectoryOpts{Read: agentsdk.AccessInternal, List: agentsdk.AccessInternal, Write: agentsdk.AccessInternal, Description: "Private versioned adaptive store rules and captured HTML evidence"})

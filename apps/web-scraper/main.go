@@ -325,7 +325,7 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) error {
 	return view.Execute(w, p)
 }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: "Web Scraper — sources, parser configuration, coverage and collection operations.", Icon: "🔎"})
+	a := agentsdk.New(agentsdk.Config{Description: "Сборщик сайтов: источники, правила разбора, охват и результаты сбора.", Icon: "🔎"})
 	a.RegisterDirectory("scraper", agentsdk.DirectoryOpts{Read: agentsdk.AccessInternal, List: agentsdk.AccessInternal, Write: agentsdk.AccessInternal, Description: "Validated collection reports and configuration drafts"})
 	s := &Service{store: a}
 	a.RegisterTool(tool.Typed[Query, Snapshot]("get_scraper_status").Description("Actual collector progress, source rules, errors and export receipts. Source is optional. No fabricated or estimated coverage.").Execute(s.Status).Build(), agentsdk.AccessUser, agentsdk.WithReadOnly())
