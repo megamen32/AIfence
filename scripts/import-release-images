@@ -2,6 +2,7 @@
 """Fetch revision-verified release images from an authorized SSH cache.
 Archives remain private and partial downloads resume. No tokens/volumes copied.
 """
+import argparse
 import hashlib
 import json
 import os
@@ -13,7 +14,9 @@ import sys
 import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME = ROOT / ".runtime"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--runtime", type=Path, default=ROOT / ".runtime", help="runtime image cache directory")
+RUNTIME = parser.parse_args().runtime.resolve()
 LOCK = json.loads((ROOT / "platform/airlock.lock.json").read_text())
 REV = LOCK["revision"]
 TAG = REV[:12]

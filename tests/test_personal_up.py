@@ -53,7 +53,7 @@ class PersonalUpTests(unittest.TestCase):
         def start(command, *, env):
             self.assertEqual(env["AIFENCE_UP_RUNTIME"], str(self.runtime))
             self.assertEqual(env["AIFENCE_UP_PERSONAL"], "1")
-            self.assertEqual(env["AIFENCE_UP_ROOT"], str(self.runtime.parent))
+            self.assertEqual(env["AIFENCE_UP_ROOT"], str(self.worktree))
             self.assertEqual(env["AIFENCE_UP_GUARD"], str(self.worktree / "scripts/personal-mac-rollout.py"))
             with (self.runtime / "personal-overlay/release.lock").open("a") as competing:
                 with self.assertRaises(BlockingIOError):
@@ -93,50 +93,96 @@ class PersonalUpTests(unittest.TestCase):
         self.assertEqual(start.call_args.kwargs["env"]["AIFENCE_UP_PERSONAL"], "0")
         self.assertFalse((self.runtime / "personal-overlay").exists())
 
-    def test_actual_provenance_failure_preserves_compose_before_rewrite(self):
-        # Execute the real startup shell and real guard, with only external
-        # Docker/Git/Colima commands replaced by fixture executables.
+    def startup_fixture(self, *, bad_provenance=False):
+        # Execute the real startup shell and guard, replacing only external
+        # Docker/Git/Colima commands with fixture executables.
         scripts = self.worktree / "scripts"
         scripts.mkdir()
         guard = (ROOT / "scripts/personal-mac-rollout.py").read_text()
         guard = guard.replace('RUNTIME = Path.home() / "AIfence/.runtime"',
                               "RUNTIME = Path(" + repr(str(self.runtime)) + ")")
         (scripts / "personal-mac-rollout.py").write_text(guard)
-        platform = self.runtime.parent / "platform"
+        platform = self.worktree / "platform"
         platform.mkdir()
         self.write(platform / "airlock.lock.json", {"revision": CORE})
+        hosts = ("market-watch.localhost", "baserow.localhost", "openai-byok-local.localhost",
+                 "userio-dion-local.localhost", "product-manager.localhost", "metrika-analyst.localhost")
+        template = (ROOT / "platform/market-iframe.caddy").read_text()
+        template = "\n".join("\thost " + " ".join(hosts) if line.strip().startswith("host ")
+                             else line for line in template.splitlines()) + "\n"
+        (platform / "market-iframe.caddy").write_text(template)
+        shutil.copy2(ROOT / "scripts/local-market-iframe", scripts / "local-market-iframe")
+        # A stale installed checkout remains on four hosts. Its tracked files
+        # must never replace the invoking checkout's template.
+        installed_platform = self.runtime.parent / "platform"
+        installed_platform.mkdir()
+        self.write(installed_platform / "airlock.lock.json", {"revision": CORE})
+        old_template = template.replace(" product-manager.localhost metrika-analyst.localhost", "")
+        (installed_platform / "market-iframe.caddy").write_text(old_template)
+        installed_scripts = self.runtime.parent / "scripts"
+        installed_scripts.mkdir()
+        shutil.copy2(ROOT / "scripts/local-market-iframe", installed_scripts / "local-market-iframe")
         source = self.runtime / "airlock"
         (source / ".git").mkdir(parents=True)
-        (source / ".env").write_text("COMPOSE_PROJECT_NAME=aifence\nTLS_MODE=local\n")
+        (source / ".env").write_text("COMPOSE_PROJECT_NAME=aifence\nTLS_MODE=local\nDOMAIN=localhost\n")
+        (source / "caddy").mkdir()
+        (source / "caddy/routes.caddy").write_text(
+            "frame-src 'self' {args[0]}://*.{$DOMAIN};\n" * 2
+            + "frame-ancestors 'self' {args[0]}://{$DOMAIN} end;\n")
+        (source / "caddy/Caddyfile.local").write_text("http://*.{$DOMAIN} {\n}\n")
+        target = self.runtime / "caddy-market-iframe"
+        target.mkdir()
+        (target / "market-iframe.caddy").write_text(template)
         commands = self.base / "commands"
         commands.mkdir()
         for name in ("git", "colima"):
             executable = commands / name
             executable.write_text("#!/bin/sh\nexit 0\n")
             executable.chmod(0o700)
-        image = {
-            "Id": self.rows[0]["local_image_id"], "Architecture": "amd64",
-            "Config": {"Labels": {
-                "org.opencontainers.image.revision": CORE,
-                "io.aifence.personal.source-image": self.rows[0]["patched_id"],
-                "io.aifence.personal.archive-sha256": "e" * 64,
-            }},
+        images = {
+            row["local_image"]: {
+                "Id": row["local_image_id"], "Architecture": "amd64",
+                "Config": {"Labels": {
+                    "org.opencontainers.image.revision": CORE,
+                    "io.aifence.personal.source-image": row["patched_id"],
+                    "io.aifence.personal.archive-sha256": "e" * 64 if bad_provenance else row["sha256"],
+                }},
+            } for row in self.rows
         }
         docker = commands / "docker"
         docker.write_text("#!" + sys.executable + "\nimport json, sys\n"
-                          + "args = sys.argv[1:]\n"
-                          + "if args[:2] == ['image', 'inspect']: print(" + repr(json.dumps([image])) + ")\n"
+                          + "args = sys.argv[1:]\nimages = " + repr(images) + "\n"
+                          + "if args[:2] == ['image', 'inspect']:\n"
+                          + "    if '--format' in args: print(" + repr(CORE) + ")\n"
+                          + "    else: print(json.dumps([images.get(args[2], next(iter(images.values())))]))\n"
                           + "elif args not in (['info'], ['compose', 'version']): raise SystemExit(90)\n")
         docker.chmod(0o700)
         start = up.START.replace('export PATH="/opt/homebrew/bin:/usr/local/go/bin:$PATH"',
                                  'export PATH="' + str(commands) + ':/opt/homebrew/bin:/usr/local/go/bin:$PATH"')
-        before = (self.runtime / "compose.local.yml").read_bytes()
+        return start, template, old_template
+
+    def run_startup(self, start):
         real_call = subprocess.call
         def run(command, *, env):
+            env.pop("AIFENCE_CACHE_HOST", None)
             return real_call(command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         with mock.patch.object(up, "START", start), mock.patch.object(up.subprocess, "call", side_effect=run):
-            self.assertNotEqual(up.main(), 0)
+            return up.main()
+
+    def test_actual_provenance_failure_preserves_compose_before_rewrite(self):
+        start, _, _ = self.startup_fixture(bad_provenance=True)
+        before = (self.runtime / "compose.local.yml").read_bytes()
+        self.assertNotEqual(self.run_startup(start), 0)
         self.assertEqual((self.runtime / "compose.local.yml").read_bytes(), before)
+
+    def test_other_worktree_preserves_six_host_template_in_canonical_runtime(self):
+        start, template, old_template = self.startup_fixture()
+        self.assertEqual(self.run_startup(start), 90)  # fixture stops at Compose up
+        self.assertEqual((self.runtime / "caddy-market-iframe/market-iframe.caddy").read_text(), template)
+        self.assertIn("product-manager.localhost metrika-analyst.localhost", template)
+        self.assertEqual((self.runtime.parent / "platform/market-iframe.caddy").read_text(), old_template)
+        self.assertTrue((self.runtime / "caddy-market-iframe/routes.caddy").is_file())
+        self.assertFalse((self.worktree / ".runtime").exists())
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ def main():
     markers = (rollout.RUNTIME / "personal-releases/current", rollout.RUNTIME / "personal-overlay")
     personal = any(path.exists() or path.is_symlink() for path in markers)
     runtime = rollout.RUNTIME if personal else ROOT / ".runtime"
-    env = dict(os.environ, AIFENCE_UP_ROOT=str(runtime.parent if personal else ROOT),
+    env = dict(os.environ, AIFENCE_UP_ROOT=str(ROOT),
                AIFENCE_UP_GUARD=str(ROOT / "scripts/personal-mac-rollout.py"), AIFENCE_UP_RUNTIME=str(runtime),
                AIFENCE_UP_PERSONAL="1" if personal else "0")
     command = ["bash", "-c", START, str(ROOT / "scripts/up"), *sys.argv[1:]]
@@ -111,7 +111,7 @@ YAML_NATIVE
 fi
 # Render the loopback Market Watch gateway without changing upstream files.
 if grep -qx 'DOMAIN=localhost' .env; then
-  "$ROOT/scripts/local-market-iframe" >> "$RUNTIME/compose.local.yml"
+  "$ROOT/scripts/local-market-iframe" --runtime "$RUNTIME" >> "$RUNTIME/compose.local.yml"
 fi
 # Personal overlays are optional local artifacts, excluded from Git.
 # Verify their exact local image IDs and provenance before selecting them.
@@ -150,7 +150,7 @@ build_if_missing() {
 }
 # Optionally import the exact signed-release image contents from an authorized cache.
 if [[ -n "${AIFENCE_CACHE_HOST:-}" || -s "$RUNTIME/cache-host" ]]; then
-  "$ROOT/scripts/import-release-images"
+  "$ROOT/scripts/import-release-images" --runtime "$RUNTIME"
 fi
 # Start the exact upstream dependency images, no platform code patches.
 build_if_missing "$AGENT_BASE_IMAGE" Dockerfile.agent-base
