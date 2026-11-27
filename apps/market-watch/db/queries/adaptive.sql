@@ -84,3 +84,11 @@ SET payload=r.payload || jsonb_build_object(
 FROM jsonb_array_elements(sqlc.arg(entries)::jsonb) x
 WHERE r.store_id=sqlc.arg(store_id) AND r.sha256=x->>'sha256'
  AND r.payload->>'archive_state'='local_pending';
+
+-- name: LegacyAuditResponses :many
+SELECT r.payload, coalesce(t.payload->'legacy'->>'kind','page')::text AS kind
+FROM adaptive_responses r JOIN adaptive_tasks t ON t.store_id=r.store_id AND t.url=r.url
+WHERE r.store_id=sqlc.arg(store_id) AND r.payload->>'archive_state'='stored'
+ AND coalesce((r.payload->'legacy'->>'status')::int,0)=200
+ AND coalesce((r.payload->>'html')::boolean,false)
+ORDER BY r.captured_at DESC,r.url LIMIT sqlc.arg(max_rows)::integer;

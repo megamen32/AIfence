@@ -4,7 +4,6 @@ package main
 import (
 	"agent/collector"
 	"agent/collector/softlinefamily"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -13,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -23,7 +21,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/gofrs/flock"
 )
 
@@ -143,81 +140,9 @@ func checkpoint(dir, page string) string {
 	return filepath.Join(dir, fmt.Sprintf("%x.json", sha256.Sum256([]byte(page))))
 }
 
-// The publisher may redirect a standalone license URL to its family. Use the
-// returned family model to collect exact child URLs, never transfer a price
-// from a different canonical product to the requested URL.
+// Delegate to the shared parser used by native Airlock jobs.
 func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, error) {
-	doc, e := goquery.NewDocumentFromReader(bytes.NewReader(b))
-	if e != nil {
-		return nil, e
-	}
-	sku, _ := doc.Find(".js-sku-btn").First().Attr("data-code")
-	name := strings.Join(strings.Fields(doc.Find("h1").First().Text()), " ")
-	p := softlinefamily.Product{URL: page, SKU: strings.ToUpper(strings.TrimSpace(sku)), Name: name, State: "unrecognized_product"}
-	if canonical, ok := doc.Find("link[rel='canonical']").First().Attr("href"); ok && strings.TrimSpace(canonical) != "" {
-		base, err := url.Parse(page)
-		if err != nil {
-			return nil, err
-		}
-		target, err := base.Parse(strings.TrimSpace(canonical))
-		if err != nil || !catalog.Allowed(source, target.String()) {
-			return []softlinefamily.Product{{URL: page, State: "unrecognized_product"}}, nil
-		}
-		if target.String() != page {
-			products, err := softlinefamily.Extract(target.String(), b, at)
-			if err == nil && len(products) > 0 {
-				for _, v := range products {
-					if v.URL == page {
-						return products, nil
-					}
-				}
-				return append(products, softlinefamily.Product{URL: page, State: "unrecognized_product", StatusEvidence: "canonical_family_does_not_list_requested_url"}), nil
-			}
-			return []softlinefamily.Product{{URL: page, State: "unrecognized_product"}}, nil
-		}
-	}
-	offer, err := catalog.SoftlineDetail(doc, page, at)
-	if err != nil {
-		return nil, err
-	}
-	if offer == nil {
-		offer = catalog.StructuredOffer(source, page, doc, at)
-	}
-	if offer != nil {
-		p.State = "priced"
-		p.Offer = offer
-		return []softlinefamily.Product{p}, nil
-	}
-	if name != "" {
-		// Explicit null prices in the exact software product's own published
-		// configuration are positive evidence of no public quote, not parse failure.
-		// Absent keys, unrelated IDs and redirected pages stay unresolved.
-		var cfg struct {
-			Product struct {
-				ID      json.RawMessage
-				Type    string
-				Price   json.RawMessage
-				Current json.RawMessage `json:"priceWithDiscount"`
-			}
-		}
-		if _, data, ok := strings.Cut(doc.Find("#js-front-config").Text(), "window.temporaryFrontConfig ="); ok && json.NewDecoder(strings.NewReader(data)).Decode(&cfg) == nil {
-			id := strings.Trim(string(cfg.Product.ID), "\\\" ")
-			suffix := strings.TrimSuffix(page, "/")
-			i := strings.LastIndex(suffix, "-")
-			if i >= 0 && id != "" && suffix[i+1:] == id && cfg.Product.Type == "software" && string(cfg.Product.Price) == "null" && string(cfg.Product.Current) == "null" {
-				p.State = "no_public_price"
-				return []softlinefamily.Product{p}, nil
-			}
-		}
-		main := strings.ToLower(strings.Join(strings.Fields(doc.Find("main,.b-product-card,.b-product-detail").Text()), " "))
-		for _, marker := range []string{"цена по запросу", "цена предоставляется по запросу", "цена на данный продукт предоставляется по запросу", "узнать цену"} {
-			if strings.Contains(main, marker) {
-				p.State = "no_public_price"
-				break
-			}
-		}
-	}
-	return []softlinefamily.Product{p}, nil
+	return softlinefamily.Direct(page, b, at)
 }
 
 type survey struct {
