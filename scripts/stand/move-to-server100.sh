@@ -219,7 +219,7 @@ EOF
   remote "cd '$ROOT/apps/metrika' && docker build --platform linux/amd64 -t aifence-metrika-metrika-mcp:server100 -f metrika.Dockerfile ."
   remote "cd '$ROOT/apps/userio' && docker build --platform linux/amd64 -t userio-airlock:56c66260-mcp-oauth-amd64 --build-arg USERIO_REVISION=56c66260f2c1bf75c4b615e369fd0e032184e0ee -f source/Dockerfile source"
   remote "cd '$ROOT/build/AIfence' && docker build --platform linux/amd64 -t aifence-app-competitor-research:$AIFENCE_SHA -f apps/competitor-research/Dockerfile apps/competitor-research || true; docker build --platform linux/amd64 -t aifence-app-market-watch:$AIFENCE_SHA -f apps/market-watch/Dockerfile apps/market-watch || true; docker build --platform linux/amd64 -t aifence-app-product-manager:$AIFENCE_SHA -f apps/product-manager/Dockerfile apps/product-manager || true"
-  remote "cd '$ROOT/airlock' && docker compose -p aifence-move --env-file .env -f '$ROOT/build/airlock/docker-compose.yml' -f compose.server100.yml up -d --no-build --pull never"
+  remote "cd '$ROOT/airlock' && docker compose -p aifence-move --env-file .env -f docker-compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && docker compose -p aifence-move-redmine -f redmine.compose.yml -f redmine.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && docker compose -p aifence-move-baserow -f apps-baserow.compose.yml -f baserow.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT/apps/redmine-mcp' && docker compose -p aifence-move-redmine-mcp -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
@@ -230,7 +230,7 @@ fi
 
 if ! done_phase reconcile; then
   log "reconcile: verify restored app generations and grants"
-  remote "pgid=\$(docker compose -p aifence-move --env-file '$ROOT/airlock/.env' -f '$ROOT/build/airlock/docker-compose.yml' ps -q postgres); docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from agents where status in (''active'',''building'')' > '$ROOT/pin/active-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from agent_grants' > '$ROOT/pin/agent-grants-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from resource_grants' > '$ROOT/pin/resource-grants-count'"
+  remote "pgid=\$(docker compose -p aifence-move --env-file '$ROOT/airlock/.env' -f '$ROOT/airlock/docker-compose.yml' ps -q postgres); docker exec \$pgid psql -At -U airlock -d airlock -c \"select count(*) from agents where status in ('active','building')\" > '$ROOT/pin/active-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from agent_grants' > '$ROOT/pin/agent-grants-count'; docker exec \$pgid psql -At -U airlock -d airlock -c 'select count(*) from resource_grants' > '$ROOT/pin/resource-grants-count'"
   mark reconcile
 fi
 
