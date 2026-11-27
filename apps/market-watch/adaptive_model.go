@@ -14,7 +14,7 @@ import (
 	"github.com/airlockrun/goai/stream"
 )
 
-func proposeStoreAdapter(a *agentsdk.Agent) market.AdapterProposer {
+func proposeStoreAdapter(a *agentsdk.Agent) func(context.Context, catalog.AdapterTraining) (catalog.AdapterSpec, error) {
 	return func(ctx context.Context, in catalog.AdapterTraining) (catalog.AdapterSpec, error) {
 		if len(in.Pages) < 1 || len(in.Pages) > 9 {
 			return catalog.AdapterSpec{}, fmt.Errorf("need 1-9 training pages")
