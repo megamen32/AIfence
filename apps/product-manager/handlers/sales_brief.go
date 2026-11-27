@@ -76,6 +76,18 @@ type SalesBrief struct {
 	PriceCount  int               `json:"imported_price_observations"`
 	Total       int               `json:"total"`
 	NextOffset  *int              `json:"next_offset,omitempty"`
+	// DataState explains an empty reading with counts instead of silence, so a
+	// chat can tell "no signal imported" from "no observations at all".
+	DataState *BriefDataState `json:"data_state,omitempty"`
+}
+
+type BriefDataState struct {
+	Snapshots         int      `json:"snapshots"`
+	ObservedRows      int      `json:"observed_rows"`
+	Products          []string `json:"products,omitempty"`
+	WatchdogAlertRows int      `json:"watchdog_alert_rows"`
+	LabelledSynthetic bool     `json:"labelled_synthetic"`
+	NextStep          string   `json:"next_step,omitempty"`
 }
 
 func (h *Handler) SalesBrief(ctx context.Context, q BriefQuery) (SalesBrief, error) {
@@ -105,7 +117,11 @@ func (h *Handler) SalesBrief(ctx context.Context, q BriefQuery) (SalesBrief, err
 }
 
 func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQuery) SalesBrief {
-	rows = separateMonitorRows(rows, false)
+	// Real rows win when the owner has them. Only when every row is explicitly
+	// labelled synthetic does the summary read those rows, so a demo duplicate
+	// never mixes with a real series and a purely synthetic owner is not hidden.
+	state := briefDataState(rows)
+	rows = summaryRows(rows)
 	slices.SortStableFunc(rows, func(a, b monitorObservation) int { return strings.Compare(b.Period.To, a.Period.To) })
 	_, active := watchdogState(rows)
 	var facts []BriefFact
@@ -216,7 +232,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 	if q.Summary && len(readings) > 0 {
 		start := min(max(0, q.Offset), len(readings))
 		end := min(start+12, len(readings))
-		result := SalesBrief{Readings: readings[start:end], Total: len(readings), PriceCount: len(facts) - salesCount}
+		result := SalesBrief{Readings: readings[start:end], Total: len(readings), PriceCount: len(facts) - salesCount, DataState: state}
 		for i := range result.Readings {
 			addPriceContext(&result.Readings[i], comparisons, facts[salesCount:])
 		}
@@ -227,7 +243,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 	}
 	start := min(max(0, q.Offset), len(facts))
 	end := min(start+12, len(facts))
-	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Total: len(facts), PriceCount: len(facts) - salesCount}
+	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Total: len(facts), PriceCount: len(facts) - salesCount, DataState: state}
 	for _, fact := range result.Facts {
 		if value, found := comparisons[fact.SKU]; found {
 			result.Comparisons = append(result.Comparisons, value)
@@ -238,6 +254,50 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 		result.NextOffset = &end
 	}
 	return result
+}
+
+// summaryRows keeps the panel's separation without hiding a synthetic owner.
+func summaryRows(rows []monitorObservation) []monitorObservation {
+	for _, row := range rows {
+		if !educationalObservation(row.Row, row.details) {
+			return separateMonitorRows(rows, false)
+		}
+	}
+	return rows
+}
+
+// briefDataState counts what the owner actually has, before any alert filter.
+// It names the products and the origin so an empty reading is explainable.
+func briefDataState(rows []monitorObservation) *BriefDataState {
+	snapshots := map[string]bool{}
+	products := map[string]bool{}
+	synthetic := false
+	alerts := 0
+	observed := 0
+	for _, row := range rows {
+		snapshots[row.snapshot] = true
+		if row.Product != "" {
+			products[row.Product] = true
+		}
+		if row.Status == "observed" {
+			observed++
+		}
+		if educationalObservation(row.Row, row.details) {
+			synthetic = true
+		}
+		if row.Metric == watchdogMetric && row.Status == "observed" {
+			alerts++
+		}
+	}
+	state := &BriefDataState{Snapshots: len(snapshots), ObservedRows: observed, WatchdogAlertRows: alerts, LabelledSynthetic: synthetic}
+	for p := range products {
+		state.Products = append(state.Products, productName(p))
+	}
+	slices.Sort(state.Products)
+	if observed > 0 && alerts == 0 {
+		state.NextStep = "Наблюдения импортированы, но готового сигнала сторожа нет. Импортируйте документ из metrika-analyst collect_selected_watchdog_case, затем повторите сводку."
+	}
+	return state
 }
 
 // The sales family must start the catalog title on a word boundary. Individual
