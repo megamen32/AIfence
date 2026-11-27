@@ -14,6 +14,11 @@ func TestManifest(t *testing.T) {
 	if len(m.Tools) != 2 || len(m.Routes) != 4 {
 		t.Fatal("missing tools or routes")
 	}
+	for _, tool := range m.Tools {
+		if tool.Name == "get_scraper_status" && !tool.ReadOnly {
+			t.Fatal("scraper status must be declared read-only for source-watch bindings")
+		}
+	}
 }
 func TestCoverage(t *testing.T) {
 	if percent(Coverage{Done: 25, Total: 100, Known: true}) != 25 || percent(Coverage{Done: 7}) != 0 {
