@@ -1,0 +1,14 @@
+{
+  "release": "personal/2026.11.27.1",
+  "core_tag": "personal/2026.11.27.1",
+  "agentsdk": "0c8f01752e1bf7917bcaced92eca96aa12482362",
+  "sol": "1a8ee4e75f322fb5a30d9e3fa60c46de182a7906",
+  "airlock": "9c972bc9a4d0154efdf13cce2a4652f254c6526a",
+  "private_git": "88.bezrabotnyi.com:/home/roomhacker/Airlock/personal/releases/git",
+  "private_artifacts": "88.bezrabotnyi.com:/home/roomhacker/Airlock/personal/releases/artifacts/2026.11.27.1",
+  "app_packages": {
+    "product-manager": "apps/product-manager.tar.gz",
+    "metrika-analyst": "apps/metrika-analyst.tar.gz",
+    "market-watch": "apps/market-watch.tar.gz"
+  }
+}
