@@ -18,6 +18,11 @@ func TestAgentComposition(t *testing.T) {
 			t.Fatalf("visible description omits %q", contract)
 		}
 	}
+	for _, contract := range []string{"ровно три непустые строки", "Первая строка сразу даёт решение", "Вторая строка сохраняет обе даты окон"} {
+		if !strings.Contains(manifest.Description, contract) {
+			t.Fatalf("visible response contract omits %q", contract)
+		}
+	}
 	if manifest.Icon == "" {
 		t.Fatal("app must declare an Icon emoji")
 	}
@@ -58,6 +63,7 @@ func TestAgentComposition(t *testing.T) {
 			strings.Contains(instruction.Text, "return await apps.product_manager.tools.review_sales_and_prices({summary:true});") &&
 			strings.Contains(instruction.Text, "«Создать эту задачу»") &&
 			strings.Contains(instruction.Text, "Не проси ответить «да»") &&
+			strings.Contains(instruction.Text, "Не заменяй контроль общим словом и не опускай его") &&
 			!strings.Contains(instruction.Text, "fixtures/")
 	}) {
 		t.Fatal("watchdog must discover the available series and require one confirmation on the card")

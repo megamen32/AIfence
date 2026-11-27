@@ -59,14 +59,18 @@ func reviewAttachment(output string) string {
 	}
 	var b strings.Builder
 	for _, r := range review.Readings {
-		fmt.Fprintf(&b, "%s\nЦены: %s %s\n", r.Product, r.Price, r.PriceTiming)
+		c := r.Comparison
+		if c.Control.Name != "" || c.Target.Name != "" {
+			fmt.Fprintf(&b, "Продажи, два окна по %d недели (%s — %s к %s — %s). Контрольный ряд %s: %.1f%%. Основной ряд %s: %.1f%%.\n",
+				c.WeeksPerWindow, c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.Control.Name, c.Control.Percent, c.Target.Name, c.Target.Percent)
+		} else {
+			fmt.Fprintf(&b, "%s\n", r.Sales)
+		}
+		fmt.Fprintf(&b, "Статус цен: %s. %s %s\n", r.PriceEvidenceStatus, r.Price, r.PriceTiming)
 		for _, offer := range r.OfferExample {
 			fmt.Fprintf(&b, "%s · %s · %s\n", offer.SKU, offer.Fact, offer.Locator)
 		}
-		c := r.Comparison
-		fmt.Fprintf(&b, "Продажи, два окна по %d недели (%s — %s к %s — %s). Контрольный продукт %s: %.1f%%. Исследуемый продукт %s: %.1f%%. Источник: %s.\n",
-			c.WeeksPerWindow, c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.Control.Name, c.Control.Percent, c.Target.Name, c.Target.Percent, r.Source)
-		fmt.Fprintf(&b, "Потери в рублях за неделю: %s\n", r.Weekly)
+		fmt.Fprintf(&b, "Источник продаж: %s. Потери в рублях за неделю: %s\n", r.Source, r.Weekly)
 	}
 	if review.NextOffset != nil {
 		fmt.Fprintf(&b, "Следующая страница: %d.\n", *review.NextOffset)

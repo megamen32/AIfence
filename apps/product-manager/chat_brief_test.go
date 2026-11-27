@@ -15,12 +15,36 @@ func TestStandaloneReviewAttachmentKeepsControlAndSource(t *testing.T) {
 		OfferExample: []handlers.BriefFact{{SKU: "KL4210RAKDE", Fact: "Allsoft, цена за лицензию", Locator: "https://allsoft.ru/"}}}
 	data, _ := json.Marshal(handlers.SalesBrief{Readings: []handlers.ProductReading{r}})
 	doc := reviewAttachment(string(data))
-	for _, want := range []string{"Контрольный продукт Astra Linux Special Edition: 1.2%", "Kaspersky Endpoint Security: -12.3%", "2025-11-03", r.Source, r.Weekly, r.OfferExample[0].Locator} {
+	for _, want := range []string{"Контрольный ряд Astra Linux Special Edition: 1.2%", "Основной ряд Kaspersky Endpoint Security: -12.3%", "2025-11-03", r.Source, r.Weekly, r.OfferExample[0].Locator} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("missing %q from attachment", want)
 		}
 	}
 	if got := reviewAttachment(`{"observations":[]}`); got != `{"observations":[]}` {
 		t.Fatal(got)
+	}
+}
+
+func TestStandaloneReviewAttachmentPutsPairedSalesBeforePriceDetails(t *testing.T) {
+	r := handlers.ProductReading{
+		Product:             "Measured family",
+		PriceEvidenceStatus: "insufficient_comparable_quotes",
+		Price:               "No comparable offer group.",
+		Source:              "sales, row 4",
+		Weekly:              "Missing order count.",
+		Comparison: handlers.SalesComparison{
+			Control:        handlers.SeriesChange{Name: "Control family", Percent: -4.5},
+			Target:         handlers.SeriesChange{Name: "Measured family", Percent: -31.2},
+			Current:        evidence.Period{From: "2026-09-28", To: "2026-10-25"},
+			Baseline:       evidence.Period{From: "2026-08-31", To: "2026-09-27"},
+			WeeksPerWindow: 4,
+		},
+	}
+	doc, _ := json.Marshal(handlers.SalesBrief{Readings: []handlers.ProductReading{r}})
+	text := reviewAttachment(string(doc))
+	paired := strings.Index(text, "Контрольный ряд Control family: -4.5%.")
+	price := strings.Index(text, "Статус цен:")
+	if paired < 0 || price < 0 || paired > price {
+		t.Fatalf("paired sales must precede price details: %s", text)
 	}
 }
