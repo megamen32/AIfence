@@ -219,11 +219,18 @@ services:
       USERIO_AIRLOCK_OAUTH_BASE: https://$HOST
       USERIO_AIRLOCK_OAUTH_AUTHORIZE: https://$HOST/authorize
       USERIO_AIRLOCK_OAUTH_CALLBACK: https://$HOST/api/v1/credentials/oauth/callback
+    volumes:
+      - bootstrap:/run/userio-bootstrap:ro
   mcp-local:
     platform: linux/amd64
     network_mode: container:aifence-move-airlock-1
+volumes:
+  bootstrap:
+    external: true
+    name: userio-airlock-standalone-move_bootstrap
 EOF
   sync_file "$TMP/userio.override.yml" "$ROOT/apps/userio/compose.server100.yml"
+  remote "docker volume create userio-airlock-standalone-move_bootstrap >/dev/null; docker run --rm -v userio-airlock-standalone-move_bootstrap:/to -v '$ROOT/apps/userio/private:/from:ro' caddy:2-alpine sh -c 'rm -f /to/*; cp /from/* /to/; chmod 755 /to; chmod 600 /to/owner.env /to/service-token; chmod 644 /to/cabinet-public-key'"
   cat > "$TMP/userio.Dockerfile.server100" <<'EOF'
 FROM golang:1.26.1-trixie AS dion-helper
 WORKDIR /build
