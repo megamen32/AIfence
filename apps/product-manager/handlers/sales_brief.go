@@ -71,6 +71,7 @@ type ProductReading struct {
 type SalesBrief struct {
 	Replies     []answer.Input    `json:"director_replies,omitempty"`
 	Readings    []ProductReading  `json:"product_readings,omitempty"`
+	Causes      []CauseReading    `json:"metrika_causes,omitempty"`
 	Comparisons []PriceComparison `json:"price_comparisons,omitempty"`
 	Facts       []BriefFact       `json:"observations,omitempty"`
 	PriceCount  int               `json:"imported_price_observations"`
@@ -78,7 +79,8 @@ type SalesBrief struct {
 	NextOffset  *int              `json:"next_offset,omitempty"`
 	// DataState explains an empty reading with counts instead of silence, so a
 	// chat can tell "no signal imported" from "no observations at all".
-	DataState *BriefDataState `json:"data_state,omitempty"`
+	DataState  *BriefDataState `json:"data_state,omitempty"`
+	AnswerMode string          `json:"answer_mode,omitempty"`
 }
 
 type BriefDataState struct {
@@ -121,6 +123,10 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 	// labelled synthetic does the summary read those rows, so a demo duplicate
 	// never mixes with a real series and a purely synthetic owner is not hidden.
 	state := briefDataState(rows)
+	causes := causeReadings(rows)
+	if len(causes) > 0 && state.WatchdogAlertRows == 0 {
+		state.NextStep = "Есть отдельные измеренные признаки Метрики; сверьте исходные ряды, периоды и релизы перед выводом."
+	}
 	rows = summaryRows(rows)
 	slices.SortStableFunc(rows, func(a, b monitorObservation) int { return strings.Compare(b.Period.To, a.Period.To) })
 	_, active := watchdogState(rows)
@@ -232,7 +238,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 	if q.Summary && len(readings) > 0 {
 		start := min(max(0, q.Offset), len(readings))
 		end := min(start+12, len(readings))
-		result := SalesBrief{Readings: readings[start:end], Total: len(readings), PriceCount: len(facts) - salesCount, DataState: state}
+		result := SalesBrief{Readings: readings[start:end], Causes: causes, Total: len(readings), PriceCount: len(facts) - salesCount, DataState: state}
 		for i := range result.Readings {
 			addPriceContext(&result.Readings[i], comparisons, facts[salesCount:])
 		}
@@ -243,7 +249,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 	}
 	start := min(max(0, q.Offset), len(facts))
 	end := min(start+12, len(facts))
-	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Total: len(facts), PriceCount: len(facts) - salesCount, DataState: state}
+	result := SalesBrief{Facts: append([]BriefFact{}, facts[start:end]...), Causes: causes, Total: len(facts), PriceCount: len(facts) - salesCount, DataState: state}
 	for _, fact := range result.Facts {
 		if value, found := comparisons[fact.SKU]; found {
 			result.Comparisons = append(result.Comparisons, value)

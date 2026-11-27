@@ -25,6 +25,12 @@ func TestAgentComposition(t *testing.T) {
 			t.Fatalf("visible response contract omits %q", contract)
 		}
 	}
+	if !strings.Contains(manifest.Description, "отвечай обычным русским текстом") ||
+		!slices.ContainsFunc(manifest.EnvVars, func(v wire.EnvVarDef) bool {
+			return v.Slug == "strict_submit_answer" && v.Default == "off" && v.Pattern == "^(off|on)$"
+		}) {
+		t.Fatal("free-form default and strict opt-in are not declared")
+	}
 	if manifest.Icon == "" {
 		t.Fatal("app must declare an Icon emoji")
 	}
@@ -67,7 +73,7 @@ func TestAgentComposition(t *testing.T) {
 			strings.Contains(instruction.Text, "return await apps.product_manager.tools.review_sales_and_prices({summary:true,director:true});") &&
 			strings.Contains(instruction.Text, "«Создать эту задачу»") &&
 			strings.Contains(instruction.Text, "Не проси ответить «да»") &&
-			strings.Contains(instruction.Text, "Не заменяй контроль общим словом и не опускай его") &&
+			strings.Contains(instruction.Text, "В строгом режиме не заменяй контроль общим словом и не опускай его") &&
 			!strings.Contains(instruction.Text, "fixtures/")
 	}) {
 		t.Fatal("watchdog must discover the available series and require one confirmation on the card")
