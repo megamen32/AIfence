@@ -128,3 +128,83 @@ func TestBlindSourcewatchReplay(t *testing.T) {
 	}
 	fmt.Printf("Frozen offline replay records: %d\n", len(results))
 }
+
+// This uses the prepared neutral market batch and original Metrika batch as-is.
+// It neither invents a store-wide comparison nor presents synthetic IDs as live counters.
+func TestPreparedSourcewatchReplay(t *testing.T) {
+	root := os.Getenv("BLIND_PREPARED")
+	output := os.Getenv("BLIND_REPLAY_OUTPUT")
+	if root == "" || output == "" {
+		t.Fatal("prepared input and output are required")
+	}
+	var results []offlineResult
+	for _, c := range []string{"case-01", "case-06"} {
+		series, err := os.ReadFile(filepath.Join(root, c, "metrika-series.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m envelope
+		if err := json.Unmarshal(series, &m); err != nil {
+			t.Fatal(err)
+		}
+		control, err := os.ReadFile(filepath.Join(root, c, "pm-07.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc envelope
+		if err := json.Unmarshal(control, &doc); err != nil {
+			t.Fatal(err)
+		}
+		var market []byte
+		for _, b := range doc.Batches {
+			var x envelope
+			if err := json.Unmarshal(b, &x); err != nil {
+				t.Fatal(err)
+			}
+			if x.Source == "market" {
+				market = b
+			}
+		}
+		if len(market) == 0 {
+			t.Fatal("market control absent")
+		}
+		stamp, err := time.Parse(time.RFC3339, m.AsOf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		monday := stamp.UTC().Truncate(24 * time.Hour)
+		for monday.Weekday() != time.Monday {
+			monday = monday.AddDate(0, 0, 1)
+		}
+		const met = "62057b9c-7d10-4439-9985-3888e7b259b3"
+		const mkt = "44e7584f-1caf-4f08-9bd9-b69006cdd0af"
+		w := sourcewatch.Window{MetrikaBinding: met, MarketBinding: mkt, SKU: "KL4141RCEFR", Metric: "visits", DropPct: 20, Monday: monday.Format(time.DateOnly)}
+		launched := false
+		result, checkErr := sourcewatch.Check(context.Background(), w, true, func(_ context.Context, id string, _ any, dst any) error {
+			if id == met {
+				return json.Unmarshal(series, dst)
+			}
+			if id == mkt {
+				return json.Unmarshal(market, dst)
+			}
+			return errors.New("unknown source")
+		}, func(context.Context, sourcewatch.Signal) (string, error) { launched = true; return "offline-stub", nil })
+		hash := sha256.Sum256(series)
+		row := offlineResult{Input: filepath.Join(root, c, "metrika-series.json"), SHA256: hex.EncodeToString(hash[:]), Monday: w.Monday, Status: result.Status, Launched: launched}
+		if checkErr != nil {
+			row.Error = checkErr.Error()
+		}
+		results = append(results, row)
+	}
+	file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	enc := json.NewEncoder(file)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(results); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("Frozen prepared sourcewatch records: %d\n", len(results))
+}
