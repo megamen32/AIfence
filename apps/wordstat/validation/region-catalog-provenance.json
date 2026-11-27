@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-11-27T05:10:31.784Z",
+  "source": "Registered Mac M1 wordstat MCP list_regions; AskAds mcp-yandex-wordstat 2.5.0",
+  "documentation": "https://aistudio.yandex.ru/ru/docs/search-api/concepts/wordstat",
+  "accepted_options": 1103,
+  "worldwide_option": true,
+  "ambiguous_ids_excluded": [],
+  "raw_snapshot_sha256": "daa15837d16f24ea92335207651844218b6d183038648b770c259c329beb62f3"
+}

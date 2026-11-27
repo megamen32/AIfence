@@ -4,30 +4,58 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
+	"encoding/json"
+	"strconv"
+	"strings"
+	"sync"
 )
 
-// AppCSS holds the compiled Tailwind stylesheet. It is built from
-// styles/app.css by the Docker build (`.airlock/toolchain/bin/tailwindcss -i styles/app.css
-// -o views/static/app.css --minify`) and embedded here. Don't edit
-// views/static/app.css by hand — the build overwrites it.
-//
 //go:embed static/app.css
 var AppCSS []byte
 
-// AppCSSHash is an 8-char content hash of AppCSS. A rebuilt agent gets
-// a fresh hash, so RegisterStaticAsset can serve AppCSS with an
-// immutable Cache-Control and browsers never resurface
-// stale styles. Same hash flows into AppCSSPath for use in layouts.
-func AppCSSHash() string {
-	h := sha256.Sum256(AppCSS)
-	return hex.EncodeToString(h[:4])
-}
+//go:embed static/explorer.js
+var explorerJS []byte
 
-// AppCSSName is the embedded stylesheet's content-hashed filename passed to
-// agentsdk.RegisterStaticAsset.
-var AppCSSName = "app." + AppCSSHash() + ".css"
+//go:embed static/region-catalog.json
+var regionCatalog []byte
 
-// AppCSSPath is the public URL the scaffold's Layout references:
-//
-//	<link rel="stylesheet" href={ views.AppCSSPath }/>
+func assetHash(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:6]) }
+
+var AppCSSName = "app." + assetHash(AppCSS) + ".css"
 var AppCSSPath = "/static/" + AppCSSName
+var AppJS = append(append([]byte("const REGION_CATALOG="), regionCatalog...), append([]byte(";\n"), explorerJS...)...)
+var AppJSName = "explorer." + assetHash(AppJS) + ".js"
+var AppJSPath = "/static/" + AppJSName
+var regionOnce sync.Once
+var regionNames map[string]string
+
+func RegionName(id string) string {
+	if id == "" {
+		return "Все регионы"
+	}
+	regionOnce.Do(func() {
+		regionNames = map[string]string{}
+		var rows [][]string
+		if json.Unmarshal(regionCatalog, &rows) == nil {
+			for _, row := range rows {
+				if len(row) > 1 {
+					regionNames[row[0]] = row[1]
+				}
+			}
+		}
+	})
+	if name := regionNames[id]; name != "" {
+		return name
+	}
+	return "Регион " + id
+}
+func RegionCaption(ids []int) string {
+	if len(ids) == 0 {
+		return "Все регионы"
+	}
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		names = append(names, RegionName(strconv.Itoa(id)))
+	}
+	return strings.Join(names, ", ")
+}

@@ -15,3 +15,17 @@ UI and typed tools share demand.Service. No domain background jobs or persisted 
 Source provenance: isolated from the separately developed standalone Wordstat application under apps/wordstat. No private Airlock core or organizer materials were copied. Toolchain/generated output, credentials and runtime state remain outside tracked source.
 
 Chat QA 2026-11-27: the unchanged general-demand prompt produced an invalid sum across overlapping commercial phrases and inferred purchase intent from download wording. Instructions now prohibit all sums across main/associated phrase counts, including commercial clusters; download alone is not buying intent. A general-demand answer should use 3-5 short paragraphs with phrase frequency, actual coverage, period and source limits, without unsolicited cluster totals or a top-10 table.
+
+## Wordstat UI redesign
+
+The research screen keeps one exact phrase and the existing three domain methods. Frequency uses only the source totalCount; main and associated phrases stay separate. Monthly dynamics uses absolute counts and a calendar spine with missing months left empty. Pointer, touch and keyboard read the same nearest observation. Singleton observations have permanent markers. Regional frequency is a sorted visual list with local search, not a sum of nested territories.
+
+Only applicable filters are visible. The geographic picker embeds 1,103 verified Wordstat IDs plus an explicit unfiltered option; source provenance is validation/region-catalog-provenance.json. No Google geography codes or runtime catalog requests are used. UI selection currently chooses one named region; the typed tools retain their existing multi-region input.
+
+Each result retains an immutable request snapshot. Draft changes are marked, and errors retarget a separate feedback area without replacing the existing chart. Examples and list rows only populate the draft. A source query requires the explicit button. Historical availability is compact and visible, and custom unavailable dates remain unchanged.
+
+The visual style follows the reviewed Google Trends screen with built-in corporate/business themes, semantic colors, system fonts and locally bundled assets. Saved source responses and opt-in offline interaction fixtures remain outside the product runtime. No fixture routes, background work, orchestrator or domain/tool changes were introduced.
+
+UI acceptance: 7/7 independent offline interaction groups passed with no page errors or provider requests. The final chart line, points and legend meet contrast ratios of 7.22:1 in light and 3.65:1 in dark mode. Required SDK build and scoped official placeholder lint passed. Details are in validation/ui-redesign.json; deployment and a real source-backed UI request remain separate release steps.
+
+Scale follow-up: a source maximum of 910 now uses an upper axis bound of 1000. Counts 0/1 use 0–1 with unique integer labels. Tick labels and gridlines share the same generated scale. The targeted regression was red before the fix and green after it; required SDK build and the focused desktop scale review passed. The interaction suite and chart colors are unchanged.
