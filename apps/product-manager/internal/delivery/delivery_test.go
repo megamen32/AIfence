@@ -140,6 +140,9 @@ func (f *fakeRedmine) CallTool(_ context.Context, name string, raw any) (*agents
 		filters, _ := args["filters"].(map[string]any)
 		for _, is := range f.issues {
 			fields, _ := is["fields"].(map[string]any)
+			if signal, ok := fields[FieldSignal]; ok {
+				is["custom_fields"] = []map[string]any{{"id": 2, "value": signal}}
+			}
 			if want, ok := filters["cf_2"]; ok {
 				if fields[FieldSignal] == want {
 					out = append(out, is)
@@ -163,7 +166,8 @@ func (f *fakeRedmine) CallTool(_ context.Context, name string, raw any) (*agents
 		return structured(map[string]any{"id": id})
 	case "create_redmine_issue":
 		f.creates++
-		is := map[string]any{"id": 100 + f.creates, "subject": args["subject"], "description": args["description"], "fields": args["fields"], "status_id": "open"}
+		fields := args["fields"]
+		is := map[string]any{"id": 100 + f.creates, "subject": args["subject"], "description": args["description"], "fields": fields, "custom_fields": []map[string]any{{"id": 2, "value": fields.(map[string]any)[FieldSignal]}}, "status_id": "open"}
 		f.issues = append(f.issues, is)
 		return structured(map[string]any{"id": is["id"], "subject": is["subject"]})
 	case "update_redmine_issue":
@@ -220,8 +224,38 @@ func TestRedmineDeliverIsIdempotentPerSignal(t *testing.T) {
 		}
 	}
 	fields := is["fields"].(map[string]any)
-	if fields["tracker_id"] != 2 || fields[FieldAI] != "1" || fields[FieldSignal] != "sig-kes-2026-11-24" || !strings.HasPrefix(is["subject"].(string), "[ИИ] ") {
+	if fields["tracker_id"] != 2 || fields[FieldAI] != "1" || fields[FieldSignal] != "sig-kes-2026-11-24" || !strings.HasPrefix(is["subject"].(string), "Kaspersky Endpoint Security: ") {
 		t.Fatalf("wrong fields or subject: %v %v", fields, is["subject"])
+	}
+}
+
+func TestRedmineHumanIssueRendering(t *testing.T) {
+	r := approved()
+	subject := Subject(r, SignalKey(r))
+	if subject != "Kaspersky Endpoint Security: заказы −32,3% за неделю 24–30 ноя" {
+		t.Fatalf("unexpected human subject: %s", subject)
+	}
+	description := Description(r, SignalKey(r))
+	for _, want := range []string{
+		"Заказы снизились на −32,3% за неделю 24–30 ноя.",
+		"Причина пока не установлена.",
+		"Что сделать:",
+		"Критерий успеха: Заказы вернутся к уровню 110 в течение 2 нед.",
+		"{{collapse(Технические детали)",
+		"Сигнал: @sig-kes-2026-11-24@",
+	} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("description misses %q:\n%s", want, description)
+		}
+	}
+	if strings.Contains(description, "*Продукт:* kaspersky-endpoint-security") {
+		t.Fatal("snake_case product key leaked into the human section")
+	}
+
+	withReview := BacklogItem{Record: r, ReviewHypothesis: "сломался шаг оплаты", ReviewText: "Гипотеза: сломался шаг оплаты"}
+	description = DescriptionItem(withReview, SignalKey(r))
+	if !strings.Contains(description, "Вероятная причина по разбору помощника: сломался шаг оплаты.") {
+		t.Fatalf("review cause is missing:\n%s", description)
 	}
 }
 

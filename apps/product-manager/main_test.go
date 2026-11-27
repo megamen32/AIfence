@@ -53,12 +53,14 @@ func TestAgentComposition(t *testing.T) {
 		}
 	}
 
-	if len(manifest.SuggestedPrompts) != 3 {
-		t.Fatalf("expected three suggested prompts, got %d", len(manifest.SuggestedPrompts))
+	if len(manifest.SuggestedPrompts) != 4 {
+		t.Fatalf("expected four suggested prompts, got %d", len(manifest.SuggestedPrompts))
 	}
 	for i, want := range []struct{ title, prompt string }{
 		{"Что требует внимания?", "Что сейчас требует внимания в продажах?"},
 		{"Что стоит проверить?", "Посмотри, где могло возникнуть изменение, и предложи, что проверить первым."},
+		{"Что изменилось после релиза?", "Что мы уже можем сказать об эффекте изменений?"},
+		{"Провести конкурентный анализ", "Я представляю такую-то компанию и продаю такой-то продукт. Найди моих основных конкурентов, проведи конкурентный анализ и прикрепи итоговую CSV-таблицу с источниками."},
 	} {
 		got := manifest.SuggestedPrompts[i]
 		if got.Title != want.title || got.Prompt != want.prompt {
