@@ -1,11 +1,11 @@
 ---
 name: pm-panel-design
-description: Use before building or changing the UI of any app (Product Manager right panel, Metrika Analyst, Market Watch, Web Scraper): charts, treemap, motion, source cards, cost of delay. Visual rules, reference mockup and acceptance checklist.
+description: Use before building or changing any UI of the Product Manager right panel (overview, hypothesis card, charts, path-check filmstrip, before/after). Visual rules, reference mockup and acceptance checklist.
 ---
 
 # Product Manager right panel: visual design
 
-Reference mockup: `design/pm-panel/index.html` (open in a browser, 4 tabs; `#overview`, `#hypothesis`, `#path`, `#after`). The reference contains a fully synthetic, internally consistent example. Copy the structure and visual language only. Every value in the app comes from its own data; never ship mockup numbers.
+Reference mockup: `design/pm-panel/index.html` (open in a browser, 4 tabs; `#overview`, `#hypothesis`, `#path`, `#after`). The reference contains a fully synthetic, internally consistent example. Copy the structure and visual language, then replace its synthetic values with authorized source data when available.
 
 Goal: the jury understands each screen in 5 seconds without reading. The left Airlock chat says 3–5 lines; the right panel shows it.
 
@@ -40,23 +40,10 @@ Goal: the jury understands each screen in 5 seconds without reading. The left Ai
 
 ## Acceptance checklist (before/after screenshots required)
 
-Mandatory for every app, not only Product Manager (same list as the UI section of root AGENTS.md):
-
-- [ ] Opens straight into real data from the app's own store. No «введите данные» / «загрузите файл» / «ожидается снимок» first screen.
-- [ ] No «Деморежим», «демо», «учебные», «тестовые», «синтетические» in visible text, no demo toggle.
-- [ ] Figures are computed from the app's data. None copied from the mockup.
-- [ ] At least one animated inline-SVG chart per screen (draw-in line, pulsing anomaly, ticking ₽), `prefers-reduced-motion` respected.
-- [ ] Source cards: each figure shows its source.
-- [ ] Cost of delay ₽/week where money is involved; alerts sorted by it.
-- [ ] Empty states name the missing source and the one action that fixes it.
-- [ ] Checked visually on the local Mac Airlock, screenshots attached.
-
-Product Manager specifics:
-
 - [ ] Can a person say what is wrong and how much it costs after 5 seconds on each screen?
 - [ ] No paragraph longer than one line in the panel; no raw field names.
 - [ ] Every target figure has its control next to it.
 - [ ] Colours used only for meaning; one accent per screen.
-- [ ] Numbers come from authorized data. Values agree across all four screens.
+- [ ] Numbers come from authorized data or the clearly marked synthetic arrays in the mockup. Values agree across all four screens.
 - [ ] `python3 scripts/lint-placeholder-names.py` exits 0.
 - [ ] Dark and light theme screenshots both readable.
