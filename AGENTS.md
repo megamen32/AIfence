@@ -38,3 +38,26 @@ The owner must be able to leave the laptop while agents work. Any keychain dialo
 - Playwright/Chromium: keep Playwright's default `--use-mock-keychain` and `--password-store=basic`. If you pass `ignore_default_args`, a persistent context or a real Chrome channel, add both flags explicitly. Never point automation at the owner's real Chrome profile.
 - Do not run `codesign`, `security unlock-keychain`, keychain imports or `git credential-osxkeychain` from agents. Git push uses SSH (`git@github.com`), no credential helper is needed.
 - If a dialog still appears, stop and record which item/app it names in the track README instead of retrying.
+
+## Plan to submission (owner decision, 27.11 08:45 UTC+5)
+
+Full plan: https://claude.ai/artifact/UHntt1mvsiG6NEDsob8V66 (tab «План v2»). Times are UTC+5 (Yekaterinburg).
+
+- **Data before model.** The 11 hosted blind chats scored 0/11 because PM tools returned no rows with a value and a source locator, and offline `sourcewatch.Check` gave 0/0 (inputs lack the second binding). No model request until a loader proves, without a model, that every tool a case needs returns ≥1 row with a value and a source locator.
+- **Iterate locally, stand last.** Iterations run only on the Mac: local Airlock, strong model, cases in parallel, `sourcewatch.Check` directly on files. Publish the hit / miss / false-alarm / unusable-input table after every change. The public stand and Gemma are only for the final 3–5 cases on one fixed revision. Do not take over ports 42080/42081 used by SSH tunnels; run local Airlock on a free port.
+- **Frozen:** director answer format (`submit_answer`), `apps/product-manager/views/`, `styles/`, `design/`. No text polishing.
+- **Git.** One source of truth: `origin/main`. Never push the local-only commits `ded2cb7` + its merge commits; they go to `parked/competitive-matrix`. A branch built on them is rebuilt from `origin/main` by moving only its own commits. Never write in the shared checkout; use your worktree.
+- **Sessions and path zones** (one worktree each, from `origin/main`, commit only these paths):
+
+| Session | Branch | Paths |
+| --- | --- | --- |
+| 0 Orchestrator (merges only, no code) | `main` | merges, `scripts/stand/`, `scripts/deploy-apps`, `docs/qa/stand.md` |
+| 1 Source-watch + PM | `feat/owner-app-watchdog` | `apps/product-manager/**` except `views/`, `styles/`; `workflows/` |
+| 2 External demand | `external-demand-2` | `apps/metrika-analyst/external_demand*`, `apps/wordstat/`, `apps/google-trends/` |
+| 3 Prices | `market-price-feed-first`, then `price-feed-2` | `apps/market-watch/**` |
+| 4 Blind runs | `codex/blind-catalog-verification` | `tests/integration/**`, `fixtures/synthetic/**`, `docs/qa/` except `stand.md`, `scripts/blind-*` |
+| 5 Submission kit | `codex/submission-kit` | `docs/submission/**`, `README.md`, `docs/tracks/` |
+
+- **Checkpoints:** 09:30 local Airlock up, git clean, `521d195` and `bf7c4f5` merged · 11:00 numbers visible in all 11 cases without a model · 12:30 customer Q&A · 13:00 real Wordstat, Google Trends and competitor prices for the 7 catalog SKUs readable by PM tools · 16:00 hit table on ≥30 blind scenarios, target ≥70% hits with ≤10% false alarms · 18:00 last merge, stand deploy, `check_source_watch` handler and a job run ID in `docs/qa/` · 18:00–21:30 Gemma on the stand, 3–5 cases, chat IDs in `docs/qa/` · 22:00 code freeze · 28.11 09:00 clean-browser check · 28.11 10:00 submit (hard cutoff 12:00).
+- A branch not merged by 18:00 is deferred whole. Failures after 16:00 go to README as known limitations, not fixed. No video before 22:00 and no video built on the 0/11 run.
+- **Deferred:** `personal/integration`, Web Scraper, `feature/catalog-extractor`, competitive matrix, Redmine draft task (only if the 16:00 checkpoint passes), any public-stand request before 18:00.
