@@ -15,6 +15,7 @@ from pathlib import Path
 import sqlite3
 
 from migrate_native import SOURCES, batches, invoke_stage, read_db, sha_file, write_json
+from migrate_native_archive import transfer, verify
 
 
 def delta_records(db, source, kind):
@@ -109,7 +110,7 @@ def stage(directory,client,app):
 if __name__=="__main__":
     os.umask(0o077)
     p=argparse.ArgumentParser()
-    p.add_argument("action",choices=["prepare","stage"])
+    p.add_argument("action",choices=["prepare","stage","archive"])
     p.add_argument("--catalog",type=Path,required=True)
     p.add_argument("--baseline",type=Path,required=True)
     p.add_argument("--directory",type=Path,required=True)
@@ -117,4 +118,12 @@ if __name__=="__main__":
     p.add_argument("--app",type=Path,required=True)
     a=p.parse_args()
     if a.action=="prepare":prepare(a.catalog,a.baseline,a.directory)
-    else:stage(a.directory,a.client,a.app)
+    elif a.action=="stage":stage(a.directory,a.client,a.app)
+    else:
+        manifest=json.loads((a.directory/"manifest.json").read_text())
+        if sha_file(a.directory/"crawl.sqlite")!=manifest["delta_digest"] or Path(manifest["baseline"])!=a.baseline:
+            raise RuntimeError("delta digest or baseline mismatch")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            futures=[pool.submit(transfer,src,manifest,a.directory,a.catalog,a.client,a.app,a.baseline) for src in SOURCES]
+            for f in concurrent.futures.as_completed(futures):f.result()
+        verify(a.directory,a.client,a.app)

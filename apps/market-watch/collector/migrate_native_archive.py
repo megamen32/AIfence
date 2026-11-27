@@ -20,12 +20,13 @@ from migrate_native import SOURCES, read_db, sha_file, write_json
 BUNDLE_LIMIT = 6 << 20
 
 
-def pack_groups(db, catalog, source):
+def pack_groups(db, catalog, source, delta=False):
     entries = []
     size = 0
-    for digest, in db.execute(
-        "SELECT DISTINCT sha256 FROM http_responses WHERE source=? ORDER BY sha256", (source,)
-    ):
+    query = ("SELECT DISTINCT n.sha256 FROM http_responses n WHERE n.source=? "
+             "AND NOT EXISTS(SELECT 1 FROM old.http_responses o WHERE o.id=n.id) ORDER BY n.sha256"
+             if delta else "SELECT DISTINCT sha256 FROM http_responses WHERE source=? ORDER BY sha256")
+    for digest, in db.execute(query, (source,)):
         path = catalog / "raw-html" / digest[:2] / (digest + ".html.gz")
         length = path.stat().st_size
         packed = 512 + ((length + 511) // 512) * 512
@@ -52,7 +53,7 @@ def make_bundle(path, entries):
     return sha_file(path)
 
 
-def transfer(source, manifest, directory, catalog, client, app):
+def transfer(source, manifest, directory, catalog, client, app, baseline=None):
     log = directory / (source + "-raw.jsonl")
     done = {}
     if log.exists():
@@ -63,7 +64,9 @@ def transfer(source, manifest, directory, catalog, client, app):
     with read_db(directory/"crawl.sqlite") as db, tempfile.TemporaryDirectory(dir=directory) as tmp, log.open("a") as out:
         log.chmod(0o600)
         path = Path(tmp)/"bundle.tar"
-        for entries in pack_groups(db, catalog, source):
+        if baseline:
+            db.execute("ATTACH DATABASE ? AS old",(f"file:{baseline/'crawl.sqlite'}?mode=ro",))
+        for entries in pack_groups(db, catalog, source, delta=baseline is not None):
             digest = make_bundle(path, entries)
             if digest not in done:
                 route = "/migration/archive?" + urlencode({"source": source, "snapshot": manifest["snapshot"]})
@@ -92,7 +95,9 @@ def transfer(source, manifest, directory, catalog, client, app):
             sent += len(entries)
             if sent % 1000 < len(entries):
                 print(source, "raw objects verified", sent, flush=True)
-        expected = db.execute("SELECT count(distinct sha256) FROM http_responses WHERE source=?", (source,)).fetchone()[0]
+        query=("SELECT count(distinct n.sha256) FROM http_responses n WHERE n.source=? AND NOT EXISTS(SELECT 1 FROM old.http_responses o WHERE o.id=n.id)"
+               if baseline else "SELECT count(distinct sha256) FROM http_responses WHERE source=?")
+        expected=db.execute(query,(source,)).fetchone()[0]
         if sent != expected:
             raise RuntimeError("raw count mismatch")
     print(source, "raw objects complete", sent, flush=True)
