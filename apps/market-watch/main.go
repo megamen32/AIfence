@@ -22,6 +22,8 @@ func newAgent() *agentsdk.Agent {
 	s := market.NewWithCatalog(a, a.DB())
 	s.SetAdapterProposer(proposeStoreAdapter(a))
 	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/migration/stage", Handler: s.StageLegacyMigration, Access: agentsdk.AccessAdmin, Description: "Stage an idempotent verified batch of legacy task metadata; no network collection or activation"})
+	a.RegisterRoute(&agentsdk.Route{Method: http.MethodPost, Path: "/migration/archive", Handler: s.StageLegacyArchive, Access: agentsdk.AccessAdmin, Description: "Transfer only raw gzip objects belonging to the verified staged snapshot; verify storage and update offsets without activating a crawler"})
+
 	a.RegisterTool(tool.Typed[struct{}, []db.LegacyMigrationCountsRow]("legacy_migration_status").Description("Count staged legacy task/failure/response metadata and pending raw archive objects. Staging never enables a crawler.").Execute(s.LegacyMigrationStatus).Build(), agentsdk.AccessAdmin)
 
 	a.RegisterTool(tool.Typed[market.AdapterActionInput, market.StudyEvidence]("inspect_store_study").Description("Inspect archived training evidence and held-out price-evidence counts. Does not fetch or activate a store.").Execute(s.InspectAdaptiveStudy).Build(), agentsdk.AccessAdmin)

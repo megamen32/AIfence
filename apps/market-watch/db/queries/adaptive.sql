@@ -65,3 +65,22 @@ SELECT s.id,
  (SELECT coalesce(sum(b.row_count),0) FROM adaptive_migration_batches b WHERE b.store_id=s.id AND b.kind='tasks')::bigint AS task_receipts,
  (SELECT coalesce(sum(b.row_count),0) FROM adaptive_migration_batches b WHERE b.store_id=s.id AND b.kind='responses')::bigint AS response_receipts
 FROM adaptive_stores s WHERE coalesce(s.metadata->>'legacy_source','')<>'' ORDER BY source;
+
+-- name: LegacyRawReferences :many
+SELECT sha256, (payload->'legacy'->>'bytes')::bigint AS original_bytes,
+       payload->>'archive_state' AS archive_state
+FROM adaptive_responses
+WHERE store_id=sqlc.arg(store_id) AND sha256=ANY(sqlc.arg(hashes)::text[]);
+
+-- name: StoreLegacyRawReceipts :execrows
+UPDATE adaptive_responses r
+SET payload=r.payload || jsonb_build_object(
+ 'archive_state','stored',
+ 'archive_path',sqlc.arg(path)::text,
+ 'archive_offset',(x->>'offset')::bigint,
+ 'archive_length',(x->>'length')::bigint,
+ 'html',coalesce((r.payload->'legacy'->>'status')::int=200 AND (x->>'html')::boolean,false)
+)
+FROM jsonb_array_elements(sqlc.arg(entries)::jsonb) x
+WHERE r.store_id=sqlc.arg(store_id) AND r.sha256=x->>'sha256'
+ AND r.payload->>'archive_state'='local_pending';
