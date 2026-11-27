@@ -107,37 +107,49 @@ await collect("metrika","metrika-analyst",()=>apps.metrika_analyst.tools.compare
 // measured control is turned into its own signed, owner-scoped case.document.
 const watchdog_cases=[];
 const watchdog_warnings=[];
+// scan_watchdog_series reports the kind of its first candidate as the scan
+// status (alert, measurement_issue, campaign_effect, temporary_spike), or
+// quiet when it compared windows and found nothing. needs_selection means the
+// owner has not chosen a dataset. Every other value is an unexpected contract.
+const scanWithCases=new Set(["alert","measurement_issue","campaign_effect","temporary_spike"]);
 try {
   await platform.inspectApp({app:"metrika-analyst",section:"tools"});
-  let dataset=null,offset=0;
-  for(let page=0;page<20;page++) {
+  let dataset=null,offset=0,pages=0;
+  const pageLimit=20;
+  while(pages<pageLimit) {
+    pages++;
     const scan=await apps.metrika_analyst.tools.scan_watchdog_series(offset?{offset}:{});
-    if(!isObject(scan)||typeof scan.status!=="string"||!Array.isArray(scan.candidates))
+    if(!isObject(scan)||typeof scan.status!=="string"||(scan.candidates!==undefined&&!Array.isArray(scan.candidates)))
       throw Error("Invalid watchdog scan response");
-    if(scan.status!=="ok"&&scan.status!=="needs_selection") {
-      watchdog_warnings.push("watchdog scan: "+scan.status);
-      break;
-    }
-    if(scan.status==="needs_selection"||!scan.dataset_id) {
+    if(scan.status==="needs_selection") {
       watchdog_warnings.push("watchdog: no owner-selected dataset; choose one on the Metrika page");
       break;
     }
+    // Quiet is an ordinary empty result, not a collection problem, so it does
+    // not lower the snapshot status.
+    if(scan.status==="quiet") break;
+    if(!scanWithCases.has(scan.status)) throw Error("Unexpected watchdog scan status "+scan.status);
+    if(!scan.dataset_id) throw Error("Watchdog scan returned candidates without a dataset");
     dataset=scan.dataset_id;
-    for(const c of scan.candidates) {
+    for(const c of scan.candidates||[]) {
       if(!isObject(c)||typeof c.candidate_id!=="string"||!c.candidate_id) continue;
       if(c.kind!=="controlled_decline"||!c.control_product_key) continue;
       const r=await apps.metrika_analyst.tools.collect_selected_watchdog_case({dataset_id:dataset,candidate_id:c.candidate_id});
       if(isObject(r)&&isObject(r.document)) watchdog_cases.push({dataset_id:dataset,candidate_id:c.candidate_id,
         signal_id:r.first_alert_signal_id||c.signal_id||null,kind:c.kind,period:c.period||null,
-        control_product_key:c.control_product_key||null,relative_change_pct:c.relative_change_pct??null,
+        control_product_key:c.control_product_key||null,
+        relative_change_pct:c.magnitude?.relative_change_pct??null,
         control_change_pct:c.control_change_pct??null,document:r.document});
       else watchdog_warnings.push("watchdog case "+c.candidate_id+": no document returned");
     }
-    if(typeof scan.next_offset!=="number"||scan.next_offset<=offset) break;
+    if(scan.next_offset===undefined||scan.next_offset===null) break;
+    if(typeof scan.next_offset!=="number"||scan.next_offset<=offset) throw Error("Repeated or invalid watchdog scan cursor");
     offset=scan.next_offset;
   }
+  // Reaching the page limit is reported, never presented as a complete scan.
+  if(pages===pageLimit) watchdog_warnings.push("watchdog: page limit reached; remaining candidates were not collected");
 } catch(e) {
-  watchdog_warnings.push("watchdog cases: app access, scan or case contract failed");
+  watchdog_warnings.push("watchdog cases: "+(e instanceof Error?e.message:"app access, scan or case contract failed"));
 }
 for(const id of request.evidence_file_ids) {
   try {const r=await platform.files({operation:"read",fileId:id});add(batch(JSON.parse(r.text)),ref(r.file));}
@@ -156,6 +168,9 @@ if(request.previous_snapshot_id) {
     previous_snapshot={...ref(r.file),run_id:p.run_id,status:p.status};
   } catch(e) {warnings.push("Previous snapshot unavailable or wrong product");}
 }
+// Watchdog warnings belong to the outcome, so they must be present before the
+// status is decided; otherwise a failed case collection would read complete.
+for(const w of watchdog_warnings) warnings.push(w);
 for(const source of ["research","economics"]) {
   if(!sources.some(s=>s.source===source&&s.batch?.observations?.some(o=>o.status==="observed")))
     warnings.push(source+": no observed evidence; do not infer facts or measured profit");
@@ -163,7 +178,6 @@ for(const source of ["research","economics"]) {
 const status=sources.every(s=>s.status==="ok"&&s.batch?.observations?.some(o=>o.status==="observed"))&&!warnings.length?"complete":"partial";
 const localOnly = request.source_policy === "local_project_only" || sources.some(s=>s.batch?.source_policy === "local_project_only") ||
   watchdog_cases.some(c=>c.document?.source_policy === "local_project_only");
-for(const w of watchdog_warnings) warnings.push(w);
 const doc={schema_version:version,...(localOnly ? {source_policy:"local_project_only"} : {}),run_id,product_key,collected_at:new Date().toISOString(),request,status,sources,watchdog_cases,document_refs,previous_snapshot,warnings};
 const data=JSON.stringify(doc,null,2);
 if(data.length>240000) throw Error("Snapshot too large; narrow the queries or evidence files");
