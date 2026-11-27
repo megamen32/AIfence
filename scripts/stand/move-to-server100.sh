@@ -12,6 +12,9 @@ HOST=move.aifence.bezrabotnyi.com
 [ -n "${PUBLIC_HOST-}" ] && HOST="$PUBLIC_HOST" || true
 PORT=44380
 [ -n "${CADDY_PORT-}" ] && PORT="$CADDY_PORT" || true
+BASEROW_NETWORK=aifence-agent-net-37aa7358-942e-44c4-acd0-b971e83e0ce9
+REDMINE_NETWORK=aifence-agent-net-358285c9-3347-436e-812d-55c6d3a61e73
+USERIO_NETWORK=aifence-agent-net-870d47ee-6234-4109-a6b3-3e06f960a094
 SRC=/Users/user/AIfence
 [ -n "${SOURCE_ROOT-}" ] && SRC="$SOURCE_ROOT" || true
 D=/opt/homebrew/bin/docker
@@ -161,7 +164,7 @@ EOF
   remote "docker compose -p aifence-move --env-file '$ROOT/airlock/.env' -f '$ROOT/airlock/docker-compose.yml' -f '$ROOT/airlock/compose.server100.yml' up -d postgres"
   for v in aifence-data aifence_rustfsdata aifence_caddy-data aifence_caddy-config aifence-baserow_data aifence-personal-redmine_files userio-airlock-standalone_state; do remote "docker volume create $v >/dev/null || true; docker run --rm -v '$v:/to' -v '$ROOT/volumes/$v.tar.gz:/archive:ro' caddy:2-alpine sh -c 'tar -C /to -xzf /archive'"; done
   remote "docker compose -p aifence-move-redmine -f '$ROOT/redmine.compose.yml' -f '$ROOT/redmine-db.server100.yml' up -d database"
-  remote "docker compose -p aifence-move-baserow -f '$ROOT/apps-baserow.compose.yml' up -d baserow"
+  remote "docker network inspect '$BASEROW_NETWORK' >/dev/null 2>&1 || docker network create '$BASEROW_NETWORK' >/dev/null; docker network inspect '$REDMINE_NETWORK' >/dev/null 2>&1 || docker network create '$REDMINE_NETWORK' >/dev/null; docker network inspect '$USERIO_NETWORK' >/dev/null 2>&1 || docker network create '$USERIO_NETWORK' >/dev/null; BASEROW_PUBLIC_URL='https://$HOST' BASEROW_AIRLOCK_NETWORK='$BASEROW_NETWORK' BASEROW_PLATFORM=linux/amd64 docker compose -p aifence-move-baserow -f '$ROOT/apps-baserow.compose.yml' up -d baserow"
   remote "pgid=\$(docker compose -p aifence-move --env-file '$ROOT/airlock/.env' -f '$ROOT/airlock/docker-compose.yml' ps -q postgres); for db in postgres airlock; do docker exec -i \$pgid sh -c 'PGPASSWORD=\$POSTGRES_PASSWORD pg_restore --clean --if-exists --no-owner --no-privileges -U airlock -d '\$db'' < '$ROOT/dumps/airlock--'\$db'.dump; done"
   remote "rid=\$(docker compose -p aifence-move-redmine -f '$ROOT/redmine.compose.yml' ps -q database); for db in postgres redmine; do docker exec -i \$rid sh -c 'PGPASSWORD=\$(cat /run/secrets/db-password) pg_restore --clean --if-exists --no-owner --no-privileges -U redmine -d '\$db'' < '$ROOT/dumps/redmine--'\$db'.dump; done"
   remote "bid=\$(docker compose -p aifence-move-baserow -f '$ROOT/apps-baserow.compose.yml' ps -q baserow); for db in postgres baserow; do docker exec -i \$bid sh -c 'pg_restore --clean --if-exists --no-owner --no-privileges -U postgres -d '\$db'' < '$ROOT/dumps/baserow--'\$db'.dump; done"
@@ -217,7 +220,7 @@ EOF
   remote "cd '$ROOT/build/AIfence' && docker build --platform linux/amd64 -t aifence-app-competitor-research:$AIFENCE_SHA -f apps/competitor-research/Dockerfile apps/competitor-research || true; docker build --platform linux/amd64 -t aifence-app-market-watch:$AIFENCE_SHA -f apps/market-watch/Dockerfile apps/market-watch || true; docker build --platform linux/amd64 -t aifence-app-product-manager:$AIFENCE_SHA -f apps/product-manager/Dockerfile apps/product-manager || true"
   remote "cd '$ROOT/airlock' && docker compose -p aifence-move --env-file .env -f docker-compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && docker compose -p aifence-move-redmine -f redmine.compose.yml -f redmine.server100.yml up -d --no-build --pull never"
-  remote "cd '$ROOT' && docker compose -p aifence-move-baserow -f apps-baserow.compose.yml -f baserow.server100.yml up -d --no-build --pull never"
+  remote "cd '$ROOT' && BASEROW_PUBLIC_URL='https://$HOST' BASEROW_AIRLOCK_NETWORK='$BASEROW_NETWORK' BASEROW_PLATFORM=linux/amd64 docker compose -p aifence-move-baserow -f apps-baserow.compose.yml -f baserow.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT/apps/redmine-mcp' && docker compose -p aifence-move-redmine-mcp -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT/apps/metrika' && docker compose -p aifence-move-metrika --env-file '$ROOT/secrets/metrika.env' -f metrika.compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT/apps/userio' && docker compose -p userio-airlock-standalone-move -f compose.yaml -f compose.server100.yml up -d --no-build --pull never"
