@@ -42,3 +42,30 @@ PNG-файлы взяты из проверенных кадров `docs/qa/scen
 | Dion | `http://product-manager.localhost:42080/delivery` | Страница показывает `2026-11-27 · отправлено`, но сводка относится к старому watchdog signal | Recovery требует durable receipt и завершает take при отсутствии сообщения для нового signal ID | [05-dion-message.png](video-one-take-27-11/05-dion-message.png) |
 
 Кадры в этой папке сохранены из проверенных scene references, чтобы запись имела один файл на каждый шаг. Текущие URL и видимые состояния выше взяты из браузерной репетиции.
+
+## Живой прогон · 28.11.2026 · 01:00 UTC+5
+
+Использован отдельный lease вкладки bezbrowser на профиле Mac M1 и ширина 1440 CSS px. Вход и первые сцены прошли на `42080`.
+
+| Шаг | Фактическое состояние | Кадр |
+|---|---|---|
+| Вход и каталог | Каталог Airlock открылся. Product Manager и metrika-analyst показаны как работающие | [08-login-live.png](video-one-take-27-11/08-login-live.png) |
+| Metrika Analyst | Пример «Что изменилось?» открылся, сообщение отправлено один раз. Через 10 секунд оставалось `Выполнено 7 · run_js`, полный ответ не появился | [01-metrika-live.png](video-one-take-27-11/01-metrika-live.png) |
+| Product Manager | Карточка открылась. Видны Kaspersky Endpoint Security, Astra Linux Special Edition, график и evidence. Одновременно показаны `−33,9 %` и `−32,7 %`, блок цены задержки пуст, в задаче виден внутренний `PM-c0eeda9e06e2acf3` | [02-pm-live.png](video-one-take-27-11/02-pm-live.png) |
+| Delivery | `/delivery` открылся. Формы уже имели абсолютные actions `/delivery/sync` и `/delivery/dion`. Кнопка «Сверить сейчас» нажата один раз. После клика вкладка потеряла соединение с bezbrowser, read-back результата не получен | [03-delivery-sync.png](video-one-take-27-11/03-delivery-sync.png) |
+| Redmine | В этой попытке не открывался после sync, чтобы не повторять действие при неизвестном результате | [04-redmine-issue.png](video-one-take-27-11/04-redmine-issue.png) |
+| Dion | Кнопка не нажималась после потери соединения. Новая отправка не подтверждена | [05-dion-message.png](video-one-take-27-11/05-dion-message.png) |
+
+### Визуальные дефекты, найденные в живом кадре
+
+1. В карточке две разные величины одного сигнала, `−33,9 %` в evidence и `−32,7 %` в соседней строке. Исправлено в коде дедупликацией одинаковых пар показателя и источника при построении pins. Кадр [02-pm-live.png](video-one-take-27-11/02-pm-live.png).
+2. Блок «Цена задержки» не показывает значение и оставляет пустое пространство до раскрытия допущений. Добавлена короткая подсказка с требуемыми входами для расчёта ₽/неделю. Кадр [02-pm-live.png](video-one-take-27-11/02-pm-live.png).
+3. Заголовок «Задача в бэклоге · Redmine» сопровождался локальным ID `PM-c0eeda9e06e2acf3`. Добавлена маркировка системы задачи, чтобы локальный бэклог не выдавался за Redmine. Кадр [02-pm-live.png](video-one-take-27-11/02-pm-live.png).
+4. Форма доставки в исходнике использовала относительные paths `./delivery/sync` и `./delivery/dion`. Исправлено на `/delivery/sync` и `/delivery/dion`. Текущий live runtime уже показывал абсолютные actions до нажатия. Кадр [03-delivery-sync.png](video-one-take-27-11/03-delivery-sync.png).
+5. В текущем delivery read-back оставались placeholder names `demo_target` и `demo_control`, старый сигнал `watchdog/39fec477…` и issue `#7`. Это относится к сохранённому старому состоянию, новая задача по текущему сигналу не подтверждена.
+
+### Проверка исходника
+
+- PM build passed at candidate `2ffb687` with `AIFENCE_PERSONAL_CACHE=/Users/user/AIfence-worktrees/personal-integration/.runtime/personal-release GOPROXY=off /opt/homebrew/bin/python3 scripts/personal-build-apps.py --commit HEAD --app product-manager --output .runtime/sol-e2e/build-pm-2ffb687`. SQLC, templ, Tailwind, Go tests and `go build` completed.
+- The code changes are rebased onto the then-current `origin/main` and are in the two commits immediately ahead of it. No deploy was performed.
+- The final scenes are unverified because the browser connection went offline after the single sync action. Redmine issue creation/read-back, duplicate-free second sync, Dion send/read-back and the current PM source after deployment remain open.
