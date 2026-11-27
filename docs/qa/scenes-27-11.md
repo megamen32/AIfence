@@ -56,3 +56,18 @@
 - `go test ./...` в Web Scraper — PASS.
 
 Изменения UI не объявляются выкаченными на стенд до прохождения native build и live screenshot после выкладки.
+
+## Набор кадров для видео, 1440 px
+
+Для storyboard подготовлен отдельный набор из восьми кадров. Каждый файл имеет ширину 1440 px и сохранён в `scenes-27-11/`:
+
+- [01 · Metrika Analyst](scenes-27-11/01-metrika-analyst.png)
+- [02 · Wordstat](scenes-27-11/02-wordstat.png)
+- [03 · Google Trends](scenes-27-11/03-google-trends.png)
+- [04 · Market Watch](scenes-27-11/04-market-watch.png)
+- [05 · Web Scraper](scenes-27-11/05-web-scraper.png)
+- [06 · Product Manager card](scenes-27-11/06-product-manager-card.png)
+- [07 · Delivery](scenes-27-11/07-delivery.png)
+- [08 · Redmine issue](scenes-27-11/08-redmine-issue.png)
+
+Кадры 02, 03, 05, 06, 07 и 08 взяты из исторического набора владельца `/Users/user/AIfence/.runtime/film-owner-20261127/`; они не являются новым подтверждением доступности соответствующих маршрутов на 42080.
