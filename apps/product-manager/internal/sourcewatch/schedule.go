@@ -132,7 +132,7 @@ func Register(a *agentsdk.Agent) *Service {
 		Slug: "review_source_signal", ModelSlot: "source_watch_analysis",
 		Description:  "Explain one observed store-level change using only its bounded evidence.",
 		Instructions: reviewInstructions,
-		Capabilities: &agentsdk.AgentCapabilityPolicy{}, Budget: &agentsdk.AgentBudget{Steps: 4, Timeout: 90 * time.Second, Tokens: 4000},
+		Capabilities: &agentsdk.AgentCapabilityPolicy{}, Budget: &agentsdk.AgentBudget{Steps: 4, Timeout: 90 * time.Second, Tokens: 1_000_000},
 		MaxAttempts: 2, MaxConcurrency: 1,
 		Review: &agentsdk.AgentReview[ReviewInput, ReviewOutput]{
 			Version: 1, Timeout: 10 * time.Second, MaxAttempts: 2,

@@ -2,6 +2,7 @@ package sourcewatch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -62,6 +63,31 @@ func TestReviewSubmissionRequiresEvidenceFromOriginalSignal(t *testing.T) {
 	decision, err = reviewSubmission(context.Background(), agentsdk.AgentReviewContext{}, agentsdk.AgentSubmission[ReviewInput, ReviewOutput]{Input: in, Output: valid})
 	if err != nil || decision.Kind != "continue" || decision.Feedback == "" {
 		t.Fatalf("foreign evidence = %+v, %v", decision, err)
+	}
+}
+
+func TestMarshalReviewCarriesStableInputHash(t *testing.T) {
+	in := ReviewInput{Signal: Signal{ObservationID: "observed", ChangePct: -25}, EvidenceIDs: []string{"observed"}}
+	first, err := MarshalReview(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := MarshalReview(in)
+	if err != nil || string(first) != string(second) {
+		t.Fatalf("same review input must serialize identically: %s / %s", first, second)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(first, &document); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := json.Unmarshal(document["input_hash"], &got); err != nil || got != ReviewInputHash(in) {
+		t.Fatalf("wrong input hash: %q", got)
+	}
+	changed := in
+	changed.Signal.ChangePct = -26
+	if ReviewInputHash(in) == ReviewInputHash(changed) {
+		t.Fatal("changed review input reused the same hash")
 	}
 }
 

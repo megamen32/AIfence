@@ -1,6 +1,8 @@
 package sourcewatch
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,5 +105,28 @@ func ValidateReview(out ReviewOutput, allowed []string) (ReviewOutput, error) {
 	return out, nil
 }
 
-// MarshalReview persists the exact typed input alongside the pinned signal.
-func MarshalReview(in ReviewInput) ([]byte, error) { return json.Marshal(in) }
+// ReviewInputHash identifies the exact typed input sent to the review agent.
+func ReviewInputHash(in ReviewInput) string {
+	raw, _ := json.Marshal(in)
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// MarshalReview persists the exact typed input and its stable hash. The extra
+// JSON field is ignored when older rows are decoded into ReviewInput.
+func MarshalReview(in ReviewInput) ([]byte, error) {
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return nil, err
+	}
+	var document map[string]json.RawMessage
+	if err = json.Unmarshal(raw, &document); err != nil {
+		return nil, err
+	}
+	hash, err := json.Marshal(ReviewInputHash(in))
+	if err != nil {
+		return nil, err
+	}
+	document["input_hash"] = hash
+	return json.Marshal(document)
+}

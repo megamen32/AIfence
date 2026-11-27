@@ -18,7 +18,11 @@ WHERE owner_id=$1 AND watch_id=$2 AND last_monday <= $3;
 INSERT INTO pm_watch_signals (owner_id,signal_id,document)
 SELECT sqlc.arg(owner_id), sqlc.arg(signal_id), sqlc.arg(document)::jsonb
 WHERE EXISTS (SELECT 1 FROM pm_source_watches WHERE owner_id=sqlc.arg(owner_id) AND watch_id=sqlc.arg(watch_id) AND active)
-ON CONFLICT (owner_id,signal_id) DO UPDATE SET signal_id=EXCLUDED.signal_id
+ON CONFLICT (owner_id,signal_id) DO UPDATE SET
+    document=CASE WHEN pm_watch_signals.document->>'input_hash' = EXCLUDED.document->>'input_hash'
+                  THEN pm_watch_signals.document ELSE EXCLUDED.document END,
+    analysis_run_id=CASE WHEN pm_watch_signals.document->>'input_hash' = EXCLUDED.document->>'input_hash'
+                         THEN pm_watch_signals.analysis_run_id ELSE '' END
 RETURNING document, analysis_run_id;
 
 -- name: RecordSourceWatchRun :execrows
