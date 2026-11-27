@@ -31,7 +31,15 @@ func salesReviewTool(a *agentsdk.Agent, h *handlers.Handler) tool.Tool {
 		if _, ok := caller.User(); err != nil || !ok || caller.Origin().Interface != agentsdk.InterfaceChat || result.Output == "" || len(result.Output) > 24*1024 {
 			return result, err
 		}
+		var query handlers.BriefQuery
+		if json.Unmarshal(args, &query) != nil {
+			return result, err
+		}
 		attachment := reviewAttachment(result.Output)
+		if query.Director {
+			attachment = directorReview(result.Output)
+			result.Output = attachment
+		}
 		logical := fmt.Sprintf("%s/%x.txt", chatBriefDirectory, sha256.Sum256([]byte(attachment)))
 		path, err := a.ResolveFilePath(ctx, logical, agentsdk.FileOperationWrite)
 		// A trusted write must use the conversation-scoped path from the SDK.
@@ -61,19 +69,49 @@ func reviewAttachment(output string) string {
 	for _, r := range review.Readings {
 		c := r.Comparison
 		if c.Control.Name != "" || c.Target.Name != "" {
-			fmt.Fprintf(&b, "Продажи, два окна по %d недели (%s — %s к %s — %s). Контрольный ряд %s: %.1f%%. Основной ряд %s: %.1f%%.\n",
-				c.WeeksPerWindow, c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.Control.Name, c.Control.Percent, c.Target.Name, c.Target.Percent)
+			fmt.Fprintf(&b, "Окна %s–%s к %s–%s (%d недели): %s %.1f%%; %s %.1f%%.\n",
+				c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.WeeksPerWindow, c.Control.Name, c.Control.Percent, c.Target.Name, c.Target.Percent)
 		} else {
 			fmt.Fprintf(&b, "%s\n", r.Sales)
 		}
-		fmt.Fprintf(&b, "Статус цен: %s. %s %s\n", r.PriceEvidenceStatus, r.Price, r.PriceTiming)
+		fmt.Fprintf(&b, "Сопоставимость цен: %s (%d из %d артикулов).\n", priceStatus(r), r.ComparableSKUs, r.CheckedSKUs)
+		fmt.Fprintf(&b, "%s %s\n", r.Price, r.PriceTiming)
 		for _, offer := range r.OfferExample {
 			fmt.Fprintf(&b, "%s · %s · %s\n", offer.SKU, offer.Fact, offer.Locator)
 		}
-		fmt.Fprintf(&b, "Источник продаж: %s. Потери в рублях за неделю: %s\n", r.Source, r.Weekly)
+		fmt.Fprintf(&b, "Недельный ущерб: %s. Источник: %s.\n", r.Weekly, r.Source)
 	}
 	if review.NextOffset != nil {
 		fmt.Fprintf(&b, "Следующая страница: %d.\n", *review.NextOffset)
 	}
 	return b.String()
+}
+
+func directorReview(output string) string {
+	var review handlers.SalesBrief
+	if err := json.Unmarshal([]byte(output), &review); err != nil || len(review.Readings) == 0 {
+		return output
+	}
+	var b strings.Builder
+	for _, r := range review.Readings {
+		c := r.Comparison
+		fmt.Fprintf(&b, "Окна %s–%s к %s–%s (%d недели): %s %.1f%%; %s %.1f%%.\n",
+			c.Current.From, c.Current.To, c.Baseline.From, c.Baseline.To, c.WeeksPerWindow, c.Control.Name, c.Control.Percent, c.Target.Name, c.Target.Percent)
+		fmt.Fprintf(&b, "Сопоставимость цен: %s (%d из %d артикулов).\n", priceStatus(r), r.ComparableSKUs, r.CheckedSKUs)
+		fmt.Fprintf(&b, "Недельный ущерб: %s. Источник: %s.\n", r.Weekly, r.Source)
+	}
+	return b.String()
+}
+
+func priceStatus(r handlers.ProductReading) string {
+	switch r.PriceEvidenceStatus {
+	case "insufficient_comparable_quotes":
+		return "сопоставимая пара не подтверждена"
+	case "comparable_quotes_available":
+		return "сопоставимые предложения подтверждены"
+	case "no_matching_offers":
+		return "предложения для сравнения не найдены"
+	default:
+		return r.PriceEvidenceStatus
+	}
 }
