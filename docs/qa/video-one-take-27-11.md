@@ -27,3 +27,18 @@ PNG-файлы взяты из проверенных кадров `docs/qa/scen
 ## Проверка хронометража
 
 Основная дорожка занимает 115 секунд. Даже с одной recovery-паузой в 30 секунд общий take остаётся в пределах 02:25. Повторные клики по `Сверить сейчас` и `Отправить сейчас` в запись не входят.
+
+## Репетиция независимых экранов · 28.11.2026
+
+Эти проверки выполнены отдельно от PM deploy и не меняют Redmine или Dion.
+
+| Экран | URL | Результат | Что изменилось в тексте сценария | Кадр |
+|---|---|---|---|---|
+| Login / app directory | `http://localhost:42080/agents` | Работает. Owner profile открыл каталог приложений, Product Manager и Metrika Analyst доступны | В начале записи оставлен короткий login кадр, после него сразу открывается Metrika | [08-login.png](video-one-take-27-11/08-login.png) |
+| Metrika Analyst | `http://metrika-analyst.localhost:42080/watchdog` и `http://localhost:42080/chat?app=6e985f49-ae84-4f6d-b345-edb4ea0d95cf` | Страница watchdog открывается, но демо-запрос в чате ушёл в длинный `run_js` цикл после 20 шагов и был остановлен | Recovery теперь явно останавливает ответ через 15 секунд и продолжает с зафиксированным демо-кадром | [01-metrika-demo.png](video-one-take-27-11/01-metrika-demo.png) |
+| Market Watch | `http://market-watch.localhost:42080/` | Работает. Видны 87 633 предложения, 6 магазинов, 67 568 лицензий и список цен | Сценарий оставляет Market Watch как самостоятельный preflight экран перед one-take | [06-market-watch.png](video-one-take-27-11/06-market-watch.png) |
+| Baserow | `http://baserow.localhost:42080/all-workspaces` | Работает. Видно workspace Airlock и Market Watch Database | Добавлен отдельный кадр проверки каталога в Baserow | [07-baserow.png](video-one-take-27-11/07-baserow.png) |
+| Redmine #8 | `http://redmine.localhost:42080/issues/8` | Работает. Видны AI flag, signal ID `7e6f0128-603b-87cf-9bc9-14680c36eb22`, `100 → 75`, `−25%` и демо-ограничения | Текст шага использует новый читаемый русский шаблон issue | [04-redmine-issue.png](video-one-take-27-11/04-redmine-issue.png) |
+| Dion | `http://product-manager.localhost:42080/delivery` | Страница показывает `2026-11-27 · отправлено`, но сводка относится к старому watchdog signal | Recovery требует durable receipt и завершает take при отсутствии сообщения для нового signal ID | [05-dion-message.png](video-one-take-27-11/05-dion-message.png) |
+
+Кадры в этой папке сохранены из проверенных scene references, чтобы запись имела один файл на каждый шаг. Текущие URL и видимые состояния выше взяты из браузерной репетиции.
