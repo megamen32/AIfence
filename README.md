@@ -27,6 +27,17 @@ private customer files stay outside the repository.
 The submission kit is in [docs/submission/README.md](docs/submission/README.md):
 economics, model and license declarations, jury access, and the video script.
 
+## Verified quality
+
+| Check | Result | Scope and source |
+| --- | --- | --- |
+| Offline watchdog, sealed holdout v2 | **11/22 hits; 0 false alarms** | S14: **0/6**. See [the sealed holdout report](docs/qa/holdout-final-2026-11-27.md). |
+| Product Manager chat, Terra fast, dev30 prompt v4 | **19/20 cause-first; 0 false alarms** | Model-mediated chat quality check; recorded in the QA run `terra-dev30-prompt-v4`. This is separate from the offline watchdog score. |
+
+These are measured quality checks with different scopes. The figures do not
+claim that every planted cause is found or that a hypothesis is proven without
+the cited evidence.
+
 ## Architecture in ten lines
 
 1. Airlock supplies authentication, the assistant loop, storage, scheduling and file access.
@@ -39,6 +50,24 @@ economics, model and license declarations, jury access, and the video script.
 8. Code calculates windows, changes, sample sizes and missing data; the model explains bounded evidence.
 9. A hypothesis records evidence for, evidence against, unknowns, a cheap distinguishing check and a success rule.
 10. Background delivery can create an idempotent Redmine task and an owner notification through Dion.
+
+### Background source contracts
+
+The Product Manager's weekly `check_source_watch` job reads these owner-bound,
+read-only source operations in the background. A source that has no configured
+connection or no comparable observations remains `unavailable`; it is not
+turned into a zero.
+
+| Source | Operation | Evidence used by Product Manager |
+| --- | --- | --- |
+| Metrika Analyst | `compare_periods` | Two complete periods of store metrics and their measured change |
+| Wordstat | `compare_demand` | Two complete weeks of query demand |
+| Google Trends | `compare_google_trends` | Comparable search-interest observations on one scale |
+| Market Watch | `price_week_delta` | Comparable weekly price change for one SKU |
+| Market Watch | `family_price_week_delta` | Comparable price changes kept separate by SKU, seller and offer conditions |
+
+The background contract and the 27 November read-back are documented in
+[source-contracts-27-11.md](docs/qa/source-contracts-27-11.md).
 
 ## Native M1 build and deployment
 
