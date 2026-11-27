@@ -69,6 +69,7 @@ type Compare struct {
 	CurrentTo         string   `json:"current_to"`
 	Segment           string   `json:"segment,omitempty"`
 	SourcePath        string   `json:"source_path,omitempty"`
+	CounterID         int64    `json:"counter_id,omitempty"`
 }
 type CheckInput struct {
 	SourcePath string `json:"source_path,omitempty"`
@@ -354,6 +355,9 @@ func observed(o Observation, value *float64, scale float64, meta reportMeta) Obs
 }
 func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
 	cfg := s.config(ctx)
+	if in.CounterID > 0 {
+		cfg.Counter = in.CounterID
+	}
 	path := chosen(in.SourcePath, cfg.EvidencePath)
 	weekly := path != "" && len(in.MetricKeys) == 1 && strings.TrimSpace(in.MetricKeys[0]) == "orders_index"
 	if weekly && in.Segment == "" {

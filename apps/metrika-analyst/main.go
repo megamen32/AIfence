@@ -193,12 +193,21 @@ func newAgent() *agentsdk.Agent {
 	}).ParseFS(assets, "index.html"))
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Description: "Сравнение показателей", Handler: func(w http.ResponseWriter, r *http.Request) error {
 		data := struct {
-			Batch *Batch
-			Error string
-		}{}
+			Batch     *Batch
+			Error     string
+			CounterID int64
+		}{CounterID: 114698578}
 		q := r.URL.Query()
-		if q.Get("from") != "" {
-			b, e := s.Compare(r.Context(), Compare{ProductKey: q.Get("product"), MetricKeys: strings.Split(q.Get("metrics"), ","), BaselineFrom: q.Get("from"), BaselineTo: q.Get("to"), CurrentFrom: q.Get("current_from"), CurrentTo: q.Get("current_to"), Segment: q.Get("segment"), SourcePath: q.Get("source_path")})
+		if rawCounter := q.Get("counter_id"); rawCounter != "" {
+			parsed, e := strconv.ParseInt(rawCounter, 10, 64)
+			if e != nil || parsed < 0 {
+				data.Error = "Выберите корректный счётчик"
+			} else {
+				data.CounterID = parsed
+			}
+		}
+		if q.Get("from") != "" && data.Error == "" {
+			b, e := s.Compare(r.Context(), Compare{ProductKey: q.Get("product"), MetricKeys: strings.Split(q.Get("metrics"), ","), BaselineFrom: q.Get("from"), BaselineTo: q.Get("to"), CurrentFrom: q.Get("current_from"), CurrentTo: q.Get("current_to"), Segment: q.Get("segment"), SourcePath: q.Get("source_path"), CounterID: data.CounterID})
 			if e != nil {
 				data.Error = e.Error()
 			} else {
