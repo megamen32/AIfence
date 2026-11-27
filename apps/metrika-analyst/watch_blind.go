@@ -68,6 +68,10 @@ type BlindCandidate struct {
 	LastConfirmedWeek    *Period               `json:"last_confirmed_week,omitempty"`
 	LastConfirmationRefs []Ref                 `json:"last_confirmation_refs,omitempty"`
 	SourceRefCount       int                   `json:"source_ref_count"`
+	CauseType            string                `json:"cause_type,omitempty"`
+	CauseStrength        float64               `json:"cause_strength,omitempty"`
+	CauseEvidence        []BlindCauseMetric    `json:"cause_evidence,omitempty"`
+	CauseRelease         *ContextFact          `json:"cause_release,omitempty"`
 }
 
 type BlindScan struct {
