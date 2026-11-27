@@ -13,10 +13,13 @@ const (
 )
 
 var catalogFamilyNames = map[string]string{
-	"kaspersky_endpoint_security": "Kaspersky Endpoint Security",
-	"astra_linux_special_edition": "Astra Linux Special Edition",
-	ksosFamily:                    "Kaspersky Small Office Security",
-	drWebFamily:                   "Dr.Web Desktop Security Suite",
+	"kaspersky_endpoint_security":             "Kaspersky Endpoint Security",
+	"astra_linux_special_edition":             "Astra Linux Special Edition",
+	ksosFamily:                                "Kaspersky Small Office Security",
+	drWebFamily:                               "Dr.Web Desktop Security Suite",
+	"microsoft_365_business_premium":          "Microsoft 365 Business Premium",
+	"myoffice_private_cloud":                  "MyOffice Private Cloud",
+	"red_hat_enterprise_linux_server_premium": "Red Hat Enterprise Linux Server Premium",
 }
 
 var catalogSKUFamily = map[string]string{
@@ -53,7 +56,39 @@ func observedProductName(key string, row monitorObservation) string {
 	if family := legacyFixtureFamily(key); family != "" && educationalObservation(row.Row, row.details) {
 		return productName(family)
 	}
+	if family := watchdogTargetFamily(row); family != "" {
+		return productName(family)
+	}
 	return productName(key)
+}
+
+// watchdogTargetFamily recovers the measured family from the producer's own
+// source locators. A watchdog alert carries a store article in product_key,
+// so the article alone would reach the director as a product name. The target
+// family is read only from locators of the target series, never from the
+// control series, and never invented.
+func watchdogTargetFamily(row monitorObservation) string {
+	control := row.details.Control
+	if control == "" {
+		return ""
+	}
+	var refs struct {
+		Refs []struct {
+			Ref evidence.SourceRef `json:"source_ref"`
+		} `json:"source_refs"`
+	}
+	if json.Unmarshal([]byte(row.Details), &refs) != nil {
+		return ""
+	}
+	for _, ref := range refs.Refs {
+		for _, part := range strings.Split(ref.Ref.Locator, ";") {
+			value, ok := strings.CutPrefix(part, "family=")
+			if ok && value != "" && value != control {
+				return value
+			}
+		}
+	}
+	return ""
 }
 
 func evidenceProductName(key string, row evidence.Row) string {
