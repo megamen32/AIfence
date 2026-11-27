@@ -1,0 +1,36 @@
+{
+  "verified_at": "2026-11-27T03:00:20Z",
+  "platform": "darwin/arm64",
+  "go": "1.26.11",
+  "agentsdk": "0.11.0",
+  "checks": [
+    {
+      "command": "go tool air build",
+      "status": "passed",
+      "includes": [
+        "go mod tidy",
+        "templ",
+        "tailwindcss",
+        "go test -p=1 -count=1 ./...",
+        "go build"
+      ]
+    },
+    {
+      "command": "go test -p=1 -count=1 -race ./demand",
+      "status": "passed"
+    }
+  ],
+  "regional_regressions": [
+    "original phrase and filters",
+    "nested id/label tree",
+    "true zero retained",
+    "missing count only in raw data",
+    "raw data unchanged",
+    "directory failure retains statistics",
+    "ambiguous IDs unresolved",
+    "one concurrent lookup",
+    "same deadline for both calls",
+    "denied nonhuman caller",
+    "no lookup after statistics failure"
+  ]
+}

@@ -1,0 +1,242 @@
+{
+  "verified_at": "2026-11-27T02:59:51.055Z",
+  "consumer": "official MCP JS SDK 1.32.2 via the project stdio launcher",
+  "bridge": "supergateway@4.3.0",
+  "provider": "mcp-yandex-wordstat@2.5.0",
+  "endpoint": "https://airlock.bezrabotnyi.com/wordstat-mcp/mcp",
+  "server": {
+    "name": "mcp-yandex-wordstat",
+    "version": "2.5.0"
+  },
+  "instructions": "Яндекс Вордстат — агрегированная статистика поискового спроса в поиске Яндекса: как часто фразу набирают, когда и где. Это не Яндекс Директ: кампаний, объявлений, ставок, кликов и расхода тут нет, а данные не привязаны ни к какому рекламному аккаунту. Всё только на чтение: у API нет эндпоинтов записи, а raw_request работает только методом POST и не может уйти с хоста Search API. Один вызов — одна фраза, поэтому сравнение N ключевых фраз стоит N вызовов из квоты Yandex Cloud Search API — она считается на ключ и общая для всех вызовов. Дерево регионов кешируется в процессе, поэтому перечитывать его бесплатно. Диапазон дат принимает только dynamics; top_requests и regions всегда считают последние 30 дней. Значения count — int64 и часто приходят JSON-строками, а не числами. 429, 5xx и сетевые ошибки сервер сам повторяет до 3 раз с нарастающими паузами (не дольше 30 с каждая), поэтому такая ошибка в ответе означает, что повторы уже исчерпаны: немедленный повтор вряд ли поможет, а позже сбой может пройти. 401/403 означает, что у ключа нет доступа к Search API или WORDSTAT_FOLDER_ID указывает не на тот каталог, — это чинит оператор, дело не в фразе.",
+  "tools": [
+    {
+      "name": "top_requests",
+      "description": "Возвращает поисковый спрос по фразе за последние 30 дней: самые популярные запросы, которые СОДЕРЖАТ фразу (results), и семантически ПОХОЖИЕ запросы, которые могут её не содержать (associations), плюс totalCount. Подходит для подбора ключевых фраз и оценки спроса. Значения счётчиков могут приходить строками (int64). Необязательные regionIds и devices сужают выборку; numPhrases задаёт, сколько фраз вернуть (1..2000).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "phrase": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Поисковая фраза для анализа, например «купить велосипед»."
+          },
+          "regionIds": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d+$"
+                }
+              ]
+            },
+            "description": "Id регионов, которыми ограничить спрос, например [213] (Москва), [2] (Санкт-Петербург). Id берутся из list_regions. Без параметра — все регионы."
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "all",
+                "desktop",
+                "phone",
+                "tablet"
+              ]
+            },
+            "description": "Фильтр по устройствам: любые из all, desktop, phone, tablet. Без параметра — все устройства."
+          },
+          "numPhrases": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000,
+            "description": "Сколько топовых фраз вернуть (1..2000; по умолчанию 20)."
+          }
+        },
+        "required": [
+          "phrase"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "dynamics",
+      "description": "Возвращает, как менялся спрос на фразу во времени, — ряд {date, count, share}, где share — доля от всех поисковых запросов Яндекса. Подходит для оценки сезонности и тренда. period задаёт шаг ряда (daily/weekly/monthly); period и fromDate обязательны, значений по умолчанию у API нет. fromDate/toDate — метки времени RFC3339. Границы диапазона API сверяет по UTC и требует выравнивать по шагу: monthly — fromDate первое число месяца, toDate последний день месяца; weekly — fromDate понедельник, toDate воскресенье; daily — любые дни, но fromDate не старше 60 дней. Без toDate ряд идёт до последних доступных данных.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "phrase": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Поисковая фраза для анализа."
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "description": "Шаг ряда: daily, weekly или monthly. От него зависит, какими должны быть fromDate и toDate."
+          },
+          "fromDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+            "description": "Начало диапазона (RFC3339, дата сверяется по UTC), например 2026-01-01T00:00:00Z. Для monthly — первое число месяца, для weekly — понедельник, для daily — не старше 60 дней."
+          },
+          "toDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+            "description": "Конец диапазона (RFC3339, дата сверяется по UTC), например 2026-03-31T00:00:00Z. Для monthly — последний день месяца, для weekly — воскресенье, для daily — любой день. Без параметра — до последних доступных данных."
+          },
+          "regionIds": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^\\d+$"
+                }
+              ]
+            },
+            "description": "Id регионов, которыми ограничить спрос, например [213] (Москва), [2] (Санкт-Петербург). Id берутся из list_regions. Без параметра — все регионы."
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "all",
+                "desktop",
+                "phone",
+                "tablet"
+              ]
+            },
+            "description": "Фильтр по устройствам: любые из all, desktop, phone, tablet. Без параметра — все устройства."
+          }
+        },
+        "required": [
+          "phrase",
+          "period",
+          "fromDate"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "regions",
+      "description": "Возвращает, как спрос на фразу распределён по регионам за последние 30 дней. В каждой строке — id региона, count, share и affinityIndex (>100% — интерес в регионе выше среднего, <100% — ниже). regionMode выбирает группировку: all, cities (только города) или regions (только области и субъекты). Сопоставить id регионов с названиями помогает list_regions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "phrase": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Поисковая фраза для анализа."
+          },
+          "regionMode": {
+            "type": "string",
+            "enum": [
+              "all",
+              "cities",
+              "regions"
+            ],
+            "description": "Группировка: all (по умолчанию), cities (только города) или regions (только субъекты и области)."
+          }
+        },
+        "required": [
+          "phrase"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "list_regions",
+      "description": "Возвращает справочное дерево регионов, которые поддерживает Вордстат, — id регионов и их названия (label). Эти id подставляются в regionIds инструментов top_requests и dynamics, а названия расшифровывают id регионов в их ответах. Дерево большое и стабильное: достаточно запросить его один раз и закешировать.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "raw_request",
+      "description": "Универсальный запрос: обращается напрямую к любому пути Wordstat в Yandex Cloud Search API — для эндпоинтов, у которых нет отдельного инструмента, например \"v2/wordstat/topRequests\". Все эндпоинты Вордстата работают методом POST; `body` отправляется как JSON (folderId подставляется автоматически).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Путь API, например \"v2/wordstat/dynamics\"."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST"
+            ],
+            "description": "HTTP-метод. Поддерживается только POST, он же по умолчанию."
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Тело запроса в формате JSON."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  ],
+  "call": {
+    "name": "top_requests",
+    "arguments": {
+      "phrase": "касперский для бизнеса",
+      "numPhrases": 3
+    }
+  },
+  "parsed_data": {
+    "totalCount": "842",
+    "results": [
+      {
+        "phrase": "касперский для бизнеса",
+        "count": "842"
+      },
+      {
+        "phrase": "касперский security для бизнеса",
+        "count": "180"
+      },
+      {
+        "phrase": "касперский endpoint для бизнеса",
+        "count": "170"
+      }
+    ],
+    "associations": [
+      {
+        "phrase": "kaspersky removal tool",
+        "count": "14715"
+      }
+    ]
+  },
+  "interpretation": {
+    "region_filter": "all regions; regionIds omitted",
+    "devices_filter": "all devices; devices omitted",
+    "source_status": "historical_only",
+    "source_available_through": "2026-10-07",
+    "exact_top_regions_window_known": false,
+    "note": "Raw provider tools do not apply the Airlock app's period guards or region-name enrichment."
+  },
+  "limitations_source": "https://aistudio.yandex.ru/ru/docs/search-api/concepts/wordstat"
+}

@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-11-27T04:12:28.762919+00:00",
+  "sources": {
+    "accepted_codes": "https://mcp.hasdata.com/mcp?apis=google_trends (resources/read hasdata://google_trends/geo)",
+    "labels": "https://trends.google.com/trends/api/explore/pickers/geo?hl=ru&tz=0"
+  },
+  "accepted_values": 3517,
+  "unmapped_values": [],
+  "option_count": 3518
+}

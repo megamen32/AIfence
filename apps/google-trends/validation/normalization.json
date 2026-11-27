@@ -1,0 +1,39 @@
+{
+  "checked_at": "2026-11-27T03:35:12.413272+00:00",
+  "source_captured_at": "2026-11-27T03:16:22.879352Z",
+  "status": "ok",
+  "provider_calls_during_normalization": 0,
+  "input": "previously saved real MCP response",
+  "point_count": 44,
+  "summaries": [
+    {
+      "term": "Kaspersky Endpoint Security",
+      "mean_index": 8.428571428571429,
+      "common_complete_points": 42,
+      "excluded_points": 2
+    },
+    {
+      "term": "Astra Linux",
+      "mean_index": 80.78571428571429,
+      "common_complete_points": 42,
+      "excluded_points": 2
+    }
+  ],
+  "request": {
+    "terms": [
+      "Kaspersky Endpoint Security",
+      "Astra Linux"
+    ],
+    "geo": "RU",
+    "from": "2026-01-01",
+    "to": "2026-10-31",
+    "property": "web",
+    "category": "0",
+    "timezone_minutes": 0,
+    "period_defaulted": false
+  },
+  "first_interval": "Dec 28, 2025\u2009\u2013\u2009Jan 3, 2026",
+  "last_interval": "Oct 25\u2009\u2013\u200931, 2026",
+  "source_request_id": "bf549a2d-5a44-47ac-9997-97388145777d",
+  "comparison_id": "dd68456b315ab4b54268c1e6bdf0122b"
+}

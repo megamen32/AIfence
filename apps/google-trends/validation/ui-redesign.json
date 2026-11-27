@@ -1,0 +1,105 @@
+{
+  "kind": "google_trends_ui_redesign",
+  "checked_at": "2026-11-27T04:38:29.220201+00:00",
+  "base_commit": "5937dce0bc094a52e2053a68cdaf44a273e92857",
+  "scope": "apps/google-trends",
+  "provider_calls": 0,
+  "build": {
+    "command": "go tool air build",
+    "exit_code": 0,
+    "go_version": "1.26.11",
+    "sdk_version": "0.11.0",
+    "log": ".runtime/validation/redesign-final-build.log",
+    "log_sha256": "17d1436edad8e967b467a0575155e6dab8236174c133299a02b4d2695aae7cd4"
+  },
+  "placeholder_lint": {
+    "implementation": "scripts/lint-placeholder-names.py official scan/main",
+    "scope": "apps/google-trends tracked and untracked nonignored files",
+    "exit_code": 0
+  },
+  "independent_browser_review": {
+    "passed": true,
+    "passed_checks": 8,
+    "page_errors": [],
+    "unexpected_requests": [],
+    "provider_calls": 0,
+    "checks": [
+      {
+        "name": "card_add_remove_and_limit_enter_make_no_post",
+        "status": "passed"
+      },
+      {
+        "name": "geo_named_selection_keyboard_pending_cancel_no_post",
+        "status": "passed"
+      },
+      {
+        "name": "chart_hover_and_keyboard_read_exact_multiple_values",
+        "status": "passed"
+      },
+      {
+        "name": "right_edge_hover_remains_stable_when_tooltip_is_clamped",
+        "status": "passed"
+      },
+      {
+        "name": "quality_states_zero_missing_censored_partial_unknown",
+        "status": "passed"
+      },
+      {
+        "name": "actual_htmx_error_network_empty_and_reswap_lifecycle",
+        "status": "passed"
+      },
+      {
+        "name": "desktop_first_fold_and_tooltip_screenshot",
+        "status": "passed"
+      },
+      {
+        "name": "mobile_real_touch_values_and_tooltip_screenshot",
+        "status": "passed"
+      }
+    ],
+    "desktop": {
+      "file": ".runtime/validation/redesign-review/desktop-1440-tooltip.jpg",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "plot": {
+        "x": 167,
+        "y": 458.03125,
+        "width": 1140,
+        "height": 310
+      },
+      "form_height": 206.5
+    },
+    "mobile": {
+      "file": ".runtime/validation/redesign-review/mobile-375-tooltip.jpg",
+      "touch_index": 21,
+      "tooltip_values": [
+        "10",
+        "87"
+      ],
+      "viewport": {
+        "width": 375,
+        "height": 900
+      },
+      "axis_font_size": "12px"
+    },
+    "receipt": ".runtime/validation/redesign-review/interaction-review.json"
+  },
+  "post_review_change": {
+    "file": "views/page.templ",
+    "description": "Related-query footer distinguishes Top 0-100 from Rising percent or Breakout; independent source review approved; final required build passed."
+  },
+  "source_sha256": {
+    "handlers/pages.go": "7d72eb682b9d822f7dd876d4d76245b0731072e4ebb0e0c5831169ac80c90bc6",
+    "handlers/explorer_test.go": "4284f1afde26db04d3de6b70bcd75de009a97cac6067fc01ce3eaaa3d62155c2",
+    "views/page.templ": "c370fecb2ebe1cf2f70f73e70fabb899b5ff2f2391309ee9fad0e142696fcfb9",
+    "views/layout.templ": "bb661736a51e6805e38a05dd02be1d0cdfe8b4962818d2ce1cc58d11c9808671",
+    "views/models.go": "ff829610ad44d7d5a6b85c040bf37a5dab92626416f94d7a8bad33972bcd6de7",
+    "views/assets.go": "cfacbc36b2cf1b71862bbf7235544ebcbda1c2eba9bd35a075804812c77e6ff2",
+    "views/static/explorer.js": "369ca0864a46ac774838cdf16b8fecf5324ce73aee926513c4eb433a15c2b75b",
+    "views/static/geo-catalog.json": "2dc54109e5555716db0402e86fbe081f993efb0635b9a092ad04bd288cd10751",
+    "styles/app.css": "d5d4350a83102ede79adfb9355e755f175f8ca892fa9064df3df9291b62e5826",
+    "main.go": "262b4662d2d4ef52d9c901a1e24604350d2b626c78999da2004e44e83f595dd3"
+  }
+}

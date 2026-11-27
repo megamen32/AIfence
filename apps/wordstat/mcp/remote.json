@@ -1,0 +1,11 @@
+{
+  "logLevel": "none",
+  "mcpServers": {
+    "wordstat": {
+      "url": "${WORDSTAT_MCP_URL}",
+      "type": "http",
+      "outputTransport": "stdio",
+      "oauth2Bearer": "${WORDSTAT_SERVICE_BEARER}"
+    }
+  }
+}

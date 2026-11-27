@@ -1,0 +1,174 @@
+# App development rules
+
+> **Managed by the scaffold — do not edit.** Airlock builds and `go tool air
+> update` regenerate this file. Put app-specific decisions in `NOTES.md`; tooling
+> never overwrites it. Keep that log short and current.
+
+## Deliver the app, including chat tools
+
+- Unless the user explicitly asks for a narrower deliverable, build **a web UI
+  plus typed chat tools over the same domain service**. A UI alone is not enough.
+- MUST register `RegisterTool` declarations for the core user workflows: the
+  useful reads and domain actions users can perform in the UI. HTTP routes do
+  not become chat tools automatically. Use typed input/output structs and
+  explicit access tiers; do not expose arbitrary SQL or unrestricted writes.
+- Share domain logic between HTTP handlers and tools; neither surface calls or
+  imports the other. Apply the same caller authorization and data scoping in
+  the service, not only in the UI.
+- Before declaring completion, check the canonical manifest for the intended
+  tools and schemas. `go tool air build` warns when no tools are registered;
+  zero tools is acceptable only when the requested app is intentionally UI-only
+  or otherwise has no chat operations. Never add a dummy tool to silence it.
+- Register 1–3 useful app-specific suggested prompts for supported workflows.
+- Set `agentsdk.Config.Icon` in `newAgent()` to one emoji for the app's domain;
+  customize the scaffold's `📦` placeholder and Description during creation.
+  Preserve an explicitly chosen icon on updates. Use Lucide for UI controls.
+- Record assumptions about vague requests and product/styling decisions in
+  `NOTES.md`.
+
+## Read the matching reference for the task
+
+Use the SDK version installed for this app, not guessed APIs or online examples.
+Manifests, sync and invocation require `airlock.app-runtime.v4`; rebuild with a
+compatible SDK rather than bypassing protocol checks or fabricating declarations.
+In a checkout, start at `.airlock/toolchain/skills/agentsdk/SKILL.md`; its
+`reference/` companions contain the guides below. `go tool air update` refreshes
+the entry points; `go tool air toolchain install` installs the toolchain directly.
+In the Airlock toolserver, read `/libs/agentsdk/REFERENCE.md` and its sibling
+`reference/` guides; load UI skills through the `skill` tool.
+
+| Task | Read before implementing |
+| --- | --- |
+| SDK declarations, typed tools, dependency wiring, system setup | SDK reference |
+| Local build, generated files, importing a non-Go app | `reference/local-development.md` |
+| Preview selection, CLI operations, build logs, resource bindings | `reference/remote-development.md` and `go tool air help` |
+| Deterministic tests and real-host integration | `reference/testing.md` |
+| Caller identity, access, origin, caller test fixtures | `reference/caller.md` |
+| Pages, MVC, assets, themes, embedded UI, live updates | `reference/html-ui.md` |
+| SQL, migrations and durable jobs | `reference/database.md`, `reference/jobs.md` |
+| Direct HTTP/MCP resource discovery, app-slot verification, streaming downloads, interactive login | `reference/integrations.md`, `reference/auth-web.md` |
+| Connected-machine executables and lifecycle | `reference/connectors.md` |
+
+Discover required slots for both preview and production and the user's authorized
+global resources before reporting the app ready. Proactively prepare/apply every
+required unbound slot using only a compatible, unambiguous authorized resource.
+Use the pending candidate configuration for initial/setup-blocked builds, and
+the immutable candidate/deployment approval flow for production configuration.
+Do not guess between resources, borrow another user's binding, create credentials,
+or bypass an approval. Missing configuration does not block source deployment;
+report warnings and the target's existing settings link, and distinguish deployed
+source from operational readiness. Ask the user when a compatible selection or
+authority is missing; report unresolved slots explicitly. See `reference/integrations.md` for
+`/resource` versus `target/slot` commands and candidate selection details.
+
+Before editing UI code, read the relevant version-matched `templ`, `htmx`,
+`daisyui` (including config/colors), and `lucide` skills under
+`.airlock/toolchain/skills/`. The bundled htmx is **v4**, not v2; use its actual
+attribute and event APIs. Procedural examples belong in those references, not here.
+
+## Keep definition, domain and runtime separate
+
+- `newAgent()` is the definition-only composition root: register handles,
+  construct services, inject dependencies and register bound methods. No runtime
+  environment reads, database operations, network calls or goroutines there.
+- `Agent.DB()` and registration APIs return late-bound handles. Pass them into
+  constructors, but do not operate on runtime-backed handles before startup.
+  Required dependencies must fail immediately when omitted, not silently fall back.
+- `main()` only calls `newAgent().Serve()`. `Agent.Manifest()` freezes the
+  complete declaration; `AIRLOCK_AGENT_MODE=manifest` emits it offline without
+  starting the app, migrations, a database or network services.
+- Use named `OnStart` hooks only for disposable process-local initialization.
+  Durable work belongs in registered jobs, not startup hooks or migrations.
+- Keep `<domain>/service.go` for business logic and `<domain>/tools.go` for typed
+  tool receivers. Inject the same service into both tools and `handlers/`.
+- `handlers/` converts domain types into `views/` view-model types and renders
+  templ pages. Domain packages never import handlers or views; views never import
+  domain packages. No shared dependency container that creates import cycles.
+- Use `agentsdk.CallerFromContext(ctx)` and handle the bool from `User()`.
+  App-owned work has no human user or initiator; **never substitute the owner**.
+  Authentication, app access and data ownership are separate checks. Do not
+  infer authorization from request fields, user UUIDs or display metadata.
+
+## Build and verify
+
+- Run `go tool air build` after changes to Go, queries, `.templ` or CSS, and
+  before declaring completion. It generates code/assets, runs deterministic
+  tests, compiles app/connectors and inspects the offline app manifest.
+- No database or host runtime is provisioned locally. Do not import SDK
+  simulators/testcontainers in the default build/test selection, start an SDK
+  host in local tests, or read secrets from `.env`/developer credentials.
+- Test domain logic and important handler behavior with injected typed
+  repository/HTTP/model fixtures. Keep tests next to their source, using
+  table-driven `t.Run` cases where appropriate.
+- Offline composition tests call `newAgent().Manifest()`, never Start, Serve
+  or Handler. Use explicit caller fixtures for SDK-aware direct calls.
+- Validate migrations, SQL behavior, startup, credentials, jobs and integration
+  against a real authorized remote target; domain mocks do not prove them.
+  Keep real-host tests behind `airlockintegration` and follow the testing guide.
+- Never modify `Dockerfile`; it is generated. Use `setup.sh` for runtime system
+  dependencies and `airlock.toml` for runtime files; verify installed tools run.
+- Commit source inputs, not generated `*_templ.go`, `views/static/app.css`,
+  sqlc output under `internal/db/` (except `doc.go`), root binaries or
+  `.airlock/toolchain/`. Follow the local-development guide for generation.
+
+## Remote targets and human links
+
+- Discover all resource types with `air resources list`; use `air resources list preview`
+  for app slots, `air resources inspect /NAME` for safe resource details and
+  `air resources candidates preview/SLOT --type connector` for connector compatibility.
+- Use `air connectors install/update` for installation management and `connectors inspect ID`
+  for host/artifact/version diagnostics. Explain that updates change installed executable/settings,
+  not an app-local binding; binding/use grants no management and does not transfer the
+  installation's management app/need. Respect exclusive connector reservations.
+- Resolve hosted `approval_required` (77) in the developer conversation; never bypass
+  exact-host human confirmation or replay a whole shell after approval.
+- Preserve complete discovery stdout separately from stderr and check CLI exit status
+  before JSON parsing; do not truncate results or merge stderr into JSON.
+- `--remote` selects an Airlock instance; `--target` selects its deployment.
+  General commands default to production; `air preview` does not change later
+  defaults. Hosted workspaces can inject a preview default. Select explicitly.
+- Preview uploads/builds and remote integration can change real state. Use the
+  requested app/target and permissions; keep fixtures in the whole candidate.
+- Share the exact server-returned `App URL` (`data.deployment.routeBaseUrl` in status
+  JSON, `data.routeBaseUrl` in build JSON). Never invent a hostname or replace a
+  preview URL with production. `workspaceUrl` is a separate dashboard link.
+- Verify with authenticated `air request`, `air tools invoke` and agent commands
+  against the selected target, not an unauthenticated browser GET or tokens in
+  links. Use relative links inside the app; absolute app origins are runtime-only.
+- Use `air COMMAND --help` for supported syntax and follow the versioned JSON
+  contract in `reference/cli-output.md`; preserve concrete selectors in actions.
+- Use `preview -m "Describe changes" --launch --wait --json` for bounded preview
+  observation. Hosted agents can use foreground waits or the single background
+  workspace command; fit CLI timeout to the tool/caller deadline. Prefer built-in
+  waits over hand-written status/sleep loops. Match any HOST deployment completion
+  to `operation.taskId`, not shell request/checkpoint IDs; an already observed
+  completion is information, not a new request or permission to resubmit.
+  Inspect unknown admission without replay. See `reference/cli-output.md`.
+
+## Build an operable, responsive UI
+
+- Use templ + htmx + Tailwind v4 + DaisyUI + Lucide. Serve bundled htmx and
+  registered embedded app assets, not CDN replacements.
+- Prefer htmx partial-page updates for filters, search, pagination and in-app
+  actions; use `hx-boost` for ordinary internal page navigation where compatible
+  with page initialization. Both preserve the document and avoid full-page reloads.
+- Include `@agentsdk.WebUI(agentsdk.WebUIOptions{})` once in full-page layout
+  heads, not partials. Do not duplicate its authentication recovery listener.
+- Internal tools open on useful data and primary actions, not marketing heroes,
+  agent plumbing, tool inventories or explanations of chat/UI synchronization.
+- Wrap the complete compact identity block in `<header data-airlock-standalone-only>`;
+  WebUI hides that entire element after the trusted Airlock iframe handshake.
+  Keep identity-only decoration and spacing inside it, and functional navigation,
+  filters, search, and actions outside it. Check that embedded view leaves no empty header shell.
+- The iframe width changes during split-pane resizing: use fluid widths,
+  `min-width: 0`, wrapping layouts and live CSS queries. Check standalone and
+  embedded at 375px, then widen/narrow the same pane without reloading.
+- Choose built-in light/dark DaisyUI themes in `styles/app.css`, using local
+  toolchain plugins and semantic colors. Do not pin root `data-theme`, force
+  `color-scheme`, or add theme-sync JavaScript. Verify both modes.
+- Give action buttons an idle Lucide icon, accessible labels and a request
+  spinner without layout shifts; use the scaffold's `views.ActionIcon` pattern.
+- Publish user-scoped UI changes in the domain mutation's app DB transaction;
+  subscribe read-only fragments with `data-airlock-topic` and `airlock:change`.
+  Do not poll for domain changes. Keep forms/focus/scroll outside swap targets;
+  follow the HTML UI guide for tiny fields, lists and active filters.
