@@ -92,6 +92,13 @@ func RecordTask(ctx context.Context, s Source, url string, d Downloaded, resolve
 	if typ == "rate_limit" || typ == "http_503" || typ == "forbidden" {
 		retry = maxTime(retry, time.Now().Add(3*time.Hour))
 	}
+	if typ == "source_variant_not_listed" {
+		// The source returned a real family but did not publish this exact URL
+		// within its license data. Retain it as an unresolved source gap; avoid
+		// repeated parsing and let the publisher's future state be checked later.
+		retry = maxTime(retry, time.Now().Add(24*time.Hour))
+	}
+
 	detail := ""
 	if e != nil {
 		detail = e.Error()

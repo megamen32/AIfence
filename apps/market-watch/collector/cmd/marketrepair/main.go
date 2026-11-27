@@ -55,6 +55,19 @@ func ask(ctx context.Context, air, appDir string, b collector.RepairBatch) (coll
 	return collector.DecodeProposal(bytes.NewReader(value))
 }
 func once(ctx context.Context, j *collector.Journal, root, air, app string) error {
+	// Deterministic code owns classification and requeues. The LLM only
+	// proposes a new selector after the existing parser has been tried.
+	audit, e := j.PreflightRepairs(256)
+	if e != nil {
+		return e
+	}
+	if audit.Checked > 0 {
+		fmt.Printf("code audit checked=%d requeued=%d states=%v\n", audit.Checked, audit.Requeued, audit.States)
+	}
+	if audit.Checked == 256 {
+		return nil
+	} // finish the existing code backlog first
+
 	b, e := j.NextRepairBatch(time.Now())
 	if e != nil || b == nil {
 		return e
@@ -79,7 +92,19 @@ func once(ctx context.Context, j *collector.Journal, root, air, app string) erro
 		return e
 	}
 	if proposal.NoChange {
-		return j.MarkBatch(*b, "rejected", "model found no safe selector repair")
+		// An abstention supplies no rule to test. It is NOT a verdict on the
+		// product or a failure resolution. Retain the model's exact reason.
+		receipt, e := json.Marshal(struct {
+			Proposal collector.RuleProposal `json:"proposal"`
+			Decision string                 `json:"decision"`
+		}{proposal, "no candidate supplied; tasks remain unresolved"})
+		if e != nil {
+			return e
+		}
+		if e = os.WriteFile(filepath.Join(dir, b.ID+".report.json"), receipt, 0600); e != nil {
+			return e
+		}
+		return j.MarkBatch(*b, "no_candidate", string(receipt))
 	}
 	report, e := j.ValidateRepair(*b, proposal)
 	if e != nil {

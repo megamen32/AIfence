@@ -110,6 +110,9 @@ func (s *survey) prepareSchedule(j *catalog.Journal) error {
 					if c.State == "family_without_listed_variants" {
 						typ = "parse_missing_family_model"
 					}
+					if sourceVariantMissing(c) {
+						typ = "source_variant_not_listed"
+					}
 					seed.ErrorType = typ
 					// Use evidence only when it is from this checkpoint or a later response
 					// that survived a crash; never give an old network retry a stale price.
@@ -128,6 +131,11 @@ func (s *survey) prepareSchedule(j *catalog.Journal) error {
 	}
 	if e = j.SeedPlan(source.ID, s.cfg.At, seeds); e != nil {
 		return e
+	}
+	if n, e := j.RequeueSoftlineVariantChecks(s.cfg.At); e != nil {
+		return e
+	} else if n > 0 {
+		fmt.Printf("softline code revision queued %d archived product checks\n", n)
 	}
 	// Never replace the export with an incomplete family-only projection.
 	return s.snapshot()
@@ -244,6 +252,9 @@ func (s *survey) runScheduled(ctx context.Context, get fetch) error {
 			if o.c.State == "family_without_listed_variants" {
 				typ = "parse_missing_family_model"
 			}
+			if sourceVariantMissing(o.c) {
+				typ = "source_variant_not_listed"
+			}
 			if e := catalog.RecordTask(taskCtx, source, r.task.URL, o.d, resolved, o.parseErr, typ); e != nil {
 				return e
 			}
@@ -266,4 +277,13 @@ func (s *survey) runScheduled(ctx context.Context, get fetch) error {
 			return err
 		}
 	}
+}
+
+func sourceVariantMissing(c check) bool {
+	for _, p := range c.Products {
+		if p.URL == c.Page && p.StatusEvidence == "canonical_family_does_not_list_requested_url" {
+			return true
+		}
+	}
+	return false
 }

@@ -86,3 +86,28 @@ the host limiter to recover gradually. A source pause still stops new HTTP.
 This revision is not a publisher change-feed implementation: independent
 refresh of already verified prices remains a separate follow-up. The existing
 featured-offer refresh, export and import services are not replaced.
+
+## Deterministic decisions before model suggestions
+
+A repair model is not a classifier or a judge. An exact public card may have
+a structured request-only offer and a visible discontinued-product label.
+The production parser classifies that status from the matching URL and SKU;
+no numeric quote is invented. The code-only preflight reopens previously
+misclassified archived tasks, even if their old model batch was rejected.
+It stores the exact evidence ID, parser revision and result. A Softline
+canonical family that successfully lists other licenses but does not list
+the requested URL is an unresolved source gap, not a missing CSS selector;
+its check is delayed for 24 hours rather than re-running the same HTML or
+asking a model to invent a matching price. Historical archive checks resume
+once per parser revision.
+
+A model abstention is recorded as `no_candidate` with its actual reason,
+not as a failed regression test or a resolved product. A proposed rule is
+still evaluated by the deterministic corpus/holdout regression gate.
+The model receives product-relevant markup and structured offer fields
+rather than a truncated store organization/breadcrumb prefix.
+
+Read-only historical replay (local archive is not committed):
+```
+MARKET_ARCHIVE=/path/to/market-catalog go test ./collector -run TestArchivedSoftMagazinDisposition -v
+```
