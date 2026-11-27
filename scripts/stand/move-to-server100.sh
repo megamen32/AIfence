@@ -215,14 +215,86 @@ services:
   userio:
     platform: linux/amd64
     image: userio-airlock:56c66260-mcp-oauth-amd64
+    environment:
+      USERIO_AIRLOCK_OAUTH_BASE: https://$HOST
+      USERIO_AIRLOCK_OAUTH_AUTHORIZE: https://$HOST/authorize
+      USERIO_AIRLOCK_OAUTH_CALLBACK: https://$HOST/api/v1/credentials/oauth/callback
   mcp-local:
     platform: linux/amd64
     network_mode: container:aifence-move-airlock-1
 EOF
   sync_file "$TMP/userio.override.yml" "$ROOT/apps/userio/compose.server100.yml"
+  cat > "$TMP/userio.Dockerfile.server100" <<'EOF'
+FROM golang:1.26.1-trixie AS dion-helper
+WORKDIR /build
+COPY tools/dion-call-helper .
+RUN CGO_ENABLED=0 GOMAXPROCS=2 go build -p=1 -trimpath -o /out/userio-dion-call-helper .
+FROM python:3.12-slim-trixie
+ARG USERIO_REVISION
+LABEL org.opencontainers.image.revision=${USERIO_REVISION}
+WORKDIR /opt/universal-userio
+COPY pyproject.toml .
+COPY src ./src
+RUN pip install --no-cache-dir '.[fast-agent,max,telegram,chatgpt]' matrix-nio==0.26.0 && python -c "from universal_userio.runtime import main; from universal_userio.messenger_dion import DionMessengerProvider; from universal_userio.max_accounts import MaxAccounts"
+COPY --from=dion-helper /out/userio-dion-call-helper /opt/userio-dion-call-helper
+COPY entrypoint.py test_airlock_identity.py ./ 
+ENV PYTHONUNBUFFERED=1 USERIO_HOST=0.0.0.0 USERIO_PORT=18093 USERIO_DB_PATH=/var/lib/universal-userio/userio.sqlite3 USERIO_CONNECTION_SECRETS_DIR=/var/lib/universal-userio/connected-secrets USERIO_AI_ENDPOINT=http://127.0.0.1:9/v1 USERIO_AI_TOKEN=disabled USERIO_AI_MODEL=disabled USERIO_OWNER_SEED_FILE=/run/no-owner-reseed
+EXPOSE 18093
+CMD ["python","entrypoint.py"]
+EOF
+  sync_file "$TMP/userio.Dockerfile.server100" "$ROOT/apps/userio/source/Dockerfile.server100"
+  cat > "$TMP/userio.Dockerfile.demo-amd64" <<'EOF'
+FROM userio-airlock:56c66260-pre-cabinet-amd64
+LABEL io.userio.local.overlay="airlock-cabinet-v1"
+COPY src/universal_userio/airlock_identity.py src/universal_userio/http_api.py /opt/universal-userio/src/universal_userio/
+COPY test_airlock_identity.py test_cabinet_http.py /opt/universal-userio/
+COPY src/universal_userio/static/connect-accounts.html /opt/universal-userio/src/universal_userio/static/connect-accounts.html
+EOF
+  sync_file "$TMP/userio.Dockerfile.demo-amd64" "$ROOT/apps/userio/source/Dockerfile.demo-amd64"
+  cat > "$TMP/userio.Dockerfile.demo-ui-amd64" <<'EOF'
+FROM userio-airlock:56c66260-demo-amd64
+COPY src/universal_userio/static/index.html /opt/universal-userio/src/universal_userio/static/index.html
+COPY src/universal_userio/static/assets/ /opt/universal-userio/src/universal_userio/static/assets/
+EOF
+  sync_file "$TMP/userio.Dockerfile.demo-ui-amd64" "$ROOT/apps/userio/source/Dockerfile.demo-ui-amd64"
+  cat > "$TMP/userio.Dockerfile.qr-workers-amd64" <<'EOF'
+FROM node:22-slim AS node
+FROM golang:1.26.1-trixie AS deps
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/include/node /usr/local/include/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && git config --global url.https://github.com/.insteadOf ssh://git@github.com/ && test "$(uname -m)" = x86_64 && node --version && npm --version
+ENV npm_config_nodedir=/usr/local
+WORKDIR /opt/userio-telegram-qr
+COPY qr-workers/telegram/ ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --no-audit --no-fund
+WORKDIR /opt/userio-whatsapp-qr
+COPY qr-workers/whatsapp/ ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --no-audit --no-fund
+FROM userio-airlock:56c66260-demo-ui-amd64
+RUN apt-get update && apt-get install -y --no-install-recommends age ca-certificates libatomic1 libstdc++6 && rm -rf /var/lib/apt/lists/*
+COPY --from=deps /usr/local/bin/node /usr/local/bin/node
+COPY --from=deps /opt/userio-telegram-qr /opt/userio-telegram-qr
+COPY --from=deps /opt/userio-whatsapp-qr /opt/userio-whatsapp-qr
+RUN node --version && command -v age && command -v age-keygen
+EOF
+  sync_file "$TMP/userio.Dockerfile.qr-workers-amd64" "$ROOT/apps/userio/source/Dockerfile.qr-workers-amd64"
+  cat > "$TMP/userio.Dockerfile.qr-live-amd64" <<'EOF'
+FROM userio-airlock:56c66260-qr-workers-amd64
+COPY src/universal_userio/qr_gateway.py src/universal_userio/http_api.py /opt/universal-userio/src/universal_userio/
+COPY entrypoint.py qr_workers.py configure_telegram.py /opt/universal-userio/
+COPY test_qr_gateway.py /opt/universal-userio/
+EOF
+  sync_file "$TMP/userio.Dockerfile.qr-live-amd64" "$ROOT/apps/userio/source/Dockerfile.qr-live-amd64"
+  cat > "$TMP/userio.Dockerfile.mcp-oauth-amd64" <<'EOF'
+FROM userio-airlock:56c66260-qr-live-amd64
+COPY src/universal_userio/http_api.py /opt/universal-userio/src/universal_userio/http_api.py
+COPY test_airlock_oauth.py /opt/universal-userio/
+EOF
+  sync_file "$TMP/userio.Dockerfile.mcp-oauth-amd64" "$ROOT/apps/userio/source/Dockerfile.mcp-oauth-amd64"
   remote "cd '$ROOT/apps/redmine-mcp' && docker build --platform linux/amd64 -t aifence-redmine-mcp:2.23.0 ."
   remote "cd '$ROOT/apps/metrika' && docker build --platform linux/amd64 -t aifence-metrika-metrika-mcp:server100 -f metrika.Dockerfile ."
-  remote "cd '$ROOT/apps/userio' && docker build --platform linux/amd64 -t userio-airlock:56c66260-mcp-oauth-amd64 --build-arg USERIO_REVISION=56c66260f2c1bf75c4b615e369fd0e032184e0ee -f source/Dockerfile source"
+  remote "cd '$ROOT/apps/userio/source' && docker build --platform linux/amd64 -t userio-airlock:56c66260-arm64 --build-arg USERIO_REVISION=56c66260f2c1bf75c4b615e369fd0e032184e0ee -f Dockerfile.server100 . && docker tag userio-airlock:56c66260-arm64 userio-airlock:56c66260-pre-cabinet-amd64 && docker build --platform linux/amd64 -t userio-airlock:56c66260-demo-amd64 -f Dockerfile.demo-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-demo-ui-amd64 -f Dockerfile.demo-ui-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-qr-workers-amd64 -f Dockerfile.qr-workers-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-qr-live-amd64 -f Dockerfile.qr-live-amd64 . && docker build --platform linux/amd64 -t userio-airlock:56c66260-mcp-oauth-amd64 -f Dockerfile.mcp-oauth-amd64 ."
   remote "cd '$ROOT/build/AIfence' && docker build --platform linux/amd64 -t aifence-app-competitor-research:$AIFENCE_SHA -f apps/competitor-research/Dockerfile apps/competitor-research || true; docker build --platform linux/amd64 -t aifence-app-market-watch:$AIFENCE_SHA -f apps/market-watch/Dockerfile apps/market-watch || true; docker build --platform linux/amd64 -t aifence-app-product-manager:$AIFENCE_SHA -f apps/product-manager/Dockerfile apps/product-manager || true"
   remote "cd '$ROOT/airlock' && docker compose -p aifence-move --env-file .env -f docker-compose.yml -f compose.server100.yml up -d --no-build --pull never"
   remote "cd '$ROOT' && docker compose -p aifence-move-redmine -f redmine.compose.yml -f redmine.server100.yml up -d --no-build --pull never"
