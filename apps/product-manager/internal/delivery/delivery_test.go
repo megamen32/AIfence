@@ -112,6 +112,7 @@ type fakeRedmine struct {
 	issues   []map[string]any
 	creates  int
 	notes    int
+	updates  int
 	failures map[string]int
 }
 
@@ -171,12 +172,26 @@ func (f *fakeRedmine) CallTool(_ context.Context, name string, raw any) (*agents
 		f.issues = append(f.issues, is)
 		return structured(map[string]any{"id": is["id"], "subject": is["subject"]})
 	case "update_redmine_issue":
-		f.notes++
+		fields := args["fields"].(map[string]any)
+		if _, ok := fields["notes"]; ok {
+			f.notes++
+		}
+		if _, ok := fields["subject"]; ok {
+			f.updates++
+		}
 		for _, is := range f.issues {
 			if is["id"] == args["issue_id"] {
-				journals, _ := is["journals"].([]map[string]any)
-				journals = append(journals, map[string]any{"id": len(journals) + 1, "notes": args["fields"].(map[string]any)["notes"]})
-				is["journals"] = journals
+				if subject, ok := fields["subject"].(string); ok {
+					is["subject"] = subject
+				}
+				if description, ok := fields["description"].(string); ok {
+					is["description"] = description
+				}
+				if notes, ok := fields["notes"].(string); ok {
+					journals, _ := is["journals"].([]map[string]any)
+					journals = append(journals, map[string]any{"id": len(journals) + 1, "notes": notes})
+					is["journals"] = journals
+				}
 			}
 		}
 		return structured(map[string]any{"id": args["issue_id"]})
@@ -268,6 +283,27 @@ func TestRedmineCommentsOnExistingTaskForSameProduct(t *testing.T) {
 	}
 	if _, err := d.Deliver(context.Background(), "owner", approved()); err != nil || rm.notes != 1 {
 		t.Fatalf("repeat must not comment twice, notes=%d", rm.notes)
+	}
+}
+
+func TestRedmineRefreshesExistingIssueTemplateBySignal(t *testing.T) {
+	r := approved()
+	signal := SignalKey(r)
+	rm := &fakeRedmine{issues: []map[string]any{{
+		"id": 8,
+		"subject": "[ИИ] Проверить изменение orders_index для kaspersky_small_office_security [7e6f0128-603b-87cf-9bc9-14680c36eb22]",
+		"description": "старый шаблон",
+		"fields": map[string]any{FieldSignal: signal},
+		"status_id": "open",
+	}}}
+	d := &Redmine{MCP: rm, DB: newDB(t), Project: "personal", Tracker: "Улучшение", PublicURL: "http://r"}
+	got, err := d.Deliver(context.Background(), "owner", r)
+	if err != nil || got.IssueID != 8 || got.Subject != Subject(r, signal) || rm.creates != 0 || rm.updates != 1 {
+		t.Fatalf("existing signal must be refreshed in place: %+v creates=%d updates=%d err=%v", got, rm.creates, rm.updates, err)
+	}
+	is := rm.issues[0]
+	if is["subject"] != Subject(r, signal) || !strings.Contains(is["description"].(string), "{{collapse(Технические детали)") {
+		t.Fatalf("human-readable template was not persisted: %+v", is)
 	}
 }
 

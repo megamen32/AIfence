@@ -153,6 +153,11 @@ func (d *Redmine) deliver(ctx context.Context, owner string, item BacklogItem) (
 	signal := SignalKey(r)
 	if got, err := d.Lookup(ctx, owner, signal); err != nil || got != nil {
 		if got != nil {
+			if updated, refreshErr := d.refreshIssue(ctx, *got, item); refreshErr != nil {
+				return RedmineIssue{}, refreshErr
+			} else {
+				*got = updated
+			}
 			updated, err := d.attachReview(ctx, *got, item)
 			if err != nil {
 				return RedmineIssue{}, err
@@ -166,6 +171,7 @@ func (d *Redmine) deliver(ctx context.Context, owner string, item BacklogItem) (
 		return RedmineIssue{}, err
 	}
 	issue, found, err := d.find(ctx, project, signal)
+	foundBySignal := found
 	if err != nil {
 		return RedmineIssue{}, err
 	}
@@ -182,6 +188,12 @@ func (d *Redmine) deliver(ctx context.Context, owner string, item BacklogItem) (
 		}
 	} else {
 		issue.Reused = true
+		if foundBySignal {
+			issue, err = d.refreshIssue(ctx, issue, item)
+			if err != nil {
+				return RedmineIssue{}, err
+			}
+		}
 	}
 	if issue, err = d.attachReview(ctx, issue, item); err != nil {
 		return RedmineIssue{}, err
@@ -198,6 +210,26 @@ func (d *Redmine) deliver(ctx context.Context, owner string, item BacklogItem) (
 		return issue, err
 	}
 	return *stored, nil
+}
+
+// refreshIssue brings an issue found by its durable signal key to the current
+// human-readable rendering without changing its Redmine identity.
+func (d *Redmine) refreshIssue(ctx context.Context, issue RedmineIssue, item BacklogItem) (RedmineIssue, error) {
+	signal := SignalKey(item.Record)
+	subject := Subject(item.Record, signal)
+	// Keep a later model review in the journal. attachReview adds it after the
+	// base template is refreshed, so a retry cannot mistake the description for
+	// an already-posted review.
+	description := Description(item.Record, signal)
+	var result map[string]any
+	if err := d.call(ctx, "update_redmine_issue", map[string]any{
+		"issue_id": issue.IssueID,
+		"fields": map[string]any{"subject": subject, "description": description},
+	}, &result); err != nil {
+		return RedmineIssue{}, err
+	}
+	issue.Subject = subject
+	return issue, nil
 }
 
 type projectInfo struct {
