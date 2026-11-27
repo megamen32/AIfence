@@ -64,3 +64,17 @@ The release app package source_commit is d47e5103b383783f9590b9fbc2887be0a87e8db
 ## Database majors
 
 Airlock bundled database: pgvector/pgvector:pg17 (Postgres 17), migration schema 35. Redmine bundled database: postgres:16-alpine (Postgres 16). Pin Baserow's bundled Postgres major from apps/baserow/compose.yml.
+
+## Running 42080 app containers
+
+The live 42080 stack also had five Airlock-managed app containers. Their image labels report the pinned Airlock source SHA `be0f9ee03be31ee15dacd5f6ebcc0f28acea6468`; the per-app source refs and manifest hashes above are the app-generation pins. The `run.airlock.source-digest` label is a content digest, not a Git SHA.
+
+| Container | Image ref | Image ID |
+| --- | --- | --- |
+| aifence-agent-01a5630d-261e-4c41-88a7-15fe5bd4fa2b | 01a5630d-261e-4c41-88a7-15fe5bd4fa2b:d1be948e647d | sha256:d0f54bb29158bd28dbd6d269f16fe608fb7e4f283107229b8ec796ed646c003f |
+| aifence-agent-37aa7358-942e-44c4-acd0-b971e83e0ce9 | 37aa7358-942e-44c4-acd0-b971e83e0ce9:42e14e662657 | sha256:971e3b183441bc4eb372662c8de14911e1f0651c7449457afd8d9087da9e7e6b |
+| aifence-agent-6e985f49-ae84-4f6d-b345-edb4ea0d95cf | 6e985f49-ae84-4f6d-b345-edb4ea0d95cf:299e53bb21da | sha256:7bd71d4bcf1f047a3892ddf7c90ed9a95230d3c5ec6aa235c65a2a915494d631 |
+| aifence-agent-8702e3ad-c528-45af-8172-00e3be59ae7f | 8702e3ad-c528-45af-8172-00e3be59ae7f:14a80479963f | sha256:2ee33a45c971afb1eb6b8d948911ac6e81b206be02044a856c74ea1414ee6add |
+| aifence-agent-cdd2224a-e2e8-4be8-a325-49fe7fa37be7 | cdd2224a-e2e8-4be8-a325-49fe7fa37be7:51cb9a874b1c | sha256:e2012085f3dbcd62cb2be8f58c574ced6fe2944320572b3917493a183384a027 |
+
+The exact full container inventory, including QA-only containers excluded from the personal move, is captured at pin time in `/home/roomhacker/aifence-move/pin/containers.tsv`.
