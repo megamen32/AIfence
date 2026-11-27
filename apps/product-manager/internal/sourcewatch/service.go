@@ -30,9 +30,14 @@ type Window struct {
 	Segment       string  `json:"segment,omitempty"`
 	DemandDropPct float64 `json:"demand_drop_pct,omitempty"`
 	SKU           string  `json:"sku,omitempty"`
-	Metric        string  `json:"metric"`
-	DropPct       float64 `json:"drop_pct"`
-	Monday        string  `json:"monday"`
+	// SKUs selects an explicit reviewed set for family_price_week_delta. Family
+	// lets Market Watch discover candidates from indexed titles. Both exclude
+	// the single exact SKU.
+	SKUs    []string `json:"skus,omitempty"`
+	Family  string   `json:"family,omitempty"`
+	Metric  string   `json:"metric"`
+	DropPct float64  `json:"drop_pct"`
+	Monday  string   `json:"monday"`
 }
 
 func (w Window) Validate() (time.Time, error) {
@@ -53,7 +58,29 @@ func (w Window) Validate() (time.Time, error) {
 		}
 		seen[v] = true
 	}
-	if (w.MarketBinding != "" && (!bounded(w.SKU, 128) || strings.TrimSpace(w.SKU) != w.SKU)) || (w.MarketBinding == "" && w.SKU != "") {
+	familySelected := len(w.SKUs) > 0 || w.Family != ""
+	if len(w.SKUs) > 0 && w.Family != "" {
+		return time.Time{}, errors.New("choose either an explicit SKU set or a family phrase")
+	}
+	if familySelected && w.SKU != "" {
+		return time.Time{}, errors.New("a family selection cannot be combined with one exact SKU")
+	}
+	if familySelected && w.MarketBinding == "" {
+		return time.Time{}, errors.New("a family selection requires the market binding")
+	}
+	seenSKU := map[string]bool{}
+	for _, sku := range w.SKUs {
+		if !bounded(sku, 300) || strings.TrimSpace(sku) != sku || seenSKU[sku] {
+			return time.Time{}, errors.New("SKUs must be distinct exact keys without outer whitespace")
+		}
+		seenSKU[sku] = true
+	}
+	if len(w.SKUs) > 20 || (w.Family != "" && (!bounded(w.Family, 200) || strings.TrimSpace(w.Family) != w.Family || len(w.Family) < 4)) {
+		return time.Time{}, errors.New("select at most 20 SKUs or a family phrase of 4 to 200 characters")
+	}
+	// The exact SKU is one way to select a price scope. A family selection is
+	// the other, so the two cannot be required at the same time.
+	if (w.MarketBinding != "" && !familySelected && (!bounded(w.SKU, 128) || strings.TrimSpace(w.SKU) != w.SKU)) || (w.MarketBinding == "" && w.SKU != "") {
 		return time.Time{}, errors.New("set an exact SKU with the market binding")
 	}
 	if w.TrendsBinding != "" && w.TrendsGeo == "" {
@@ -160,6 +187,7 @@ type weekDeltaSource struct {
 	Missing int    `json:"missing"`
 }
 type missingPeriod struct {
+	SKU    string `json:"sku,omitempty"`
 	Seller string `json:"seller"`
 	Period string `json:"period"`
 	Reason string `json:"reason"`
@@ -183,20 +211,22 @@ type weekDelta struct {
 
 // PriceFamily is one comparable seller series with a two-week price change.
 type PriceFamily struct {
-	SKU         string   `json:"sku"`
-	Seller      string   `json:"seller"`
-	PriceBasis  string   `json:"price_basis"`
-	Name        string   `json:"name,omitempty"`
-	BaselineID  string   `json:"baseline_observation_id"`
-	CurrentID   string   `json:"current_observation_id"`
-	BaselineAt  string   `json:"baseline_captured_at"`
-	CurrentAt   string   `json:"current_captured_at"`
-	BaselineRUB float64  `json:"baseline_rub"`
-	CurrentRUB  float64  `json:"current_rub"`
-	ChangePct   *float64 `json:"relative_change_pct,omitempty"`
-	Locator     string   `json:"locator"`
-	Quantity    *int64   `json:"quantity,omitempty"`
-	MaxQuantity *int64   `json:"max_quantity,omitempty"`
+	SKU          string   `json:"sku"`
+	Seller       string   `json:"seller"`
+	PriceBasis   string   `json:"price_basis"`
+	Name         string   `json:"name,omitempty"`
+	BaselineID   string   `json:"baseline_observation_id"`
+	CurrentID    string   `json:"current_observation_id"`
+	BaselineAt   string   `json:"baseline_captured_at"`
+	CurrentAt    string   `json:"current_captured_at"`
+	BaselineRUB  float64  `json:"baseline_rub"`
+	CurrentRUB   float64  `json:"current_rub"`
+	ChangePct    *float64 `json:"relative_change_pct,omitempty"`
+	Locator      string   `json:"locator"`
+	Quantity     *int64   `json:"quantity,omitempty"`
+	MaxQuantity  *int64   `json:"max_quantity,omitempty"`
+	BaselineWeek period   `json:"baseline_week,omitempty"`
+	CurrentWeek  period   `json:"current_week,omitempty"`
 }
 
 type Signal struct {
@@ -221,6 +251,7 @@ type Signal struct {
 	ProductKey     string          `json:"product_key,omitempty"`
 	Segment        string          `json:"segment,omitempty"`
 	FamilyChange   *FamilyChange   `json:"family_change,omitempty"`
+	PriceCoverage  *familyCoverage `json:"price_coverage,omitempty"`
 }
 
 type Outcome struct {
@@ -247,6 +278,7 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	before, current := period{date(-14), date(-8)}, period{date(-7), date(-1)}
 	var metrika, wordstat, trends batch
 	var market weekDelta
+	var family familyDelta
 	// Fixed source parameters keep filesystem selection and arbitrary connector calls out of this job.
 	target := w.ProductKey
 	if target == "" {
@@ -264,11 +296,24 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		return Outcome{}, errors.New("Metrika binding returned an unexpected contract")
 	}
 	if w.MarketBinding != "" {
-		err = read(ctx, w.MarketBinding, map[string]string{"product_key": w.SKU, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &market)
+		if len(w.SKUs) > 0 || w.Family != "" {
+			err = read(ctx, w.MarketBinding, map[string]any{"skus": w.SKUs, "family": w.Family, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &family)
+			if err != nil {
+				return Outcome{}, fmt.Errorf("read family price week delta: %w", err)
+			}
+			if family.Coverage.SelectedSKUs == 0 || family.Status == "" {
+				return Outcome{}, errors.New("market binding returned an unexpected family contract")
+			}
+			if family.BaselineWeek != before || family.CurrentWeek != current {
+				return Outcome{}, errors.New("family price delta returned different weeks")
+			}
+		} else {
+			err = read(ctx, w.MarketBinding, map[string]string{"product_key": w.SKU, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}, &market)
+		}
 		if err != nil {
 			return Outcome{}, fmt.Errorf("read price week delta: %w", err)
 		}
-		if market.SKU == "" || market.Status == "" {
+		if len(w.SKUs) == 0 && w.Family == "" && (market.SKU == "" || market.Status == "") {
 			return Outcome{}, errors.New("market binding returned an unexpected contract")
 		}
 	}
@@ -308,7 +353,11 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 			}
 		}
 	}
-	if metrika.Status != "ok" || (w.MarketBinding != "" && market.Status != "ok" && market.Status != "partial") {
+	marketStatus := market.Status
+	if len(w.SKUs) > 0 || w.Family != "" {
+		marketStatus = family.Status
+	}
+	if metrika.Status != "ok" || (w.MarketBinding != "" && marketStatus != "ok" && marketStatus != "partial") {
 		return Outcome{Status: "incomplete"}, nil
 	}
 	var delta *observation
@@ -372,10 +421,13 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 		CurrentFrom: current.From, CurrentTo: current.To, ObservationID: observationID, ObservationRef: observationRef,
 		ProductKey: w.ProductKey, Segment: w.Segment, FamilyChange: computed,
 		Demand: demand, Trends: trendsObs, TrendsStatus: trends.Status, WordstatStatus: wordstat.Status,
-		ContextSKU: w.SKU, MarketStatus: market.Status,
+		ContextSKU: w.SKU, MarketStatus: marketStatus,
 		MissingPeriods: market.MissingPeriods,
 	}
-	if w.MarketBinding != "" {
+	if len(w.SKUs) > 0 || w.Family != "" {
+		sig.PriceFamilies, sig.MissingPeriods = familyPriceFamilies(family)
+		sig.PriceCoverage = &family.Coverage
+	} else if w.MarketBinding != "" {
 		sig.PriceFamilies = priceFamilies(market, w.SKU)
 	}
 	id, err := launch(ctx, sig)
