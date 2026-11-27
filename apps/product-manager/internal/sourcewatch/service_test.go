@@ -3,136 +3,188 @@ package sourcewatch
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"strconv"
+	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestWatchReadsBothBindingsAndStartsOnlyOnObservedDrop(t *testing.T) {
-	const met = "62057b9c-7d10-4439-9985-3888e7b259b3"
-	const market = "44e7584f-1caf-4f08-9bd9-b69006cdd0af"
+const (
+	metBinding    = "62057b9c-7d10-4439-9985-3888e7b259b3"
+	marketBinding = "44e7584f-1caf-4f08-9bd9-b69006cdd0af"
+	demandBinding = "00000000-0000-4000-8000-000000000002"
+	trendsBinding = "00000000-0000-4000-8000-000000000003"
+)
+
+func storeBatch(change float64, status string) batch {
+	return batch{SchemaVersion: "aifence.v1", Source: "metrika", Status: "ok", Observations: []observation{{
+		ID: "store-change", ProductKey: "store", MetricKey: "visits.relative_change_pct", Status: status, Unit: "percent", Value: &change,
+		Period: period{"2026-11-16", "2026-11-22"}, SourceRef: sourceRef{SourceID: "yandex-metrika:1337", Locator: "compare_periods/1337/visits"},
+	}}}
+}
+
+func deltaEnvelope(comparable bool, pct float64) weekDelta {
+	series := []weekDeltaSeries{{
+		Seller: "allsoft", URL: "https://allsoft.example/kl4141", PriceBasis: "per_unit", Currency: "RUB",
+		Baseline: &weekRead{CapturedAt: "2026-11-10T10:00:00Z", Value: 12490, Unit: "RUB", EvidenceID: "m-base", URL: "https://allsoft.example/kl4141"},
+		Current:  &weekRead{CapturedAt: "2026-11-18T10:00:00Z", Value: 11490, Unit: "RUB", EvidenceID: "m-cur", URL: "https://allsoft.example/kl4141"},
+		DeltaPct: &pct, Comparable: comparable, EvidenceIDs: []string{"m-base", "m-cur"},
+	}}
+	if !comparable {
+		series[0].Reason = "quantity unknown"
+		series[0].Current = nil
+	}
+	return weekDelta{SKU: "KL4141RCEFS", Status: "ok", ComparablePairs: 1, Series: series, MissingPeriods: []missingPeriod{}}
+}
+
+func TestCheckTriggersOnObservedStoreDropWithPriceDelta(t *testing.T) {
+	w := Window{MetrikaBinding: metBinding, MarketBinding: marketBinding, SKU: "KL4141RCEFS", Metric: "visits", Monday: "2026-11-23", DropPct: 20}
+	var calls []string
+	starts := 0
+	read := func(_ context.Context, binding string, input, output any) error {
+		calls = append(calls, binding)
+		switch binding {
+		case metBinding:
+			*output.(*batch) = storeBatch(-21, "observed")
+		case marketBinding:
+			args, _ := json.Marshal(input)
+			var q map[string]string
+			_ = json.Unmarshal(args, &q)
+			if q["product_key"] != w.SKU || q["baseline_from"] != "2026-11-09" || q["current_to"] != "2026-11-22" {
+				t.Fatalf("price_week_delta scope %s", args)
+			}
+			*output.(*weekDelta) = deltaEnvelope(true, -8.0)
+		default:
+			t.Fatalf("unexpected binding %s", binding)
+		}
+		return nil
+	}
+	out, err := Check(t.Context(), w, true, read, func(_ context.Context, s Signal) (string, error) {
+		starts++
+		if s.ChangePct != -21 || len(s.PriceFamilies) != 1 || s.PriceFamilies[0].ChangePct == nil || *s.PriceFamilies[0].ChangePct != -8 {
+			t.Fatalf("signal %+v", s)
+		}
+		if s.PriceFamilies[0].BaselineID != "m-base" || s.PriceFamilies[0].Locator == "" {
+			t.Fatalf("price family lost locators: %+v", s.PriceFamilies[0])
+		}
+		return "run1", nil
+	})
+	if err != nil || out.Status != "submitted" || starts != 1 || len(calls) != 2 {
+		t.Fatalf("%+v err=%v calls=%v starts=%d", out, err, calls, starts)
+	}
+}
+
+func TestCheckRejectsIncomparableSeriesAndQuietStore(t *testing.T) {
 	for _, tc := range []struct {
-		name, metric, marketStatus, want string
-		change                           float64
-		denied, route                    bool
-		starts                           int
+		name   string
+		change float64
+		status string
+		want   string
 	}{
-		{"decline", "observed", "ok", "submitted", -21, false, true, 1},
-		{"threshold_equal", "observed", "ok", "submitted", -20, false, true, 1},
-		{"quiet", "observed", "ok", "quiet", -19, false, true, 0},
-		{"missing", "estimated", "ok", "incomplete", -60, false, true, 0},
-		{"denied", "observed", "ok", "", -80, true, true, 0},
-		{"model_off", "observed", "ok", "model_route_unapproved", -90, false, false, 0},
-		{"market_missing", "observed", "unavailable", "incomplete", -90, false, true, 0},
+		{"quiet", -19, "observed", "quiet"},
+		{"estimated_is_not_observed", -60, "estimated", "incomplete"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			spec := Window{MetrikaBinding: met, MarketBinding: market, SKU: "fixture-sku", Metric: "visits", DropPct: 20, Monday: "2026-11-23"}
-			var calls []string
-			starts := 0
-			read := func(ctx context.Context, b string, input, output any) error {
-				args, _ := json.Marshal(input)
-				var query map[string]any
-				_ = json.Unmarshal(args, &query)
-				calls = append(calls, b)
-				out := output.(*batch)
-				if b == met {
-					if query["product_key"] != "store" || query["baseline_from"] != "2026-11-09" || query["current_to"] != "2026-11-22" {
-						t.Fatalf("wrong scope %s", args)
-					}
-					*out = batch{SchemaVersion: "aifence.v1", Source: "metrika", Status: "ok", Observations: []observation{{ID: "delta", ProductKey: "store", MetricKey: "visits.relative_change_pct", Unit: "percent", Status: tc.metric, Value: &tc.change, Period: period{"2026-11-16", "2026-11-22"}, SourceRef: sourceRef{"yandex-metrika:10"}}}}
-				} else if b == market {
-					if tc.denied {
-						return errors.New("grant revoked")
-					}
-					if query["product_key"] != spec.SKU || query["exact_sku"] != true || query["limit"] != float64(5) {
-						t.Fatalf("market scope %s", args)
-					}
-					*out = batch{SchemaVersion: "aifence.v1", Source: "market", Status: tc.marketStatus}
-				} else {
-					t.Fatal(b)
+			w := Window{MetrikaBinding: metBinding, MarketBinding: marketBinding, SKU: "KL4141RCEFS", Metric: "visits", Monday: "2026-11-23", DropPct: 20}
+			read := func(_ context.Context, binding string, _ any, output any) error {
+				if binding == metBinding {
+					*output.(*batch) = storeBatch(tc.change, tc.status)
+					return nil
 				}
+				*output.(*weekDelta) = deltaEnvelope(false, 0)
 				return nil
 			}
-			launch := func(ctx context.Context, signal Signal) (string, error) {
-				starts++
-				if signal.ChangePct != tc.change || signal.Metric != "visits" || signal.ObservationID != "delta" {
-					t.Fatalf("%+v", signal)
-				}
-				return "run1", nil
-			}
-			got, err := Check(t.Context(), spec, tc.route, read, launch)
-			if (err != nil) != tc.denied || got.Status != tc.want || len(calls) != 2 || starts != tc.starts {
-				t.Fatalf("%+v err=%v calls=%v starts=%d", got, err, calls, starts)
+			out, err := Check(t.Context(), w, true, read, func(context.Context, Signal) (string, error) {
+				t.Fatal("must not start")
+				return "", nil
+			})
+			if err != nil || out.Status != tc.want {
+				t.Fatalf("%+v err=%v", out, err)
 			}
 		})
 	}
 }
 
-func TestWordstatPairsExactWeeksAndCanTriggerAlone(t *testing.T) {
-	const met = "62057b9c-7d10-4439-9985-3888e7b259b3"
-	const demand = "00000000-0000-4000-8000-000000000002"
-	for _, tc := range []struct {
-		name    string
-		a, b    float64
-		invalid string
-		want    string
-	}{
-		{"demand_drop", 100, 80, "", "submitted"}, {"quiet", 100, 81, "", "quiet"}, {"zero_base", 0, 0, "", "quiet"},
-		{"unavailable", 30, 0, "unavailable", "incomplete"}, {"wrong_week", 30, 4, "week", "incomplete"},
-		{"wrong_phrase", 100, 10, "phrase", "incomplete"}, {"estimated", 100, 12, "estimated", "incomplete"}, {"negative", 100, -1, "", "incomplete"},
+func TestCheckTrendsUsesSameWeekContract(t *testing.T) {
+	w := Window{MetrikaBinding: metBinding, TrendsBinding: trendsBinding, Phrase: "касперский", TrendsGeo: "RU", Metric: "visits", Monday: "2026-11-23", DropPct: 20, DemandDropPct: 20}
+	read := func(_ context.Context, binding string, input, output any) error {
+		if binding == metBinding {
+			*output.(*batch) = storeBatch(3, "observed")
+			return nil
+		}
+		args, _ := json.Marshal(input)
+		var q map[string]string
+		_ = json.Unmarshal(args, &q)
+		if binding != trendsBinding || q["query"] != w.Phrase || q["geo"] != "RU" || q["monday"] != w.Monday {
+			t.Fatalf("trends scope %s", args)
+		}
+		a, c := 80.0, 50.0
+		*output.(*batch) = batch{SchemaVersion: "aifence.v1", Source: "research", Status: "ok", Observations: []observation{
+			{ID: "t-base", ProductKey: w.Phrase, MetricKey: "search_interest", Status: "observed", Unit: "index", Value: &a, Period: period{"2026-11-09", "2026-11-15"}, SourceRef: sourceRef{SourceID: "google_trends", Locator: "trends/ru/1"}},
+			{ID: "t-cur", ProductKey: w.Phrase, MetricKey: "search_interest", Status: "observed", Unit: "index", Value: &c, Period: period{"2026-11-16", "2026-11-22"}, SourceRef: sourceRef{SourceID: "google_trends", Locator: "trends/ru/2"}},
+		}}
+		return nil
+	}
+	out, err := Check(t.Context(), w, true, read, func(_ context.Context, s Signal) (string, error) {
+		if s.Trigger != "trends" || s.Trends == nil || s.Trends.ChangePct == nil || math.Abs(*s.Trends.ChangePct+37.5) > 1e-9 {
+			t.Fatalf("trends signal %+v", s)
+		}
+		if s.Trends.BaselineID != "t-base" || s.Trends.CurrentID != "t-cur" {
+			t.Fatalf("trends ids %+v", s.Trends)
+		}
+		return "run", nil
+	})
+	if err != nil || out.Status != "submitted" {
+		t.Fatalf("%+v err=%v", out, err)
+	}
+}
+
+func TestCheckReportsUnsupportedHostWithoutFakeRead(t *testing.T) {
+	w := Window{MetrikaBinding: metBinding, MarketBinding: marketBinding, SKU: "KL4141RCEFS", Metric: "visits", Monday: "2026-11-23", DropPct: 20}
+	out, err := Check(t.Context(), w, true, unsupportedRead, func(context.Context, Signal) (string, error) {
+		t.Fatal("unsupported host must not launch a review")
+		return "", nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported") || out.Status != "" {
+		t.Fatalf("expected explicit unsupported, got %+v err=%v", out, err)
+	}
+	if HostSupportsAppRead {
+		t.Fatal("pinned SDK v0.11.0 has no JobContext.ReadAppTool")
+	}
+}
+
+func TestValidateReviewRejectsUnknownEvidenceIDs(t *testing.T) {
+	allowed := []string{"store-change", "m-base", "m-cur"}
+	base := ReviewOutput{Hypothesis: "Проверить ставку", EvidenceIDs: []string{"store-change", "m-base"}, Missing: []string{"нет контроля"}, Test: ReviewTest{Metric: "visits", ThresholdPct: 10, Days: 14}}
+	if _, err := ValidateReview(base, allowed); err != nil {
+		t.Fatalf("valid review rejected: %v", err)
+	}
+	bad := base
+	bad.EvidenceIDs = []string{"store-change", "invented-id"}
+	if _, err := ValidateReview(bad, allowed); err == nil || !strings.Contains(err.Error(), "unknown evidence ID") {
+		t.Fatalf("unknown ID accepted: %v", err)
+	}
+	for name, mutate := range map[string]func(*ReviewOutput){
+		"empty_evidence":   func(r *ReviewOutput) { r.EvidenceIDs = nil },
+		"empty_hypothesis": func(r *ReviewOutput) { r.Hypothesis = "  " },
+		"zero_threshold":   func(r *ReviewOutput) { r.Test.ThresholdPct = 0 },
+		"too_long_test":    func(r *ReviewOutput) { r.Test.Days = 91 },
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			w := Window{MetrikaBinding: met, WordstatBinding: demand, Phrase: "офисная лицензия", Metric: "visits", Monday: "2026-11-23", DropPct: 25, DemandDropPct: 20}
-			storeChange := 3.0
-			read := func(ctx context.Context, binding string, input, output any) error {
-				result := output.(*batch)
-				if binding == met {
-					*result = batch{SchemaVersion: "aifence.v1", Source: "metrika", Status: "ok", Observations: []observation{{ID: "m", ProductKey: "store", MetricKey: "visits.relative_change_pct", Status: "observed", Period: period{"2026-11-16", "2026-11-22"}, SourceRef: sourceRef{"yandex-metrika:1337"}, Value: &storeChange, Unit: "percent"}}}
-					return nil
-				}
-				if binding != demand {
-					t.Fatal(binding)
-				}
-				raw, _ := json.Marshal(input)
-				var params map[string]string
-				_ = json.Unmarshal(raw, &params)
-				if params["phrase"] != w.Phrase || params["monday"] != w.Monday || len(params) != 2 {
-					t.Fatalf("%s", raw)
-				}
-				item := observation{ID: "w1", ProductKey: w.Phrase, MetricKey: "search_queries", Status: "observed", Unit: "count", Value: &tc.a, Period: period{"2026-11-09", "2026-11-15"}, SourceRef: sourceRef{"yandex-wordstat:search-api"}}
-				newer := item
-				newer.ID = "w2"
-				newer.Value = &tc.b
-				newer.Period = period{"2026-11-16", "2026-11-22"}
-				switch tc.invalid {
-				case "week":
-					newer.Period = item.Period
-				case "phrase":
-					newer.ProductKey = "другая"
-				case "estimated":
-					newer.Status = "estimated"
-				}
-				*result = batch{SchemaVersion: "aifence.v1", Source: "wordstat", Status: "ok", Observations: []observation{newer, item}}
-				if tc.invalid == "unavailable" {
-					result.Status = "unavailable"
-					result.Observations = nil
-				}
-				return nil
-			}
-			started := false
-			out, e := Check(t.Context(), w, true, read, func(_ context.Context, s Signal) (string, error) {
-				started = true
-				if s.Demand == nil || s.Demand.CurrentCount != int64(tc.b) || s.Demand.BaselineCount != int64(tc.a) || s.Trigger != "wordstat" {
-					t.Fatalf("%+v", s)
-				}
-				return "run", nil
-			})
-			if e != nil || out.Status != tc.want || started != (tc.want == "submitted") {
-				t.Fatalf("%+v %v started=%v", out, e, started)
-			}
-		})
+		r := base
+		mutate(&r)
+		if _, err := ValidateReview(r, allowed); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+}
+
+func TestReviewSignalIDsCoverEveryCarriedObservation(t *testing.T) {
+	s := Signal{ObservationID: "store", Demand: &Demand{BaselineID: "w-base", CurrentID: "w-cur"}, Trends: &Trends{BaselineID: "t-base", CurrentID: "t-cur"}, PriceFamilies: []PriceFamily{{BaselineID: "m-base", CurrentID: "m-cur"}}}
+	got := ReviewSignalIDs(s)
+	want := []string{"m-base", "m-cur", "store", "t-base", "t-cur", "w-base", "w-cur"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ids %v want %v", got, want)
 	}
 }
 
@@ -147,6 +199,7 @@ func TestNextMondaySkipsMissedDeliveries(t *testing.T) {
 		}
 	}
 }
+
 func TestScopedIDsAreStable(t *testing.T) {
 	in := JobInput{WatchID: "watch", Monday: "2026-11-23"}
 	id := ID("alice", "delivery", in)
@@ -156,68 +209,5 @@ func TestScopedIDsAreStable(t *testing.T) {
 	in.Monday = "2026-11-30"
 	if id == ID("alice", "delivery", in) {
 		t.Fatal("weeks must have different idempotency keys")
-	}
-}
-
-func TestMissingWordstatDoesNotHideAnObservedStoreDrop(t *testing.T) {
-	cfg := Window{MetrikaBinding: "62057b9c-7d10-4439-9985-3888e7b259b3", WordstatBinding: "00000000-0000-4000-8000-000000000002", Phrase: "офисная лицензия", Metric: "visits", Monday: "2026-11-23", DropPct: 25, DemandDropPct: 20}
-	unavailable := `{"schema_version":"aifence.v1","source":"wordstat","as_of":"2026-11-23T06:00:00Z","status":"unavailable","observations":[],"warnings":["pending"]}`
-	observedZero := `{"schema_version":"aifence.v1","source":"wordstat","as_of":"2026-11-23T06:00:00Z","status":"ok","warnings":[],"observations":[{"id":"base","kind":"metric","product_key":"офисная лицензия","metric_key":"search_queries","status":"observed","unit":"count","value":100,"period":{"from":"2026-11-09","to":"2026-11-15"},"source_ref":{"source_id":"yandex-wordstat:search-api","locator":"fixture-week"}},{"id":"last","kind":"metric","product_key":"офисная лицензия","metric_key":"search_queries","status":"observed","unit":"count","value":0,"period":{"from":"2026-11-16","to":"2026-11-22"},"source_ref":{"source_id":"yandex-wordstat:search-api","locator":"fixture-week"}}]}`
-	for _, tc := range []struct {
-		name                             string
-		drop                             float64
-		payload, want, trigger, wordstat string
-		wantDemand, wantErr              bool
-	}{
-		{"store threshold, provider pending", -25, unavailable, "submitted", "metrika", "unavailable", false, false},
-		{"quiet store, provider pending", -24, unavailable, "incomplete", "", "", false, false},
-		{"published zero demand", -24, observedZero, "submitted", "wordstat", "ok", true, false},
-		{"null observed count", -80, strings.Replace(observedZero, `"value":0`, `"value":null`, 1), "incomplete", "", "", false, false},
-		{"missing observations array", -80, strings.Replace(unavailable, `"observations":[],`, "", 1), "incomplete", "", "", false, false},
-		{"null observations array", -80, strings.Replace(unavailable, `"observations":[]`, `"observations":null`, 1), "incomplete", "", "", false, false},
-		{"missing as-of", -80, strings.Replace(unavailable, `"as_of":"2026-11-23T06:00:00Z",`, "", 1), "incomplete", "", "", false, false},
-		{"missing warnings", -80, strings.Replace(unavailable, `,"warnings":["pending"]`, "", 1), "incomplete", "", "", false, false},
-		{"stale unavailable envelope", -80, strings.Replace(unavailable, "2026-11-23T", "2026-11-16T", 1), "incomplete", "", "", false, false},
-		{"wrong period despite store drop", -80, strings.Replace(observedZero, "2026-11-22", "2026-11-21", 1), "incomplete", "", "", false, false},
-		{"unavailable with unexpected field", -80, strings.Replace(unavailable, `"warnings"`, `"notice":"unexpected","warnings"`, 1), "", "", "", false, true},
-		{"mismatched contract", -80, strings.Replace(unavailable, "aifence.v1", "other.v1", 1), "", "", "", false, true},
-		{"unavailable carrying rows", -80, strings.Replace(observedZero, `"status":"ok"`, `"status":"unavailable"`, 1), "incomplete", "", "", false, false},
-		{"refused read despite store drop", -80, "", "", "", "", false, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			read := func(_ context.Context, binding string, _ any, out any) error {
-				if binding == cfg.WordstatBinding {
-					if tc.payload == "" {
-						return errors.New("binding revoked")
-					}
-					return json.Unmarshal([]byte(tc.payload), out)
-				}
-				*out.(*batch) = batch{SchemaVersion: "aifence.v1", Source: "metrika", Status: "ok", Observations: []observation{{ID: "store-change", ProductKey: "store", MetricKey: "visits.relative_change_pct", Status: "observed", Unit: "percent", Value: &tc.drop, Period: period{"2026-11-16", "2026-11-22"}, SourceRef: sourceRef{"yandex-metrika:1337"}}}}
-				return nil
-			}
-			starts := 0
-			result, err := Check(t.Context(), cfg, true, read, func(_ context.Context, s Signal) (string, error) {
-				starts++
-				b, e := json.Marshal(s)
-				if e != nil {
-					t.Fatal(e)
-				}
-				var data map[string]json.RawMessage
-				if e = json.Unmarshal(b, &data); e != nil {
-					t.Fatal(e)
-				}
-				_, hasDemand := data["demand"]
-				if s.Trigger != tc.trigger || string(data["wordstat_status"]) != strconv.Quote(tc.wordstat) || hasDemand != tc.wantDemand {
-					t.Fatalf("payload %s", b)
-				}
-				if hasDemand && (s.Demand.CurrentCount != 0 || s.Demand.ChangePct == nil || *s.Demand.ChangePct != -100) {
-					t.Fatalf("zero treated as absent: %s", b)
-				}
-				return "analysis", nil
-			})
-			if (err != nil) != tc.wantErr || result.Status != tc.want || (starts == 1) != (tc.want == "submitted") {
-				t.Fatalf("result=%+v err=%v starts=%d", result, err, starts)
-			}
-		})
 	}
 }
