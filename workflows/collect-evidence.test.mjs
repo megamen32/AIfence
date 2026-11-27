@@ -102,6 +102,22 @@ function caseDoc(policy, signal) {
  return {schema_version:'aifence.case.v1',...(policy?{source_policy:policy}:{}),as_of:'2026-07-19T23:59:59Z',batches:[{schema_version:'aifence.v1',source:'sales',as_of:'2026-07-19T23:59:59Z',status:'ok',observations:obs,warnings:[]}]};
 }
 
+test('collects a measured cause without requiring a control', async () => {
+ const s=setup();
+ s.apps.metrika_analyst.tools.scan_watchdog_series=async()=>({status:'alert',dataset_id:'ds-cause',
+  candidates:[{candidate_id:'c-migration',kind:'cause_signal',period:{from:'2026-06-01',to:'2026-06-07'}},
+   {candidate_id:'c-uncontrolled',kind:'controlled_decline'}]});
+ const doc=caseDoc('local_project_only','migration');
+ doc.batches[0].observations[0].metric_key='taxonomy_migration';
+ const asked=[];
+ s.apps.metrika_analyst.tools.collect_selected_watchdog_case=async q=>{asked.push(q);return {document:doc};};
+ const r=await invoke(s.a,s.platform,s.apps);
+ assert.deepEqual(asked,[{dataset_id:'ds-cause',candidate_id:'c-migration'}]);
+ assert.deepEqual(r.watchdog_cases,[{dataset_id:'ds-cause',candidate_id:'c-migration',observations:1}]);
+ const stored=JSON.parse(s.store.get(r.snapshot.id).text);
+ assert.deepEqual(stored.watchdog_cases[0].document,doc);
+});
+
 test('every scanned controlled-decline case is saved with its own policy and locators', async () => {
  const s=setup();
  const seen=[];

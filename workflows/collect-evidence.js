@@ -140,7 +140,7 @@ try {
     dataset=scan.dataset_id;
     for(const c of scan.candidates||[]) {
       if(!isObject(c)||typeof c.candidate_id!=="string"||!c.candidate_id) continue;
-      if(c.kind!=="controlled_decline"||!c.control_product_key) continue;
+      if(c.kind!=="cause_signal"&&(c.kind!=="controlled_decline"||!c.control_product_key)) continue;
       const r=await apps.metrika_analyst.tools.collect_selected_watchdog_case({dataset_id:dataset,candidate_id:c.candidate_id});
       if(isObject(r)&&isObject(r.document)) watchdog_cases.push({dataset_id:dataset,candidate_id:c.candidate_id,
         signal_id:r.first_alert_signal_id||c.signal_id||null,kind:c.kind,period:c.period||null,
