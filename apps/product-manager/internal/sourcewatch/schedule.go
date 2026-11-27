@@ -18,6 +18,15 @@ type JobInput struct {
 	WatchID string `json:"watch_id"`
 	Monday  string `json:"monday"`
 }
+
+// LegacyOutcome is the immutable wire result for check_source_watch@v1.
+// Keep this type separate from Outcome so diagnostic fields can evolve in v2
+// without changing results for already queued v1 jobs.
+type LegacyOutcome struct {
+	Status        string `json:"status"`
+	AnalysisRunID string `json:"analysis_run_id,omitempty"`
+}
+
 type WatchRef struct {
 	WatchID string `json:"watch_id"`
 }
@@ -67,10 +76,11 @@ type Draft struct {
 }
 
 type Service struct {
-	queries *db.Queries
-	policy  *agentsdk.EnvVarHandle
-	task    *agentsdk.AgentHandle[ReviewInput, ReviewOutput]
-	job     *agentsdk.JobHandle[JobInput, Outcome]
+	queries   *db.Queries
+	policy    *agentsdk.EnvVarHandle
+	task      *agentsdk.AgentHandle[ReviewInput, ReviewOutput]
+	job       *agentsdk.JobHandle[JobInput, Outcome]
+	legacyJob *agentsdk.JobHandle[JobInput, LegacyOutcome]
 }
 
 // ApproveHTTP is the protected backend confirmation. It accepts only a
@@ -118,7 +128,8 @@ func Register(a *agentsdk.Agent) *Service {
 		},
 	})
 	s := &Service{queries: db.New(a.DB()), policy: policy, task: task}
-	s.job = agentsdk.RegisterJob(a, &agentsdk.Job[JobInput, Outcome]{Name: "check_source_watch", Version: 1, Description: "Read explicitly bound source operations for a user's weekly store watch.", Timeout: 2 * time.Minute, MaxAttempts: 3, MaxConcurrency: 2, Handler: s.run})
+	s.legacyJob = agentsdk.RegisterJob(a, &agentsdk.Job[JobInput, LegacyOutcome]{Name: "check_source_watch", Version: 1, Description: "Read explicitly bound source operations for a user's weekly store watch.", Timeout: 2 * time.Minute, MaxAttempts: 3, MaxConcurrency: 2, Handler: s.runLegacy})
+	s.job = agentsdk.RegisterJob(a, &agentsdk.Job[JobInput, Outcome]{Name: "check_source_watch", Version: 2, Description: "Read explicitly bound source operations for a user's weekly store watch with diagnostics.", Timeout: 2 * time.Minute, MaxAttempts: 3, MaxConcurrency: 2, Handler: s.run})
 	return s
 }
 
@@ -236,8 +247,12 @@ func (s *Service) enqueue(ctx context.Context, owner, watchID string, monday tim
 	in := JobInput{WatchID: watchID, Monday: monday.Format(time.DateOnly)}
 	id := ID(owner, "delivery", in)
 	// A replacement delivery has a different source run. Observe an already
-	// accepted next job before attempting to enqueue the same durable ID.
+	// accepted next job in either job version before attempting to enqueue the
+	// same durable ID.
 	if _, err := s.job.Get(ctx, id); err == nil {
+		return nil
+	}
+	if _, err := s.legacyJob.Get(ctx, id); err == nil {
 		return nil
 	}
 	_, err := s.job.EnqueueAt(ctx, id, monday.Add(6*time.Hour), in)
@@ -261,6 +276,11 @@ func nextMonday(monday, now time.Time) time.Time {
 		next = next.AddDate(0, 0, 7)
 	}
 	return next
+}
+
+func (s *Service) runLegacy(ctx context.Context, job agentsdk.JobContext, in JobInput) (LegacyOutcome, error) {
+	outcome, err := s.run(ctx, job, in)
+	return LegacyOutcome{Status: outcome.Status, AnalysisRunID: outcome.AnalysisRunID}, err
 }
 
 func (s *Service) run(ctx context.Context, job agentsdk.JobContext, in JobInput) (Outcome, error) {

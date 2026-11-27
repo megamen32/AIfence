@@ -91,8 +91,10 @@ func TestSourceWatchComposition(t *testing.T) {
 	if len(m.JobCrons) != 0 {
 		t.Fatal("source checks require an owner's explicit schedule")
 	}
-	if !slices.ContainsFunc(m.JobHandlers, func(h wire.JobHandlerDef) bool { return h.Name == "check_source_watch" && h.Version == 1 }) {
-		t.Fatal("missing source watch job")
+	for _, version := range []int{1, 2} {
+		if !slices.ContainsFunc(m.JobHandlers, func(h wire.JobHandlerDef) bool { return h.Name == "check_source_watch" && h.Version == int32(version) }) {
+			t.Fatalf("missing source watch job version %d", version)
+		}
 	}
 	for _, name := range []string{"start_source_watch", "rebind_source_watch", "stop_source_watch", "list_source_watches", "review_source_watch"} {
 		if !slices.ContainsFunc(m.Tools, func(t wire.ToolDef) bool { return t.Name == name && t.Access == wire.AccessUser }) {
@@ -119,31 +121,50 @@ func TestSourceWatchComposition(t *testing.T) {
 	}
 }
 
-func TestSourceWatchJobRetainsQueuedInputContract(t *testing.T) {
-	for _, job := range newAgent().Manifest().JobHandlers {
-		if job.Name != "check_source_watch" {
+func TestSourceWatchVersionedOutputSchemas(t *testing.T) {
+	m := newAgent().Manifest()
+	var v1, v2 *wire.JobHandlerDef
+	for i := range m.JobHandlers {
+		h := &m.JobHandlers[i]
+		if h.Name != "check_source_watch" {
 			continue
 		}
-		if job.Version != 1 {
-			t.Fatal("queued source watches require version 1")
+		switch h.Version {
+		case 1:
+			v1 = h
+		case 2:
+			v2 = h
 		}
-		var schema struct {
-			Properties map[string]struct{ Type string }
-			Required   []string
-		}
-		if err := json.Unmarshal(job.InputSchema, &schema); err != nil {
-			t.Fatal(err)
-		}
-		if len(schema.Properties) != 2 || schema.Properties["watch_id"].Type != "string" || schema.Properties["monday"].Type != "string" || !slices.Contains(schema.Required, "watch_id") || !slices.Contains(schema.Required, "monday") {
-			t.Fatalf("changed the input of already queued jobs: %s", job.InputSchema)
-		}
-		if err := json.Unmarshal(job.OutputSchema, &schema); err != nil {
-			t.Fatal(err)
-		}
-		if schema.Properties["warnings"].Type != "array" {
-			t.Fatal("native version 1 retains its admitted warnings output")
-		}
-		return
 	}
-	t.Fatal("missing queued source-watch handler")
+	if v1 == nil || v2 == nil {
+		t.Fatalf("source watch versions missing: v1=%v v2=%v", v1 != nil, v2 != nil)
+	}
+	const legacyHash = "132ee923ff52ce29acead70a5fbb2b26d99c4a2a0001dcfad33a4f8aaf2a5f77"
+	if v1.OutputSchemaHash != legacyHash {
+		t.Fatalf("check_source_watch@v1 output schema changed: %s", v1.OutputSchemaHash)
+	}
+	for _, field := range []string{"\"status\"", "\"analysis_run_id\""} {
+		if !strings.Contains(string(v1.OutputSchema), field) {
+			t.Fatalf("v1 schema omits %s: %s", field, v1.OutputSchema)
+		}
+	}
+	if !strings.Contains(string(v1.OutputSchema), "\"additionalProperties\":false") {
+		t.Fatalf("v1 schema must reject extra fields: %s", v1.OutputSchema)
+	}
+	if v2.OutputSchemaHash == v1.OutputSchemaHash || !strings.Contains(string(v2.OutputSchema), "\"warnings\"") {
+		t.Fatalf("diagnostic v2 must expose the current output schema: %s", v2.OutputSchema)
+	}
+	var v1Input, v2Input struct {
+		Properties map[string]struct{ Type string }
+		Required   []string
+	}
+	if err := json.Unmarshal(v1.InputSchema, &v1Input); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(v2.InputSchema, &v2Input); err != nil {
+		t.Fatal(err)
+	}
+	if len(v1Input.Properties) != 2 || len(v2Input.Properties) != 2 || v1Input.Properties["watch_id"].Type != "string" || v1Input.Properties["monday"].Type != "string" || !slices.Contains(v1Input.Required, "watch_id") || !slices.Contains(v1Input.Required, "monday") || string(v1.InputSchema) != string(v2.InputSchema) {
+		t.Fatalf("source watch input contract changed between versions: v1=%s v2=%s", v1.InputSchema, v2.InputSchema)
+	}
 }
