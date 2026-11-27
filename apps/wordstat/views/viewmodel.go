@@ -50,22 +50,22 @@ type Snapshot struct {
 	RegionMode string `json:"region_mode,omitempty"`
 }
 type ResultView struct {
-	Status, SourceStatus, Message, Kind, Phrase string
-	Period, WindowNote, SourceURL, CheckedAt    string
-	Context, RegionLookupMessage                string
-	RequestJSON, ChartJSON, Raw, Metadata       string
-	Total, TotalDetail                          string
-	HasTotal                                    bool
-	Main, Associated, Regions                   []RankedRow
-	MainMax, AssociatedMax, RegionMax           string
-	Rows                                        []Row
-	Metrics                                     []Metric
-	Segments                                    []string
-	Dots                                        []ChartDot
-	Axis                                        []string
-	GridY                                       []string
-	PointCount, ObservedCount                   int
-	HasChart                                    bool
+	Status, SourceStatus, Message, Kind, Phrase          string
+	Period, WindowNote, SourceURL, CheckedAt             string
+	Context, RegionLookupMessage                         string
+	RequestJSON, ChartJSON, Raw, Metadata, SourceDetails string
+	Total, TotalDetail                                   string
+	HasTotal                                             bool
+	Main, Associated, Regions                            []RankedRow
+	MainMax, AssociatedMax, RegionMax                    string
+	Rows                                                 []Row
+	Metrics                                              []Metric
+	Segments                                             []string
+	Dots                                                 []ChartDot
+	Axis                                                 []string
+	GridY                                                []string
+	PointCount, ObservedCount                            int
+	HasChart                                             bool
 }
 
 func JSON(v any) string            { b, _ := json.Marshal(v); return string(b) }

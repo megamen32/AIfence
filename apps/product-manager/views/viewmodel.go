@@ -84,9 +84,11 @@ type Chart struct {
 	Counterfactual                                                  string
 	Target, Control, Fill, First, Last, Min, Max, ReleaseX, Caption string
 	Dots                                                            []ChartDot
+	Pins                                                            []ChartPin
 }
 
 type ChartDot struct{ X, TargetY, ControlY, Label string }
+type ChartPin struct{ Kind, Title, Detail, X, Y, URL string }
 
 type MarketPrices struct {
 	SKU, Name, TaskStatus, TaskURL, SnapshotURL string

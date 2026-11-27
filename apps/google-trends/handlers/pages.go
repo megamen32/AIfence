@@ -98,7 +98,7 @@ func resultModel(r trends.Result) views.ResultModel {
 	}
 	title := map[string]string{"compare": "Интерес во времени", "regions": "Где интересуются чаще", "related": "Что ищут вместе с этим"}[r.Mode]
 	snapshot := views.Snapshot{Mode: r.Mode, Terms: r.Request.Terms, Geo: r.Request.Geo, From: r.Request.From, To: r.Request.To, Property: r.Request.Property, Category: r.Request.Category, Region: r.Request.Region}
-	v := views.ResultModel{Status: r.Status, Message: r.Message, Mode: r.Mode, Title: title, Terms: r.Request.Terms, Period: friendlyDate(r.Request.From) + " – " + friendlyDate(r.Request.To), Geo: views.GeoName(r.Request.Geo), Property: property, Category: r.Request.Category, Checked: r.Source.CheckedAt, ExploreURL: r.Source.ExploreURL, Notes: r.Notes, RequestJSON: views.JSON(snapshot), MetadataJSON: views.JSON(struct {
+	v := views.ResultModel{Status: r.Status, Message: r.Message, Mode: r.Mode, Title: title, Terms: r.Request.Terms, Period: friendlyDate(r.Request.From) + " – " + friendlyDate(r.Request.To), Geo: views.GeoName(r.Request.Geo), Property: property, Category: r.Request.Category, Checked: r.Source.CheckedAt, ExploreURL: r.Source.ExploreURL, Notes: r.Notes, SourceDetails: "Google Trends · проверка источника " + r.Source.CheckedAt + ". Период, регион и тип поиска указаны рядом с графиком.", RequestJSON: views.JSON(snapshot), MetadataJSON: views.JSON(struct {
 		Request trends.Request `json:"request"`
 		Source  trends.Source  `json:"source"`
 	}{r.Request, r.Source})}

@@ -78,6 +78,30 @@ var watchdogReasons = map[string]string{
 
 var metricTitles = map[string]string{watchdogMetric: "Сигнал сторожа", "purchase_path": "Путь до корзины", "family_orders_idx.relative_change_pct": "Изменение индекса самостоятельных заказов", "family_orders_idx": "Индекс самостоятельных заказов", "cfg_reach_rate.observed_rows": "Доля посещений конфигуратора", "cfg_add_to_cart_rate": "Добавления в корзину из конфигуратора", "release_log": "Изменение в релизе", "backlog_item": "Задача", "interview_excerpt": "Фрагмент интервью", "historical_competitor_price": "Сравнение цен", "store_context": "Вывод исследования магазинов"}
 
+func evidenceSourceName(id string) string {
+	lower := strings.ToLower(id)
+	switch {
+	case strings.Contains(lower, "metrika"):
+		return "Метрика"
+	case strings.Contains(lower, "wordstat"):
+		return "Wordstat"
+	case strings.Contains(lower, "google") || strings.Contains(lower, "trends"):
+		return "Google Trends"
+	case strings.Contains(lower, "market") || strings.Contains(lower, "softline") || strings.Contains(lower, "softmap") || strings.Contains(lower, "softmagazin"):
+		return "Market Watch"
+	case strings.Contains(lower, "browser") || strings.Contains(lower, "path"):
+		return "Проверка пути покупки"
+	case strings.Contains(lower, "historical") || strings.Contains(lower, "file"):
+		return "Сохранённый снимок"
+	default:
+		return "Источник данных"
+	}
+}
+
+func evidenceLocator(_ string) string {
+	return "Период и показатель из источника"
+}
+
 func label(m map[string]string, key string) string {
 	if v, ok := m[key]; ok {
 		return v
@@ -124,7 +148,7 @@ type saleDetail struct {
 }
 
 func rowView(id string, r evidence.Row) views.EvidenceRow {
-	v := views.EvidenceRow{ID: r.ID, Metric: label(metricTitles, r.Metric), Product: evidenceProductName(r.Product, r), Source: label(sourceTitles, r.Source), Value: r.Value, Date: span(r.Period.From, r.Period.To), SourceName: r.Ref.SourceID, Locator: r.Ref.Locator, OpenURL: href("snapshot", id, "obs", r.ID), Note: strings.Join(r.Caveats, " ")}
+	v := views.EvidenceRow{ID: r.ID, Metric: label(metricTitles, r.Metric), Product: evidenceProductName(r.Product, r), Source: label(sourceTitles, r.Source), Value: r.Value, Date: span(r.Period.From, r.Period.To), SourceName: evidenceSourceName(r.Ref.SourceID), Locator: evidenceLocator(r.Ref.Locator), OpenURL: href("snapshot", id, "obs", r.ID), Note: strings.Join(r.Caveats, " ")}
 	if u, err := url.Parse(r.Ref.URL); err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
 		v.SourceURL = u.String()
 	}
@@ -235,7 +259,7 @@ func watchdogRow(v *views.EvidenceRow, r evidence.Row) {
 	}
 	for _, ref := range d.SourceRefs {
 		if ref.Ref.SourceID != "" && ref.Ref.Locator != "" {
-			v.Related = append(v.Related, ref.Ref.SourceID+" · "+ref.Ref.Locator)
+			v.Related = append(v.Related, evidenceSourceName(ref.Ref.SourceID)+" · "+evidenceLocator(ref.Ref.Locator))
 		}
 	}
 }

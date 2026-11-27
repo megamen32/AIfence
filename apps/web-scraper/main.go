@@ -125,14 +125,14 @@ func when(s string) string {
 	return t.UTC().Format("02.01 15:04") + " UTC"
 }
 func stateName(s string) string {
-	m := map[string]string{"priced": "С ценой", "no_public_price": "Без публичной цены", "unavailable": "Недоступны", "error": "Ошибки", "not_product": "Не товар", "out_of_scope": "Вне охвата", "unclassified": "Не распознано", "robots_excluded": "Исключены robots.txt"}
+	m := map[string]string{"priced": "С ценой", "no_public_price": "Без публичной цены", "unavailable": "Недоступны", "error": "Ошибки", "not_product": "Не товар", "out_of_scope": "Вне охвата", "unclassified": "Не распознано", "robots_excluded": "Исключены robots.txt", "pending": "Ожидает обработки", "blocked": "Заблокировано"}
 	if v := m[s]; v != "" {
 		return v
 	}
 	return s
 }
 func fieldName(s string) string {
-	m := map[string]string{"row": "Блок предложения", "sku": "Артикул", "name": "Название", "price": "Цена", "old_price": "Старая цена", "link": "Ссылка", "quantity": "Количество", "price_basis": "Основание цены"}
+	m := map[string]string{"row": "Блок предложения", "sku": "Артикул", "name": "Название", "price": "Цена", "old_price": "Старая цена", "link": "Ссылка", "quantity": "Количество", "price_basis": "Основание цены", "selector": "Правило поиска", "attribute": "Атрибут"}
 	if v := m[s]; v != "" {
 		return v
 	}
@@ -150,6 +150,10 @@ func statusName(s string) string {
 		return "Не запущен"
 	case "stale":
 		return "Нет свежего отчёта"
+	case "studying":
+		return "Изучается"
+	case "migration_staged":
+		return "Подготовлен к переносу"
 	default:
 		return "Нет данных"
 	}

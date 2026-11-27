@@ -102,7 +102,7 @@ templ Page(f Form,result *ResultModel) {
     </label>
     <details class="advanced-filter">
      <summary>@lucide.Icon("sliders-horizontal","size-3.5")<span>Категория</span></summary>
-     <label>Код Google Trends<input name="category" value={ f.Category } class="input input-sm" inputmode="numeric" maxlength="5"/><small>0: все категории</small></label>
+     <label>Категория поиска<input name="category" value={ f.Category } class="input input-sm" inputmode="numeric" maxlength="5"/><small>Все категории, если поле не заполнено</small></label>
     </details>
    </div>
    <p class="form-error" data-form-error role="alert" hidden></p>
@@ -226,7 +226,7 @@ templ Results(r ResultModel) {
      }
      <p>Подсказка показывает исходные значения всех фраз. Пропуск, «&lt;1», ноль и незавершенный интервал сохранены отдельно. Недельный интервал может пересекать границу выбранного периода.</p>
      <p>Проверено: { r.Checked }</p>
-     <pre>{ r.MetadataJSON }</pre>
+     <p>{ r.SourceDetails }</p>
     </div>
    </details>
   </div>

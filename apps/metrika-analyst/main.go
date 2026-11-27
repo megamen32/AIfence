@@ -88,7 +88,23 @@ func chartHeight(o Observation) int {
 func chartY(o Observation) int { return 222 - chartHeight(o) }
 
 func chartLabel(o Observation) string {
-	label := o.MetricKey
+	label := metricTitles[o.MetricKey]
+	if label == "" {
+		label = o.MetricKey
+	}
+	for suffix, title := range map[string]string{
+		".absolute_change":     " · изменение",
+		".relative_change_pct": " · изменение, %",
+		".change_pp":           " · изменение, п.п.",
+	} {
+		if strings.HasSuffix(o.MetricKey, suffix) {
+			base := strings.TrimSuffix(o.MetricKey, suffix)
+			if name := metricTitles[base]; name != "" {
+				label = name + title
+			}
+			break
+		}
+	}
 	if len(label) > 12 {
 		return label[:12] + "…"
 	}

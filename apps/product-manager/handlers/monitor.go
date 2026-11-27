@@ -42,9 +42,9 @@ type monitorDetails struct {
 	ControlVendor string `json:"control_vendor"`
 }
 
-// preparedOrigin labels a snapshot loaded from a prepared file. The panel shows
-// where the numbers came from, never a demo or synthetic mode.
-const preparedOrigin = "Набор из файла"
+// preparedOrigin labels a prepared synthetic snapshot so the panel does not
+// present seeded values as production observations.
+const preparedOrigin = "ДЕМО · синтетический срез"
 
 func originText(d monitorDetails) string {
 	if d.Synthetic || d.Origin == "synthetic_fixture" {
@@ -504,7 +504,32 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 			v.Detected = signalTime(source.details.Detected, source.received)
 		}
 	}
+	attachEvidencePins(v)
 	return v
+}
+
+func attachEvidencePins(v *views.Investigation) {
+	if v == nil || len(v.Chart.Dots) == 0 || len(v.Evidence) == 0 {
+		return
+	}
+	for i, row := range v.Evidence {
+		if i >= 4 {
+			break
+		}
+		dot := v.Chart.Dots[min(i, len(v.Chart.Dots)-1)]
+		kind := "М"
+		metric := strings.ToLower(row.Metric)
+		source := strings.ToLower(row.Source)
+		switch {
+		case strings.Contains(metric, "цен"):
+			kind = "П"
+		case strings.Contains(source, "конкур") || strings.Contains(metric, "магаз"):
+			kind = "К"
+		case strings.Contains(source, "исслед") || strings.Contains(source, "wordstat") || strings.Contains(source, "trends"):
+			kind = "И"
+		}
+		v.Chart.Pins = append(v.Chart.Pins, views.ChartPin{Kind: kind, Title: row.Metric, Detail: row.Value, X: dot.X, Y: dot.TargetY, URL: row.OpenURL})
+	}
 }
 
 var browserStages = map[string]string{

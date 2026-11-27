@@ -171,6 +171,7 @@ func resultView(out demand.Result) views.ResultView {
 		raw, _ := json.MarshalIndent(out.Data, "", "  ")
 		v.Raw = string(raw)
 	}
+	v.SourceDetails = "Яндекс Wordstat · проверка источника " + out.Source.CheckedAt + ". Период, регион и устройство указаны рядом с результатом."
 	metadata := map[string]any{"source": out.Source, "source_status": out.SourceStatus, "request": request, "region_lookup_status": out.RegionLookupStatus}
 	raw, _ := json.MarshalIndent(metadata, "", "  ")
 	v.Metadata = string(raw)
