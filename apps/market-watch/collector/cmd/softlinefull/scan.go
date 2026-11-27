@@ -23,7 +23,7 @@ const scanWorkers = 5
 
 // Retain family pages and unresolved product bodies. Bound the store archive.
 const evidenceLimit int64 = 8 << 30
-const parserVersion = 1
+const parserVersion = 2
 
 type pageJob struct{ page, path string }
 type pageOutcome struct {
@@ -104,7 +104,7 @@ func (s *survey) fetchPage(ctx context.Context, j pageJob, family bool, get fetc
 	c := check{Page: j.page, At: time.Now().UTC(), State: "observed", ParserVersion: parserVersion}
 	if err == nil {
 		c, _ = parsePage(j.page, b, c.At, family)
-		if !family && !unresolved(c) {
+		if !family && len(c.Products) <= 1 && !unresolved(c) {
 			b = nil
 		}
 		return pageOutcome{j, c, b, nil}
@@ -140,11 +140,14 @@ func (s *survey) scan(ctx context.Context, urls []string, family bool, get fetch
 	}
 	last := time.Now()
 	batch := 0
+	var coverageMu sync.RWMutex
 	consume := func(c check, changed bool) error {
 		if family && c.Error == "" {
 			s.families++
 		}
+		coverageMu.Lock()
 		s.merge(c)
+		coverageMu.Unlock()
 		if changed {
 			batch++
 		}
@@ -265,6 +268,16 @@ func (s *survey) scan(ctx context.Context, urls []string, family bool, get fetch
 					}
 					if work.Err() != nil {
 						return
+					}
+					if !family {
+						coverageMu.RLock()
+						p, ok := s.covered[j.page]
+						resolved := ok && rank(p) >= 2
+						coverageMu.RUnlock()
+						if resolved {
+							s.skippedByEvidence.Add(1)
+							continue
+						}
 					}
 					r := s.fetchPage(work, j, family, get)
 					// Stop admitting work immediately on a fatal result; the shared HTTP

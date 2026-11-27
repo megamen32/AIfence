@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -215,5 +216,144 @@ func TestPauseConcurrentPreservesLongestRetryAfter(t *testing.T) {
 	}
 	if resumeAllowed(s.out, now.Add(2*time.Hour)) == nil {
 		t.Fatal("shorter retry overwrote longer pause")
+	}
+}
+
+func TestExactNullPriceAndCanonicalFamily(t *testing.T) {
+	u := "https://store.softline.ru/vendor/abc-7/"
+	at := time.Now().UTC()
+	const none = `<h1>License</h1><script id="js-front-config">window.temporaryFrontConfig = {"product":{"id":7,"type":"software","price":null,"priceWithDiscount":null}}</script>`
+	ps, e := direct(u, []byte(none), at)
+	if e != nil || len(ps) != 1 || ps[0].State != "no_public_price" || ps[0].Offer != nil {
+		t.Fatalf("explicit null: %v %v", ps, e)
+	}
+	for _, body := range []string{strings.Replace(none, `,"priceWithDiscount":null`, "", 1), strings.Replace(none, `"id":7`, `"id":8`, 1)} {
+		ps, e = direct(u, []byte(body), at)
+		if e != nil || ps[0].State != "unrecognized_product" {
+			t.Fatalf("unproven no price: %v %v", ps, e)
+		}
+	}
+	const family = `<link rel="canonical" href="https://store.softline.ru/vendor/suite/"><h1>Suite</h1><script id="js-front-config">window.temporaryFrontConfig = {"familyId":11,"models":[{"name":"Basic","licenses":[{"sku":"DEF","name":"Other","link":"/vendor/def-8/","min_quantity":2,"price":{"with_discount":"100"}}]}]}</script>`
+	ps, e = direct(u, []byte(family), at)
+	if e != nil || len(ps) != 2 || ps[0].URL != "https://store.softline.ru/vendor/def-8/" || ps[0].Offer == nil || ps[1].URL != u || ps[1].Offer != nil {
+		t.Fatalf("redirect evidence: %v %v", ps, e)
+	}
+	const wrong = `<link rel="canonical" href="https://store.softline.ru/vendor/def-8/"><h1>Other</h1><script id="js-front-config">window.temporaryFrontConfig = {"product":{"id":8,"priceWithDiscount":"1234"}}</script>`
+	ps, e = direct(u, []byte(wrong), at)
+	if e != nil || len(ps) != 1 || ps[0].Offer != nil {
+		t.Fatal("wrong canonical supplied a price")
+	}
+}
+
+func TestGroupedEvidenceRemovesPendingRequests(t *testing.T) {
+	var urls []string
+	var licenses []string
+	for i := 0; i < 30; i++ {
+		u := fmt.Sprintf("https://store.softline.ru/vendor/sku-%d/", i)
+		urls = append(urls, u)
+		licenses = append(licenses, fmt.Sprintf(`{"sku":"SKU%d","name":"License","link":%q,"min_quantity":1,"price":{"with_discount":"100"}}`, i, u))
+	}
+	body := []byte(`<link rel="canonical" href="https://store.softline.ru/vendor/suite/"><h1>Suite</h1><script id="js-front-config">window.temporaryFrontConfig = {"familyId":11,"models":[{"name":"Basic","licenses":[` + strings.Join(licenses, ",") + `]}]}</script>`)
+	s := newSurvey(t, urls)
+	var calls atomic.Int32
+	get := func(ctx context.Context, _ catalog.Source, u string) ([]byte, error) {
+		calls.Add(1)
+		if u == urls[0] {
+			return body, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(40 * time.Millisecond):
+		}
+		return nil, &catalog.HTTPStatus{Code: 404}
+	}
+	if e := s.scan(context.Background(), urls, false, get); e != nil {
+		t.Fatal(e)
+	}
+	if calls.Load() >= int32(len(urls)) || s.skippedByEvidence.Load() == 0 {
+		t.Fatalf("no requests avoided: %d", calls.Load())
+	}
+	for _, u := range urls {
+		if s.covered[u].Offer == nil {
+			t.Fatalf("lost grouped evidence %s", u)
+		}
+	}
+}
+
+// Optional read-only replay of the actual retained public response bodies.
+// It never fetches an address, modifies a checkpoint, or changes capture dates.
+func TestCapturedEvidenceReplay(t *testing.T) {
+	dir := os.Getenv("AIFENCE_SOFTLINE_ARCHIVE")
+	if dir == "" {
+		t.Skip("no captured evidence supplied")
+	}
+	fs, e := filepath.Glob(filepath.Join(dir, "product", "*.html.gz"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var inv inventory
+	if e = read(filepath.Join(dir, "sitemap.json"), &inv); e != nil {
+		t.Fatal(e)
+	}
+	known := map[string]bool{}
+	for _, u := range inv.Products {
+		known[u] = true
+	}
+	prices := map[string]bool{}
+	noPrice := map[string]bool{}
+	grouped := map[string]bool{}
+	fixedTier := 0
+	legacyTier := 0
+	replayed := 0
+	redirected := 0
+	for _, f := range fs {
+		pos := strings.Index(f, ".json.")
+		if pos < 0 {
+			continue
+		}
+		var c check
+		if e = read(f[:pos+5], &c); e != nil {
+			continue
+		}
+		if c.BodyHash == "" || evidencePath(f[:pos+5], c.BodyHash) != f {
+			continue
+		}
+		raw, err := readEvidence(f)
+		if err != nil || bodyHash(raw) != c.BodyHash {
+			t.Fatalf("body integrity %s: %v", f, err)
+		}
+		if c.Error == "inconsistent Softline minimum quantity" {
+			legacyTier++
+		}
+		newCheck, err := parsePage(c.Page, raw, c.At, false)
+		if err != nil {
+			continue
+		}
+		replayed++
+		if len(newCheck.Products) > 1 {
+			redirected++
+		}
+		for _, v := range newCheck.Products {
+			if !known[v.URL] {
+				continue
+			}
+			if len(newCheck.Products) > 1 {
+				grouped[v.URL] = true
+			}
+			if v.Offer != nil {
+				prices[v.URL] = true
+				if c.Error == "inconsistent Softline minimum quantity" && v.URL == c.Page {
+					fixedTier++
+				}
+			}
+			if v.State == "no_public_price" {
+				noPrice[v.URL] = true
+			}
+		}
+	}
+	t.Logf("archived=%d replayed=%d tier_errors_fixed=%d exact_priced=%d exact_no_public_price=%d redirected_family_responses=%d grouped_exact_sitemap_urls=%d", len(fs), replayed, fixedTier, len(prices), len(noPrice), redirected, len(grouped))
+	if legacyTier > 0 && fixedTier == 0 {
+		t.Fatal("actual evidence did not reproduce the three expected improvements")
 	}
 }

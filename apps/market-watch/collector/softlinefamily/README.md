@@ -51,3 +51,15 @@ re-read the retained evidence without another HTTP request or a new timestamp.
 The store archive is capped at 8 GiB; hitting the cap is logged and never
 changes an unresolved state into a completed one. The active worker remains
 single-owner and resumes using the existing checkpoint format.
+
+A standalone URL sometimes redirects to a canonical family page. In that
+case use the family model's exact child URLs and remove already-resolved
+children from the in-flight queue before starting their requests. Do not
+attribute a canonical family's or other product's price to the requested
+URL. A product configuration with explicit null public prices and the exact
+software product ID is evidence of no public price; absent fields or a
+different ID are not. The quantity counter's `data-minval` and `data-maxval`
+represent the selected tier; HTML min/max may instead be overall cart bounds.
+The parser still rejects inconsistent selected-tier evidence. The
+`requests_skipped_by_grouped_evidence` field counts requests avoided during
+the current process (not a cumulative catalog total).
