@@ -13,11 +13,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -51,6 +53,7 @@ type report struct {
 	States            map[string]int `json:"states_by_inventory_url"`
 	Extra             int            `json:"additional_off_sitemap_urls"`
 	Retained          int            `json:"retained_from_previous_observations"`
+	GroupedSkip       int64          `json:"requests_skipped_by_grouped_evidence"`
 	Complete          bool           `json:"complete"`
 }
 
@@ -139,6 +142,10 @@ func discover(ctx context.Context, get fetch) (inventory, error) {
 func checkpoint(dir, page string) string {
 	return filepath.Join(dir, fmt.Sprintf("%x.json", sha256.Sum256([]byte(page))))
 }
+
+// The publisher may redirect a standalone license URL to its family. Use the
+// returned family model to collect exact child URLs, never transfer a price
+// from a different canonical product to the requested URL.
 func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, error) {
 	doc, e := goquery.NewDocumentFromReader(bytes.NewReader(b))
 	if e != nil {
@@ -147,6 +154,28 @@ func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, erro
 	sku, _ := doc.Find(".js-sku-btn").First().Attr("data-code")
 	name := strings.Join(strings.Fields(doc.Find("h1").First().Text()), " ")
 	p := softlinefamily.Product{URL: page, SKU: strings.ToUpper(strings.TrimSpace(sku)), Name: name, State: "unrecognized_product"}
+	if canonical, ok := doc.Find("link[rel='canonical']").First().Attr("href"); ok && strings.TrimSpace(canonical) != "" {
+		base, err := url.Parse(page)
+		if err != nil {
+			return nil, err
+		}
+		target, err := base.Parse(strings.TrimSpace(canonical))
+		if err != nil || !catalog.Allowed(source, target.String()) {
+			return []softlinefamily.Product{{URL: page, State: "unrecognized_product"}}, nil
+		}
+		if target.String() != page {
+			products, err := softlinefamily.Extract(target.String(), b, at)
+			if err == nil && len(products) > 0 {
+				for _, v := range products {
+					if v.URL == page {
+						return products, nil
+					}
+				}
+				return append(products, softlinefamily.Product{URL: page, State: "unrecognized_product"}), nil
+			}
+			return []softlinefamily.Product{{URL: page, State: "unrecognized_product"}}, nil
+		}
+	}
 	offer, err := catalog.SoftlineDetail(doc, page, at)
 	if err != nil {
 		return nil, err
@@ -154,8 +183,29 @@ func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, erro
 	if offer != nil {
 		p.State = "priced"
 		p.Offer = offer
+		return []softlinefamily.Product{p}, nil
 	}
-	if p.Offer == nil && name != "" {
+	if name != "" {
+		// Explicit null prices in the exact software product's own published
+		// configuration are positive evidence of no public quote, not parse failure.
+		// Absent keys, unrelated IDs and redirected pages stay unresolved.
+		var cfg struct {
+			Product struct {
+				ID      json.RawMessage
+				Type    string
+				Price   json.RawMessage
+				Current json.RawMessage `json:"priceWithDiscount"`
+			}
+		}
+		if _, data, ok := strings.Cut(doc.Find("#js-front-config").Text(), "window.temporaryFrontConfig ="); ok && json.NewDecoder(strings.NewReader(data)).Decode(&cfg) == nil {
+			id := strings.Trim(string(cfg.Product.ID), "\\\" ")
+			suffix := strings.TrimSuffix(page, "/")
+			i := strings.LastIndex(suffix, "-")
+			if i >= 0 && id != "" && suffix[i+1:] == id && cfg.Product.Type == "software" && string(cfg.Product.Price) == "null" && string(cfg.Product.Current) == "null" {
+				p.State = "no_public_price"
+				return []softlinefamily.Product{p}, nil
+			}
+		}
 		main := strings.ToLower(strings.Join(strings.Fields(doc.Find("main,.b-product-card,.b-product-detail").Text()), " "))
 		for _, marker := range []string{"цена по запросу", "цена предоставляется по запросу", "цена на данный продукт предоставляется по запросу", "узнать цену"} {
 			if strings.Contains(main, marker) {
@@ -168,14 +218,15 @@ func direct(page string, b []byte, at time.Time) ([]softlinefamily.Product, erro
 }
 
 type survey struct {
-	cfg        inventory
-	dir, out   string
-	families   int
-	covered    map[string]softlinefamily.Product
-	known      map[string]bool
-	prior      map[string]catalog.Offer
-	verified   verifiedBatch
-	batchByURL map[string]catalog.Offer
+	cfg               inventory
+	dir, out          string
+	families          int
+	covered           map[string]softlinefamily.Product
+	known             map[string]bool
+	prior             map[string]catalog.Offer
+	verified          verifiedBatch
+	batchByURL        map[string]catalog.Offer
+	skippedByEvidence atomic.Int64
 }
 
 func rank(p softlinefamily.Product) int {
@@ -257,6 +308,7 @@ func (s *survey) snapshot() error {
 	}); err != nil {
 		return err
 	}
+	stat.GroupedSkip = s.skippedByEvidence.Load()
 	stat.Complete = stat.Covered == stat.Inventory && stat.FamiliesProcessed == stat.Families
 	return save(filepath.Join(s.out, "inventory.json"), stat)
 }
