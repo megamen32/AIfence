@@ -255,8 +255,9 @@ type Signal struct {
 }
 
 type Outcome struct {
-	Status        string `json:"status"`
-	AnalysisRunID string `json:"analysis_run_id,omitempty"`
+	Status        string   `json:"status"`
+	AnalysisRunID string   `json:"analysis_run_id,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
 }
 
 // Read performs one owner-scoped call to an approved bound app operation.
