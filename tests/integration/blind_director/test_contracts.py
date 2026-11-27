@@ -62,8 +62,11 @@ class PromptRules(unittest.TestCase):
         import types
         spec=importlib.util.spec_from_file_location('blind_live_test', HERE/'live_adapter.py')
         live=importlib.util.module_from_spec(spec);spec.loader.exec_module(live)
-        with tempfile.TemporaryDirectory(dir=ROOT/'.runtime/blind-director') as d:
-            file=Path(d)/'prompt.txt'
+        with tempfile.TemporaryDirectory() as d:
+            live.ROOT = Path(d)
+            private = live.ROOT / '.runtime/blind-director'
+            private.mkdir(parents=True)
+            file=private/'prompt.txt'
             args=types.SimpleNamespace(purpose='price_acceptance',prompt_file=str(file),smoke=True,case='case-01')
             file.write_text(PRICE_ACCEPTANCE)
             self.assertEqual(live.select_prompt(args,{},[]),PRICE_ACCEPTANCE)
