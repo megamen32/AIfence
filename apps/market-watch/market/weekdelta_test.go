@@ -20,6 +20,7 @@ func TestWeekDeltaUsesLatestReadPerSeriesAndReportsMissingWeeks(t *testing.T) {
 	a1 := deltaOffer("softline", baselineStart.Add(2*24*time.Hour), 673900, "https://store.softline.ru/kes/")
 	a2 := deltaOffer("softline", baselineStart.Add(5*24*time.Hour), 670000, "https://store.softline.ru/kes/")
 	b1 := deltaOffer("softline", currentStart.Add(26*time.Hour), 660000, "https://store.softline.ru/kes/")
+	b1.Name = "Kaspersky Endpoint Security 5 seats 1 year"
 	onlyBaseline := deltaOffer("softmap", baselineStart.Add(24*time.Hour), 673900, "https://softmap.ru/kes/")
 	onlyCurrent := deltaOffer("softmagazin", currentStart.Add(70*time.Hour), 748800, "https://softmagazin.ru/kes/")
 	rows := []catalog.Offer{a1, a2, b1, onlyBaseline, onlyCurrent}

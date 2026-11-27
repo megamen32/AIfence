@@ -19,6 +19,8 @@ BASELINE_TO = "2026-10-04"
 RELEASED_ON = "2026-10-05"
 CURRENT_FROM = "2026-10-12"
 CURRENT_TO = "2026-11-08"
+WATCH_CURRENT_FROM = "2026-10-05"
+WATCH_CURRENT_TO = "2026-11-01"
 KES = "kaspersky_endpoint_security"
 ASTRA = "astra_linux_special_edition"
 DRWEB = "dr_web_desktop_security_suite"
@@ -79,14 +81,14 @@ def make_sales() -> list[dict]:
     magnitude = {
         "basis": "capped_four_week_relative_change", "unit": "percent", "relative_change_pct": change,
         "baseline": {"period": {"from": BASELINE_FROM, "to": BASELINE_TO}, "capped_mean": baseline_mean},
-        "current": {"period": {"from": CURRENT_FROM, "to": CURRENT_TO}, "capped_mean": current_mean},
+        "current": {"period": {"from": WATCH_CURRENT_FROM, "to": WATCH_CURRENT_TO}, "capped_mean": current_mean},
         "value_unit": "index", "spike_cap_median_multiple": 1.4,
     }
     details = {
         "control_product_key": ASTRA, "metric_key": "add_to_cart", "origin": "synthetic_fixture",
-        "reason": "target_drop_with_stable_control", "detected_at": "2026-10-12T06:00:00Z",
-        "first_detected_at": "2026-10-12T06:00:00Z", "baseline_period": {"from": BASELINE_FROM, "to": BASELINE_TO},
-        "current_period": {"from": CURRENT_FROM, "to": CURRENT_TO}, "window_weeks": 4,
+        "reason": "target_drop_with_stable_control", "detected_at": "2026-10-26T06:00:00Z",
+        "first_detected_at": "2026-10-26T06:00:00Z", "baseline_period": {"from": BASELINE_FROM, "to": BASELINE_TO},
+        "current_period": {"from": WATCH_CURRENT_FROM, "to": WATCH_CURRENT_TO}, "window_weeks": 4,
         "baseline_mean": baseline_mean, "current_mean": current_mean,
         "control_baseline_mean": control_baseline, "control_current_mean": control_current,
         "relative_change_pct": change, "control_change_pct": control_change,
@@ -94,12 +96,30 @@ def make_sales() -> list[dict]:
         "magnitude": magnitude,
         "detection_thresholds": {"minimum_target_and_control_adjusted_drop_pct": 20, "max_absolute_control_change_pct": 20},
         "release_id": "R-09", "release_date": RELEASED_ON,
+        "evidence_ids": ["demo-r09-kes-baseline", "demo-r09-kes-current"],
         "source_refs": [{"id": "demo-r09-kes-baseline", "source_ref": ref("metrika-demo", "ДЕМО:R-09/add_to_cart/KES/baseline")},
                         {"id": "demo-r09-kes-current", "source_ref": ref("metrika-demo", "ДЕМО:R-09/add_to_cart/KES/current")}],
     }
-    row = obs("sales", KES, "watchdog.alert", True, "boolean", "2026-11-08", "2026-11-08",
-              "ДЕМО:R-09/watchdog/2026-11-08", kind="metric", details=details, source_id="aifence-watchdog")
+    row = obs("sales", KES, "watchdog.alert", True, "boolean", "2026-10-26", "2026-11-01",
+              "ДЕМО:R-09/watchdog/2026-10-26", kind="metric", details=details, source_id="aifence-watchdog")
     return [row]
+
+
+def make_watch_series() -> list[dict]:
+    """Emit the eight closed weekly rows required by the private watchdog."""
+    starts = [date(2026, 9, 7) + timedelta(days=7 * i) for i in range(8)]
+    values = [(KES, [110.0, 110.0, 110.0, 110.0, 74.0, 74.0, 74.0, 74.0]),
+              (ASTRA, [100.0, 100.0, 100.0, 100.0, 97.4, 97.4, 97.4, 97.4])]
+    rows: list[dict] = []
+    for product, weekly in values:
+        for start, value in zip(starts, weekly):
+            begin, finish = start.isoformat(), (start + timedelta(days=6)).isoformat()
+            rows.append(obs("sales", product, "orders_index", value, "index", begin, finish,
+                             f"ДЕМО:R-09/orders_index/{product}/{begin}", segment="self_service",
+                             source_id="metrika-demo",
+                             details={"release_id": "R-09", "event_name": "add_to_cart",
+                                      "base_period": "self_service", "available_on": finish}))
+    return rows
 
 
 def make_research() -> list[dict]:
@@ -185,13 +205,12 @@ def main() -> int:
     document = build()
     (args.out / "pm-demo-r09.json").write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n")
     series = batch("metrika", make_metrika())
-    context = {"schema_version": "aifence.watch-context.v1", "synthetic": True, "batches": {
-        "release": batch("release", make_release()),
-        "research": batch("research", make_research()),
-        "metrika": batch("metrika", []),
-        "backlog": batch("backlog", []),
-    }}
+    watch_series = batch("sales", make_watch_series())
+    # The private uploader only needs an origin-matched context. PM receives
+    # release, interview and purchase-path evidence through pm-demo-r09.json.
+    context = {"schema_version": "aifence.watch-context.v1", "synthetic": True, "batches": {}}
     (args.out / "metrika-series-demo-r09.json").write_text(json.dumps(series, ensure_ascii=False, indent=2) + "\n")
+    (args.out / "watch-series-demo-r09.json").write_text(json.dumps(watch_series, ensure_ascii=False, indent=2) + "\n")
     (args.out / "metrika-context-demo-r09.json").write_text(json.dumps(context, ensure_ascii=False, indent=2) + "\n")
     print(f"Wrote DEMO payloads to {args.out}")
     print(f"PM observations: {sum(len(b['observations']) for b in document['batches'])}")
