@@ -304,10 +304,10 @@ func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decisio
 		}
 	}
 	if r.Task != nil {
-		v.TaskID, v.TaskTag, v.TaskURL = r.Task.ID, r.Task.Tag, r.Task.URL
+		v.TaskID, v.TaskTag, v.TaskURL, v.TaskSystem = r.Task.ID, r.Task.Tag, r.Task.URL, "локальный бэклог"
 		if h.delivery != nil {
 			if id, link, ok := h.delivery.TaskLink(ctx, r); ok {
-				v.TaskID, v.TaskURL = id, link
+				v.TaskID, v.TaskURL, v.TaskSystem = id, link, "Redmine"
 			}
 		}
 	}

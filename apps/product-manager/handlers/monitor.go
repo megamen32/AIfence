@@ -588,10 +588,16 @@ func attachEvidencePins(v *views.Investigation) {
 	if v == nil || len(v.Chart.Dots) == 0 || len(v.Evidence) == 0 {
 		return
 	}
+	seen := make(map[string]struct{}, len(v.Evidence))
 	for i, row := range v.Evidence {
 		if i >= 4 {
 			break
 		}
+		key := strings.ToLower(strings.TrimSpace(row.Metric)) + "|" + strings.ToLower(strings.TrimSpace(row.Source))
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
 		dot := v.Chart.Dots[min(i, len(v.Chart.Dots)-1)]
 		kind := "М"
 		metric := strings.ToLower(row.Metric)

@@ -110,7 +110,11 @@ templ caseScreen(tab string, item *Investigation, decision *Decision) {
 
 templ decisionActions(d *Decision) {
 	<section class="dashboard-task" id="hypothesis-actions">
-		<h3>Задача в бэклоге · Redmine</h3>
+		<h3>Задача в бэклоге
+			if d.TaskSystem != "" {
+				<span> · { d.TaskSystem }</span>
+			}
+		</h3>
 		if d.TaskID != "" {
 			<a class="text-link" href={ d.TaskURL }>#{ d.TaskID }</a>
 			<small>{ d.TaskTag }</small>

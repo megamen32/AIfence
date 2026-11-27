@@ -15,7 +15,7 @@ type EvidenceGroup struct {
 	Rows  []EvidenceRow
 }
 type Decision struct {
-	EvidenceLevel, Forecast, TaskURL, TaskTag                                                                             string
+	EvidenceLevel, Forecast, TaskURL, TaskTag, TaskSystem                                                                  string
 	CompetingExplanations                                                                                                 []string
 	MeasuredEvidence                                                                                                      []Link
 	Threshold, Operator, RuleLabel                                                                                        string

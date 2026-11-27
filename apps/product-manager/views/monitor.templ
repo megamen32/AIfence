@@ -131,6 +131,9 @@ templ investigationPanel(v *Investigation) {
 				if v.Cost != "" {
 					<p class="cost-value">{ v.Cost }</p><small>Сценарий по вашим допущениям</small>
 				}
+				if v.Weekly == "" && v.Cost == "" {
+					<p class="muted cost-empty">Введите потерянные заказы и маржу, чтобы увидеть ₽/неделю.</p>
+				}
 				<details class="assumptions" open?={ v.CostError != "" }>
 					<summary>Задать допущения</summary>
 					<form action="./" method="get">
