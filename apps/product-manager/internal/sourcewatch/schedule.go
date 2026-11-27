@@ -57,6 +57,17 @@ type Review struct {
 	Result   *ReviewOutput `json:"result,omitempty"`
 }
 
+// DeliverySignal is the owner-scoped pinned signal used by the background
+// backlog job. A missing or failed review is represented by a nil Review so
+// the measured signal can still be delivered.
+type DeliverySignal struct {
+	SignalID      string        `json:"signal_id"`
+	Signal        Signal        `json:"signal"`
+	AnalysisRunID string        `json:"analysis_run_id,omitempty"`
+	ReviewStatus  string        `json:"review_status"`
+	Review        *ReviewOutput `json:"review,omitempty"`
+}
+
 // ApproveRef identifies one pinned signal whose review the owner confirms.
 type ApproveRef struct {
 	SignalID string `json:"signal_id"`
@@ -408,6 +419,54 @@ func (s *Service) Review(ctx context.Context, in WatchRef) (Review, error) {
 			return Review{}, err
 		}
 		out.Result = &validated
+	}
+	return out, nil
+}
+
+// DeliverySignals reads all pinned occurrences for one owner and observes the
+// optional review run without creating or waiting for work. The backlog job
+// can therefore file the code-computed signal while a review is queued or has
+// failed, then attach the completed review on a later sync.
+func (s *Service) DeliverySignals(ctx context.Context, owner string) ([]DeliverySignal, error) {
+	rows, err := s.queries.ListSourceWatchSignals(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DeliverySignal, 0, len(rows))
+	for _, row := range rows {
+		var original ReviewInput
+		if err := json.Unmarshal(row.Document, &original); err != nil {
+			return nil, fmt.Errorf("source-watch signal %s: %w", row.SignalID, err)
+		}
+		if original.Signal.SignalID != row.SignalID {
+			return nil, fmt.Errorf("source-watch signal %s does not match its pinned occurrence", row.SignalID)
+		}
+		item := DeliverySignal{
+			SignalID:      row.SignalID,
+			Signal:        original.Signal,
+			AnalysisRunID: row.AnalysisRunID,
+			ReviewStatus:  "missing",
+		}
+		if row.AnalysisRunID != "" {
+			item.ReviewStatus = "unavailable"
+			run, runErr := s.task.Get(ctx, row.AnalysisRunID)
+			if runErr != nil {
+				if stop := ctx.Err(); stop != nil {
+					return nil, stop
+				}
+			} else {
+				item.ReviewStatus = string(run.Status)
+				if run.Reply != nil && run.Reply.Output != nil {
+					validated, validateErr := ValidateReview(*run.Reply.Output, ReviewSignalIDs(original.Signal))
+					if validateErr == nil {
+						item.Review = &validated
+					} else {
+						item.ReviewStatus = "failed"
+					}
+				}
+			}
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }

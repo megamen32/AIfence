@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"agent/internal/decision"
+	"agent/internal/evidence"
 
 	"github.com/airlockrun/agentsdk"
 )
@@ -49,8 +50,9 @@ type RedmineIssue struct {
 	Reused   bool   `json:"reused,omitempty"`
 	// Noted marks an existing similar issue that received a comment with the
 	// new signal instead of a duplicate.
-	Noted     bool `json:"noted,omitempty"`
-	JournalID int  `json:"journal_id,omitempty"`
+	Noted       bool `json:"noted,omitempty"`
+	ReviewNoted bool `json:"review_noted,omitempty"`
+	JournalID   int  `json:"journal_id,omitempty"`
 }
 
 // SignalKey is the first producer signal recorded on the card.
@@ -96,11 +98,18 @@ func (d *Redmine) Lookup(ctx context.Context, owner, signal string) (*RedmineIss
 // signal. Order: local receipt, then a search in Redmine by the "ID сигнала"
 // field (an issue made earlier or by hand is reused), then create.
 func (d *Redmine) Deliver(ctx context.Context, owner string, r decision.Record) (RedmineIssue, error) {
-	if !Eligible(r) {
+	return d.DeliverItem(ctx, owner, BacklogItem{Record: r})
+}
+
+// DeliverItem delivers an ordinary Product Manager record or a pinned
+// source-watch record. A review can arrive after the issue, so a later call
+// may append its comment without creating another issue.
+func (d *Redmine) DeliverItem(ctx context.Context, owner string, item BacklogItem) (RedmineIssue, error) {
+	if !Eligible(item.Record) {
 		return RedmineIssue{}, errors.New("у карточки нет подтверждённого сигнала с измеренными периодами")
 	}
 	if d.Transact == nil {
-		return d.deliver(ctx, owner, r)
+		return d.deliver(ctx, owner, item)
 	}
 	var issue RedmineIssue
 	err := d.Transact(ctx, nil, func(tx agentsdk.DBTX) error {
@@ -111,17 +120,42 @@ func (d *Redmine) Deliver(ctx context.Context, owner string, r decision.Record) 
 		scoped := *d
 		scoped.DB = tx
 		var err error
-		issue, err = scoped.deliver(ctx, owner, r)
+		issue, err = scoped.deliver(ctx, owner, item)
 		return err
 	})
 	return issue, err
 }
 
-func (d *Redmine) deliver(ctx context.Context, owner string, r decision.Record) (RedmineIssue, error) {
+// BatchResult keeps failed signals in the caller's input so a later job run
+// can retry them. One Redmine failure does not stop the remaining signals.
+type BatchResult struct {
+	Issues []RedmineIssue
+	Errors []error
+}
+
+func (d *Redmine) DeliverBatch(ctx context.Context, owner string, items []BacklogItem) BatchResult {
+	result := BatchResult{}
+	for _, item := range items {
+		issue, err := d.DeliverItem(ctx, owner, item)
+		if err != nil {
+			result.Errors = append(result.Errors, err)
+			continue
+		}
+		result.Issues = append(result.Issues, issue)
+	}
+	return result
+}
+
+func (d *Redmine) deliver(ctx context.Context, owner string, item BacklogItem) (RedmineIssue, error) {
+	r := item.Record
 	signal := SignalKey(r)
 	if got, err := d.Lookup(ctx, owner, signal); err != nil || got != nil {
 		if got != nil {
-			return *got, nil
+			updated, err := d.attachReview(ctx, *got, item)
+			if err != nil {
+				return RedmineIssue{}, err
+			}
+			return updated, nil
 		}
 		return RedmineIssue{}, err
 	}
@@ -134,18 +168,21 @@ func (d *Redmine) deliver(ctx context.Context, owner string, r decision.Record) 
 		return RedmineIssue{}, err
 	}
 	if !found {
-		issue, found, err = d.similar(ctx, project, r, signal)
+		issue, found, err = d.similar(ctx, project, item, signal)
 		if err != nil {
 			return RedmineIssue{}, err
 		}
 	}
 	if !found {
-		issue, err = d.create(ctx, project, r, signal, Subject(r, signal))
+		issue, err = d.create(ctx, project, item, signal, Subject(r, signal))
 		if err != nil {
 			return RedmineIssue{}, err
 		}
 	} else {
 		issue.Reused = true
+	}
+	if issue, err = d.attachReview(ctx, issue, item); err != nil {
+		return RedmineIssue{}, err
 	}
 	raw, err := json.Marshal(issue)
 	if err != nil {
@@ -292,6 +329,55 @@ func (d *Redmine) receipt(it named, signal string) RedmineIssue {
 	return RedmineIssue{SignalID: signal, IssueID: it.ID, URL: d.link(it.ID), Subject: it.Subject}
 }
 
+func reviewMarker(r decision.Record, signal, review string) string {
+	raw, _ := json.Marshal([]any{signal, evidenceMarker(r), strings.TrimSpace(review)})
+	return "PM source-watch review " + fmt.Sprintf("%x", sha256.Sum256(raw))
+}
+
+// attachReview adds a completed source-watch review once. It re-reads the
+// issue journal so a lost local receipt or a retried Redmine call cannot
+// duplicate the comment.
+func (d *Redmine) attachReview(ctx context.Context, issue RedmineIssue, item BacklogItem) (RedmineIssue, error) {
+	review := strings.TrimSpace(item.ReviewText)
+	if review == "" {
+		return issue, nil
+	}
+	var prior named
+	if err := d.call(ctx, "get_redmine_issue", map[string]any{"issue_id": issue.IssueID, "include_journals": true, "include_attachments": false}, &prior); err != nil {
+		return RedmineIssue{}, err
+	}
+	marker := reviewMarker(item.Record, SignalKey(item.Record), review)
+	if strings.Contains(prior.Description, marker) {
+		issue.ReviewNoted = true
+		return issue, nil
+	}
+	for _, journal := range prior.Journals {
+		if strings.Contains(journal.Notes, marker) {
+			issue.ReviewNoted, issue.JournalID = true, journal.ID
+			return issue, nil
+		}
+	}
+	var result map[string]any
+	if err := d.call(ctx, "update_redmine_issue", map[string]any{"issue_id": issue.IssueID, "fields": map[string]any{"notes": ReviewNote(item.Record, SignalKey(item.Record), review)}}, &result); err != nil {
+		return RedmineIssue{}, err
+	}
+	var confirmed named
+	if err := d.call(ctx, "get_redmine_issue", map[string]any{"issue_id": issue.IssueID, "include_journals": true, "include_attachments": false}, &confirmed); err != nil {
+		return RedmineIssue{}, err
+	}
+	for _, journal := range confirmed.Journals {
+		if strings.Contains(journal.Notes, marker) {
+			issue.ReviewNoted, issue.JournalID = true, journal.ID
+			return issue, nil
+		}
+	}
+	return RedmineIssue{}, errors.New("Redmine: новый разбор не найден в журнале задачи")
+}
+
+func ReviewNote(r decision.Record, signal, review string) string {
+	return fmt.Sprintf("Разбор сигнала @%s@:\n%s\n%s", signal, strings.TrimSpace(review), reviewMarker(r, signal, review))
+}
+
 // A product can have several unrelated problems. Require the exact product
 // and proposed intervention, or the exact issue/card title, for a match.
 func relevant(it named, r decision.Record) bool {
@@ -310,7 +396,8 @@ func evidenceMarker(r decision.Record) string {
 	return "PM evidence " + fmt.Sprintf("%x", sha256.Sum256(raw))
 }
 
-func (d *Redmine) similar(ctx context.Context, p projectInfo, r decision.Record, signal string) (RedmineIssue, bool, error) {
+func (d *Redmine) similar(ctx context.Context, p projectInfo, item BacklogItem, signal string) (RedmineIssue, bool, error) {
+	r := item.Record
 	var matches []named
 	for offset := 0; ; offset += 100 {
 		issues, err := d.list(ctx, "list_redmine_issues", map[string]any{"project_id": p.ID, "status_id": "open", "limit": 100, "offset": offset,
@@ -357,7 +444,7 @@ func (d *Redmine) similar(ctx context.Context, p projectInfo, r decision.Record,
 		}
 	}
 	var res map[string]any
-	if err := d.call(ctx, "update_redmine_issue", map[string]any{"issue_id": it.ID, "fields": map[string]any{"notes": Note(r, signal)}}, &res); err != nil {
+	if err := d.call(ctx, "update_redmine_issue", map[string]any{"issue_id": it.ID, "fields": map[string]any{"notes": NoteWithReview(r, signal, item.ReviewText)}}, &res); err != nil {
 		return RedmineIssue{}, false, err
 	}
 	confirmed, err := get()
@@ -375,19 +462,29 @@ func (d *Redmine) similar(ctx context.Context, p projectInfo, r decision.Record,
 
 // Note is the comment left on an existing issue for a new signal.
 func Note(r decision.Record, signal string) string {
+	return NoteWithReview(r, signal, "")
+}
+
+// NoteWithReview includes an optional bounded source-watch review in the same
+// idempotent note as the code-computed signal numbers.
+func NoteWithReview(r decision.Record, signal, review string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Новый сигнал по этому продукту (%s): @%s@.\n", AILabel, signal)
 	if c := r.SignalContrast; c != nil {
-		fmt.Fprintf(&b, "Было %s (%s – %s), стало %s (%s – %s), изменение %s%%.\n", num(c.BaselineMean), c.Baseline.From, c.Baseline.To, num(c.CurrentMean), c.Current.From, c.Current.To, signed(c.RelativeChangePct))
+		fmt.Fprintf(&b, "Было %s %s (%s – %s), стало %s (%s – %s), изменение %s%%.\n", contrastValueLabel(c), num(c.BaselineMean), c.Baseline.From, c.Baseline.To, num(c.CurrentMean), c.Current.From, c.Current.To, signed(c.RelativeChangePct))
 	}
 	if a := strings.TrimSpace(r.Hypothesis.ProposedAction); a != "" {
 		fmt.Fprintf(&b, "Гипотеза помощника: %s\n", a)
 	}
 	fmt.Fprintf(&b, "Снимок данных: @%s@. Источники: %s.\n%s", r.EvidenceSnapshotID, strings.Join(append(slices.Clone(r.Hypothesis.SignalIDs), r.Hypothesis.SupportIDs...), ", "), evidenceMarker(r))
+	if review = strings.TrimSpace(review); review != "" {
+		fmt.Fprintf(&b, "\n\nРазбор сигнала:\n%s\n%s", review, reviewMarker(r, signal, review))
+	}
 	return b.String()
 }
 
-func (d *Redmine) create(ctx context.Context, p projectInfo, r decision.Record, signal, subject string) (RedmineIssue, error) {
+func (d *Redmine) create(ctx context.Context, p projectInfo, item BacklogItem, signal, subject string) (RedmineIssue, error) {
+	r := item.Record
 	fields := map[string]any{"tracker_id": p.TrackerID, FieldAI: "1", FieldSignal: signal}
 	var res struct {
 		ID      int    `json:"id"`
@@ -395,7 +492,7 @@ func (d *Redmine) create(ctx context.Context, p projectInfo, r decision.Record, 
 		Error   any    `json:"error"`
 		Issue   *named `json:"issue"`
 	}
-	if err := d.call(ctx, "create_redmine_issue", map[string]any{"project_id": p.ID, "subject": subject, "description": Description(r, signal), "fields": fields}, &res); err != nil {
+	if err := d.call(ctx, "create_redmine_issue", map[string]any{"project_id": p.ID, "subject": subject, "description": DescriptionWithReview(r, signal, item.ReviewText), "fields": fields}, &res); err != nil {
 		return RedmineIssue{}, err
 	}
 	if res.Issue != nil && res.ID == 0 {
@@ -435,6 +532,10 @@ func Subject(r decision.Record, signal string) string {
 // Description renders the before/after numbers and evidence IDs in Redmine
 // textile. Numbers come from the verified signal contrast, never from prose.
 func Description(r decision.Record, signal string) string {
+	return DescriptionWithReview(r, signal, "")
+}
+
+func DescriptionWithReview(r decision.Record, signal, review string) string {
 	h := r.Hypothesis
 	var b strings.Builder
 	fmt.Fprintf(&b, "_Черновик %s: фоновая проверка Product Manager нашла сигнал и не нашла по нему задачи._\n\n", AILabel)
@@ -442,8 +543,9 @@ func Description(r decision.Record, signal string) string {
 	fmt.Fprintf(&b, "*Сигнал:* @%s@\n", signal)
 	if c := r.SignalContrast; c != nil {
 		fmt.Fprintf(&b, "\n*Цифры до/после* (%s):\n", nonEmpty(c.Basis, "окно сигнала"))
-		fmt.Fprintf(&b, "* до: %s – %s, среднее %s\n", c.Baseline.From, c.Baseline.To, num(c.BaselineMean))
-		fmt.Fprintf(&b, "* после: %s – %s, среднее %s\n", c.Current.From, c.Current.To, num(c.CurrentMean))
+		label := contrastValueLabel(c)
+		fmt.Fprintf(&b, "* до: %s – %s, %s\n", c.Baseline.From, c.Baseline.To, contrastValue(label, c.BaselineMean))
+		fmt.Fprintf(&b, "* после: %s – %s, %s\n", c.Current.From, c.Current.To, contrastValue(label, c.CurrentMean))
 		fmt.Fprintf(&b, "* изменение: %s%%\n", signed(c.RelativeChangePct))
 		if c.ControlBaselineMean != 0 || c.ControlCurrentMean != 0 {
 			fmt.Fprintf(&b, "* контроль %s: %s → %s\n", nonEmpty(h.SuccessCriterion.ControlProductKey, ""), num(c.ControlBaselineMean), num(c.ControlCurrentMean))
@@ -480,10 +582,28 @@ func Description(r decision.Record, signal string) string {
 	if r.CardURL != "" {
 		fmt.Fprintf(&b, "Карточка: %s\n", r.CardURL)
 	}
+	if review = strings.TrimSpace(review); review != "" {
+		fmt.Fprintf(&b, "\n*Разбор сигнала:*\n%s\n%s\n", review, reviewMarker(r, signal, review))
+	}
 	if Eligible(r) {
 		fmt.Fprintln(&b, evidenceMarker(r))
 	}
 	return b.String()
+}
+
+func contrastValueLabel(c *evidence.WindowContrast) string {
+	switch c.Basis {
+	case "source_watch_normalized_index":
+		return "нормированный индекс (база = 100)"
+	case "source_watch_family_change":
+		return "наблюдаемое значение"
+	default:
+		return "среднее"
+	}
+}
+
+func contrastValue(label string, value float64) string {
+	return label + " " + num(value)
 }
 
 func taskID(r decision.Record) string {

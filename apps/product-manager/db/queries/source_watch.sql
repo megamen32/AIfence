@@ -31,6 +31,9 @@ SELECT * FROM pm_watch_signals WHERE owner_id=$1 AND signal_id=$2;
 -- name: GetSourceWatchSignalByRun :one
 SELECT * FROM pm_watch_signals WHERE owner_id=$1 AND analysis_run_id=$2;
 
+-- name: ListSourceWatchSignals :many
+SELECT * FROM pm_watch_signals WHERE owner_id=$1 ORDER BY signal_id;
+
 -- name: AddSignalDraft :one
 INSERT INTO pm_signal_drafts (owner_id,signal_id,issue_id,document)
 VALUES (sqlc.arg(owner_id),sqlc.arg(signal_id),sqlc.arg(issue_id),sqlc.arg(document)::jsonb)

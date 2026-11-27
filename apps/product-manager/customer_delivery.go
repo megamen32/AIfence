@@ -16,6 +16,7 @@ import (
 	"agent/internal/delivery"
 	"agent/internal/evidence"
 	"agent/internal/product"
+	"agent/internal/sourcewatch"
 
 	"github.com/airlockrun/agentsdk"
 	"github.com/google/uuid"
@@ -30,6 +31,7 @@ import (
 type customerDelivery struct {
 	p       product.Service
 	db      *agentsdk.AgentDB
+	watch   *sourcewatch.Service
 	redmine *delivery.Redmine
 	dion    *delivery.Dion
 	sync    *agentsdk.JobHandle[slotInput, slotOutput]
@@ -56,7 +58,7 @@ const (
 	syncEvery      = time.Hour
 )
 
-func registerCustomerDelivery(a *agentsdk.Agent, p product.Service) *customerDelivery {
+func registerCustomerDelivery(a *agentsdk.Agent, p product.Service, watch *sourcewatch.Service) *customerDelivery {
 	// Redmine MCP (scripts/stand/redmine-mcp) in legacy-per-user mode: Airlock
 	// injects the assistant's API key as X-Redmine-API-Key on every call.
 	rm := a.RegisterMCP(&agentsdk.MCP{Slug: "redmine", Name: "Redmine", URL: redmineMCP, AuthMode: agentsdk.MCPAuthToken,
@@ -65,7 +67,7 @@ func registerCustomerDelivery(a *agentsdk.Agent, p product.Service) *customerDel
 	project := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "redmine_project", Description: "Идентификатор проекта Redmine для задач помощника.", Default: "personal", Pattern: `^[a-z0-9][a-z0-9_-]{0,99}$`})
 	public := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "redmine_public_url", Description: "Адрес Redmine для ссылок в панели.", Default: "http://redmine.localhost:42080", Pattern: `^https?://[^\s/]+(/[^\s]*)?$`})
 	chat := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "dion_test_chat", Description: "ID тестового чата Dion в UserIO (conv_…). Сводка уходит только в него; пусто = Dion выключен.", Default: "", Pattern: `^(|conv_[A-Za-z0-9]{8,64})$`})
-	d := &customerDelivery{p: p, db: a.DB(), project: project, public: public}
+	d := &customerDelivery{p: p, db: a.DB(), watch: watch, project: project, public: public}
 	d.redmine = &delivery.Redmine{MCP: rm, DB: a.DB(), Transact: a.DB().Transaction, Tracker: "Улучшение"}
 	d.dion = &delivery.Dion{MCP: io, DB: a.DB(), Chat: chat.Get}
 	d.sync = agentsdk.RegisterJob(a, &agentsdk.Job[slotInput, slotOutput]{
@@ -176,16 +178,34 @@ func (d *customerDelivery) syncBacklog(ctx context.Context, owner string) slotOu
 	if err != nil {
 		return slotOutput{Status: "failed", Errors: []string{err.Error()}}
 	}
+	items := make([]delivery.BacklogItem, 0, len(recs))
 	for _, r := range recs {
 		if !delivery.Eligible(r) {
 			continue
 		}
-		issue, err := d.redmine.Deliver(ctx, owner, r)
-		if err != nil {
-			out.Status, out.Errors = "partial", append(out.Errors, err.Error())
-			continue
+		items = append(items, delivery.BacklogItem{Record: r})
+	}
+	if d.watch != nil {
+		signals, signalsErr := d.watch.DeliverySignals(ctx, owner)
+		if signalsErr != nil {
+			out.Status, out.Errors = "partial", append(out.Errors, signalsErr.Error())
+		} else {
+			for _, signal := range signals {
+				item, adaptErr := delivery.SourceWatchItem(signal)
+				if adaptErr != nil {
+					out.Status, out.Errors = "partial", append(out.Errors, adaptErr.Error())
+					continue
+				}
+				items = append(items, item)
+			}
 		}
+	}
+	batch := d.redmine.DeliverBatch(ctx, owner, items)
+	for _, issue := range batch.Issues {
 		out.Issues = append(out.Issues, issue.IssueID)
+	}
+	for _, deliveryErr := range batch.Errors {
+		out.Status, out.Errors = "partial", append(out.Errors, deliveryErr.Error())
 	}
 	return out
 }

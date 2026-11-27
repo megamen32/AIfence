@@ -109,9 +109,10 @@ func newDB(t *testing.T) *sql.DB {
 }
 
 type fakeRedmine struct {
-	issues  []map[string]any
-	creates int
-	notes   int
+	issues   []map[string]any
+	creates  int
+	notes    int
+	failures map[string]int
 }
 
 func structured(v any) (*agentsdk.MCPToolCallResponse, error) {
@@ -120,6 +121,10 @@ func structured(v any) (*agentsdk.MCPToolCallResponse, error) {
 }
 
 func (f *fakeRedmine) CallTool(_ context.Context, name string, raw any) (*agentsdk.MCPToolCallResponse, error) {
+	if f.failures != nil && f.failures[name] > 0 {
+		f.failures[name]--
+		return nil, errors.New("synthetic Redmine failure")
+	}
 	args := raw.(map[string]any)
 	switch name {
 	case "list_redmine_projects":
@@ -134,14 +139,17 @@ func (f *fakeRedmine) CallTool(_ context.Context, name string, raw any) (*agents
 		out := []map[string]any{}
 		filters, _ := args["filters"].(map[string]any)
 		for _, is := range f.issues {
+			fields, _ := is["fields"].(map[string]any)
 			if want, ok := filters["cf_2"]; ok {
-				if is["fields"].(map[string]any)[FieldSignal] == want {
+				if fields[FieldSignal] == want {
 					out = append(out, is)
 				}
 				continue
 			}
 			if args["status_id"] == "open" {
-				out = append(out, is)
+				if status, _ := is["status_id"].(string); status == "" || status == "open" {
+					out = append(out, is)
+				}
 			}
 		}
 		return structured(map[string]any{"result": out})
@@ -155,14 +163,16 @@ func (f *fakeRedmine) CallTool(_ context.Context, name string, raw any) (*agents
 		return structured(map[string]any{"id": id})
 	case "create_redmine_issue":
 		f.creates++
-		is := map[string]any{"id": 100 + f.creates, "subject": args["subject"], "description": args["description"], "fields": args["fields"]}
+		is := map[string]any{"id": 100 + f.creates, "subject": args["subject"], "description": args["description"], "fields": args["fields"], "status_id": "open"}
 		f.issues = append(f.issues, is)
 		return structured(map[string]any{"id": is["id"], "subject": is["subject"]})
 	case "update_redmine_issue":
 		f.notes++
 		for _, is := range f.issues {
 			if is["id"] == args["issue_id"] {
-				is["journals"] = []map[string]any{{"id": 1, "notes": args["fields"].(map[string]any)["notes"]}}
+				journals, _ := is["journals"].([]map[string]any)
+				journals = append(journals, map[string]any{"id": len(journals) + 1, "notes": args["fields"].(map[string]any)["notes"]})
+				is["journals"] = journals
 			}
 		}
 		return structured(map[string]any{"id": args["issue_id"]})

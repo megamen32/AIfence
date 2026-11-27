@@ -420,6 +420,10 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	}
 	var delta *observation
 	var computed *FamilyChange
+	// Preserve the raw pair alongside the published percentage whenever the
+	// source returned it. This lets a later backlog sync use code-owned values
+	// instead of reconstructing them from review prose.
+	computed = familyChange(metrika, target, w.Segment, w.Metric, before, current)
 	if w.ProductKey == "" {
 		delta = metrikaDelta(metrika, w.Metric, current)
 	} else {

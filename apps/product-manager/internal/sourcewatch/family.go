@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// FamilyChange is a two-week change computed from an explicitly labelled
-// product family snapshot. It is used only when Metrika has not already
-// published the change for this exact product, segment and window.
+// FamilyChange is a two-week change computed from raw observed rows. It keeps
+// the exact before/after values for an explicitly labelled product family or
+// the live store series when that source returned both rows.
 type FamilyChange struct {
 	ProductKey  string   `json:"product_key"`
 	Segment     string   `json:"segment,omitempty"`
