@@ -29,7 +29,7 @@ func TestChartBreaksAtMissingAndPartialValues(t *testing.T) {
 		{IsPartial: &yes, Values: []trends.Score{{Index: &ten, HasData: &yes}}},
 	}
 	series := chartSeries(points, []string{"Kaspersky Endpoint Security"})
-	if len(series) != 1 || len(series[0].Segments) != 2 || !strings.Contains(series[0].Segments[0], ",184.00") {
+	if len(series) != 1 || len(series[0].Segments) != 2 || !strings.Contains(series[0].Segments[0], ",300.00") {
 		t.Fatalf("%#v", series)
 	}
 }

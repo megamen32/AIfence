@@ -1,159 +1,289 @@
 package views
 import "github.com/airlockrun/agentsdk/lucide"
 
+templ TermCard(term string,index int) {
+ <div class="comparison-card" data-comparison-card data-series={ Number(index) }>
+  <span class="series-dot" aria-hidden="true"></span>
+  <label class="comparison-name">
+   <span class="comparison-caption">Поисковая фраза</span>
+   <input name="terms" value={ term } aria-label={ "Поисковая фраза "+Number(index+1) } placeholder="Например, Dr.Web" maxlength="200" required autocomplete="off"/>
+  </label>
+  <button type="button" class="icon-button remove-term" data-remove-term aria-label={ "Удалить сравнение: "+term } title="Удалить фразу">
+   @lucide.Icon("x","size-4")
+  </button>
+ </div>
+}
 templ Page(f Form,result *ResultModel) {
-	@Layout() {
-		<header data-airlock-standalone-only class="mb-5">
-			<h1 class="text-2xl font-semibold">Google Trends</h1>
-			<p class="mt-1 text-sm opacity-75">Поисковый интерес к продуктам и рынкам</p>
-		</header>
-		<form action="/query" method="post" hx-post="/query" hx-trigger="submit" hx-target="#results" hx-swap="innerHTML" hx-disable="find button" hx-sync="this:drop" class="min-w-0 space-y-4 rounded-box border border-base-300 bg-base-100 p-4 sm:p-5">
-			<div class="grid min-w-0 gap-4 sm:grid-cols-2">
-				<label class="min-w-0">
-					<span class="mb-1 block text-sm font-medium">Что исследовать</span>
-					<select name="mode" class="select w-full min-w-0">
-						<option value="compare" selected?={ f.Mode=="compare" }>Сравнить интерес</option>
-						<option value="regions" selected?={ f.Mode=="regions" }>География</option>
-						<option value="related" selected?={ f.Mode=="related" }>Связанные запросы</option>
-					</select>
-				</label>
-				<label class="min-w-0">
-					<span class="mb-1 block text-sm font-medium">Регион</span>
-					<input name="geo" value={ f.Geo } placeholder="RU; пусто: весь мир" class="input w-full min-w-0" maxlength="16"/>
-				</label>
-			</div>
-			<label class="block min-w-0">
-				<span class="mb-1 block text-sm font-medium">Фразы, каждая с новой строки</span>
-				<textarea name="terms" rows="3" required class="textarea w-full min-w-0" maxlength="1010">{ f.Terms }</textarea>
-				<span class="mt-1 block text-xs opacity-75">Сравнение: 2–5 фраз. География: 1–5. Связанные запросы: одна фраза.</span>
-			</label>
-			<div class="grid min-w-0 gap-4 sm:grid-cols-2">
-				<label class="min-w-0"><span class="mb-1 block text-sm font-medium">Начало периода</span><input type="date" name="from" value={ f.From } required min="2004-01-01" class="input w-full min-w-0"/></label>
-				<label class="min-w-0"><span class="mb-1 block text-sm font-medium">Конец периода</span><input type="date" name="to" value={ f.To } required min="2004-01-01" class="input w-full min-w-0"/></label>
-			</div>
-			<details class="min-w-0">
-				<summary class="cursor-pointer text-sm">Параметры поиска</summary>
-				<div class="mt-3 grid min-w-0 gap-3 sm:grid-cols-3">
-					<label class="min-w-0"><span class="mb-1 block text-xs">Источник поиска</span><select name="property" class="select w-full min-w-0">
-						<option value="web" selected?={ f.Property=="web" }>Веб-поиск</option>
-						<option value="youtube" selected?={ f.Property=="youtube" }>YouTube</option>
-						<option value="news" selected?={ f.Property=="news" }>Новости</option>
-						<option value="images" selected?={ f.Property=="images" }>Картинки</option>
-						<option value="froogle" selected?={ f.Property=="froogle" }>Покупки</option>
-					</select></label>
-					<label class="min-w-0"><span class="mb-1 block text-xs">Код категории</span><input name="category" value={ f.Category } inputmode="numeric" class="input w-full min-w-0" maxlength="5"/></label>
-					<label class="min-w-0"><span class="mb-1 block text-xs">Уровень географии</span><select name="region" class="select w-full min-w-0">
-						<option value="region" selected?={ f.Region=="region" }>Регионы</option>
-						<option value="country" selected?={ f.Region=="country" }>Страны</option>
-						<option value="city" selected?={ f.Region=="city" }>Города</option>
-						<option value="dma" selected?={ f.Region=="dma" }>Медиарынки DMA</option>
-					</select></label>
-				</div>
-			</details>
-			<div class="flex flex-wrap items-center gap-3">
-				<button type="submit" class="btn btn-primary min-h-11">
-@ActionIcon("search")
-<span>Исследовать интерес</span></button>
-				<p class="text-xs opacity-75">Один запрос для всех фраз. Источник: Google Trends через HasData.</p>
-			</div>
-		</form>
-		<section id="results" class="mt-5 min-w-0" aria-live="polite">
-			if result!=nil {
-				@Results(*result)
-			} else {
-				<div class="rounded-box border border-base-300 p-5">
-					<h2 class="font-medium">Сначала внешний спрос, затем гипотеза</h2>
-					<p class="mt-2 text-sm opacity-80">Сравните продукт и рыночную формулировку в одном периоде. Динамику интереса можно сопоставить с внутренней воронкой, а региональные различия использовать для выбора следующего исследования.</p>
-					<p class="mt-2 text-xs opacity-75">Показатель 0–100 отражает относительный интерес. Пропуски данных будут показаны отдельно.</p>
-				</div>
-			}
-		</section>
-	}
+ @Layout() {
+  <header data-airlock-standalone-only class="explorer-heading">
+   <div class="heading-mark">@lucide.Icon("chart-line","size-6")</div>
+   <div><h1>Google Trends</h1><p>Сравнивайте интерес к продуктам и рынкам</p></div>
+  </header>
+  <form action="/query" method="post" id="research-form" data-research-form data-today={ f.Today } data-loading="false" hx-post="/query" hx-trigger="submit" hx-target="#results" hx-swap="innerHTML" hx-disable="find input, find select, find button" hx-sync="this:drop" class="research-form">
+   <div class="research-topline">
+    <fieldset class="analysis-modes">
+     <legend class="sr-only">Вид исследования</legend>
+     <label><input type="radio" name="mode" value="compare" checked?={ f.Mode=="compare" }/><span>Динамика</span></label>
+     <label><input type="radio" name="mode" value="regions" checked?={ f.Mode=="regions" }/><span>Регионы</span></label>
+     <label><input type="radio" name="mode" value="related" checked?={ f.Mode=="related" }/><span>Связанные запросы</span></label>
+    </fieldset>
+    <span class="term-limit" data-term-limit hidden>Добавлено 5 из 5 фраз</span>
+   </div>
+   <div class="comparison-list" data-comparison-list>
+    for i,term:=range f.Terms {
+     @TermCard(term,i)
+    }
+    <button type="button" class="add-comparison" data-add-term>
+     @lucide.Icon("plus","size-5")
+     <span>Добавить сравнение</span>
+    </button>
+   </div>
+   <div class="filter-bar">
+    <div class="filter-control geo-control" data-geo-control>
+     <label for="geo-search">Регион</label>
+     <div class="geo-input-wrap">
+      @lucide.Icon("map-pin","size-4")
+      <input id="geo-search" data-geo-search type="text" value={ f.GeoLabel } role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="geo-options" autocomplete="off" spellcheck="false"/>
+      @lucide.Icon("chevron-down","size-4")
+     </div>
+     <input type="hidden" name="geo" value={ f.Geo }/>
+     <div class="geo-menu" data-geo-menu hidden>
+      <div class="geo-options" id="geo-options" role="listbox" aria-label="Регионы Google Trends" data-geo-list></div>
+      <p class="geo-hint" data-geo-hint></p>
+     </div>
+    </div>
+    <label class="filter-control">
+     <span>Период</span>
+     <select name="period_preset" aria-label="Период сравнения">
+      <option value="12m" selected?={ f.PeriodPreset=="12m" }>12 полных месяцев</option>
+      <option value="3m" selected?={ f.PeriodPreset=="3m" }>3 полных месяца</option>
+      <option value="1m" selected?={ f.PeriodPreset=="1m" }>Прошлый месяц</option>
+      <option value="last-year" selected?={ f.PeriodPreset=="last-year" }>Прошлый год</option>
+      <option value="custom" selected?={ f.PeriodPreset=="custom" }>Свой период</option>
+     </select>
+    </label>
+    <label class="filter-control search-property">
+     <span>Где ищут</span>
+     <select name="property" aria-label="Источник поиска">
+      <option value="web" selected?={ f.Property=="web" }>Веб-поиск</option>
+      <option value="youtube" selected?={ f.Property=="youtube" }>YouTube</option>
+      <option value="news" selected?={ f.Property=="news" }>Новости</option>
+      <option value="images" selected?={ f.Property=="images" }>Картинки</option>
+      <option value="froogle" selected?={ f.Property=="froogle" }>Покупки</option>
+     </select>
+    </label>
+    <button type="submit" class="btn btn-primary submit-research">
+     @ActionIcon("search")
+     <span data-submit-label>Показать интерес</span>
+    </button>
+   </div>
+   <div class="custom-dates" data-custom-dates hidden>
+    <label>С<input type="date" name="from" value={ f.From } min="2004-01-01" required class="input"/></label>
+    <label>По<input type="date" name="to" value={ f.To } min="2004-01-01" required class="input"/></label>
+   </div>
+   <div class="secondary-filters">
+    <div class="period-caption-wrap"><span class="period-caption" data-period-caption></span><button type="button" class="edit-dates" data-edit-dates>Изменить даты</button></div>
+    <label class="related-picker" data-related-picker hidden?={ f.Mode!="related" }>
+     <span>Для фразы</span>
+     <select class="select select-sm" name="related_term" aria-label="Фраза для связанных запросов">
+      for i,term:=range f.Terms {
+       <option value={ Number(i) } selected?={ f.RelatedTerm==i }>{ term }</option>
+      }
+     </select>
+    </label>
+    <label class="region-level" data-region-level hidden?={ f.Mode!="regions" }>
+     <span>Показывать</span>
+     <select class="select select-sm" name="region" aria-label="Уровень географии">
+      <option value="region" selected?={ f.Region=="region" }>Регионы</option>
+      <option value="country" selected?={ f.Region=="country" }>Страны</option>
+      <option value="city" selected?={ f.Region=="city" }>Города</option>
+      <option value="dma" selected?={ f.Region=="dma" }>Медиарынки DMA</option>
+     </select>
+    </label>
+    <details class="advanced-filter">
+     <summary>@lucide.Icon("sliders-horizontal","size-3.5")<span>Категория</span></summary>
+     <label>Код Google Trends<input name="category" value={ f.Category } class="input input-sm" inputmode="numeric" maxlength="5"/><small>0: все категории</small></label>
+    </details>
+   </div>
+   <p class="form-error" data-form-error role="alert" hidden></p>
+  </form>
+  <template id="comparison-template">@TermCard("",0)</template>
+  <div class="draft-notice" data-draft-notice hidden>
+   @lucide.Icon("info","size-4")
+   <span>Параметры изменены. График ниже относится к предыдущему запросу.</span>
+  </div>
+  <div id="query-feedback" aria-live="polite">
+   if result!=nil&&result.IsError() {
+    @Feedback(*result)
+   }
+  </div>
+  <section id="results" class="research-results" aria-label="Результаты исследования">
+   if result!=nil&&!result.IsError() {
+    @Results(*result)
+   } else {
+    @EmptyResearch()
+   }
+  </section>
+ }
+}
+templ EmptyResearch() {
+ <div class="empty-research">
+  <div class="empty-icon">@lucide.Icon("chart-line","size-7")</div>
+  <h2>Посмотрите, как меняется интерес</h2>
+  <p>Добавьте продукты или рыночные формулировки и получите их динамику в одной шкале.</p>
+  <div class="empty-labels"><span>Kaspersky Endpoint Security</span><span>Astra Linux</span><span>Dr.Web</span></div>
+  <small>Поисковый интерес, индекс 0–100</small>
+ </div>
+}
+templ Feedback(r ResultModel) {
+ <div class="query-feedback query-feedback-error" data-query-error role="alert">
+  @lucide.Icon("circle-alert","size-5 shrink-0")
+  <div><strong>Не удалось обновить сравнение</strong><p>{ r.Message }</p><small>Предыдущий результат, если он был, остаётся на экране.</small></div>
+ </div>
 }
 templ Results(r ResultModel) {
-	<div class="min-w-0 space-y-4">
-		<div role="status" class="alert border border-base-300 bg-base-200">
-			@lucide.Icon("info","size-5 shrink-0")
-			<div class="min-w-0"><p class="font-medium break-words">{ r.Message }</p>
-				if r.Period!=" .. " {
-					<p class="mt-1 text-xs break-words">{ r.Period } · { r.Geo } · { r.Property } · категория { r.Category }</p>
-				}
-			</div>
-		</div>
-		if len(r.Metrics)>0 {
-			<div class="grid min-w-0 gap-3 sm:grid-cols-2">
-				for _,m:=range r.Metrics {
-					<div class="min-w-0 rounded-box border border-base-300 p-4">
-						<h3 class="break-words text-sm">{ m.Term }</h3>
-						<p class="my-2 text-2xl font-semibold">{ m.Value }</p>
-						<p class="text-xs opacity-75">Средний индекс · { m.Coverage }</p>
-					</div>
-				}
-			</div>
-		}
-		if len(r.Series)>0 {
-			<div class="min-w-0 rounded-box border border-base-300 p-3 sm:p-4">
-				<h3 class="text-sm font-medium">Интерес во времени · общая шкала 0–100</h3>
-				<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-					for _,s:=range r.Series {
-						<span class={ s.Class }>{ s.Name }</span>
-					}
-				</div>
-				<svg viewBox="0 0 660 210" role="img" aria-label="Относительный поисковый интерес; пропуски разрывают линии" class="mt-3 block w-full min-w-0">
-					<g class="text-base-300" stroke="currentColor" stroke-width="1">
-						<line x1="42" y1="24" x2="638" y2="24"/><line x1="42" y1="104" x2="638" y2="104"/><line x1="42" y1="184" x2="638" y2="184"/>
-					</g>
-					<g fill="currentColor" class="text-base-content" font-size="12"><text x="6" y="28">100</text><text x="12" y="108">50</text><text x="18" y="188">0</text></g>
-					for _,s:=range r.Series {
-						for _,segment:=range s.Segments {
-							<polyline points={ segment } fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" class={ s.Class }/>
-						}
-					}
-				</svg>
-				<div class="flex flex-wrap justify-between gap-2 text-xs opacity-75"><span>{ r.FirstInterval }</span><span>{ r.LastInterval }</span></div>
-				<p class="mt-2 text-xs opacity-75">Линии показывают завершенные интервалы с подтвержденными данными. Частичные и неизвестные интервалы, пропуски и «&lt;1» сохранены в таблице. Недельные интервалы могут пересекать границы выбранного периода.</p>
-			</div>
-		}
-		if len(r.Rows)>0 {
-			<details open class="min-w-0 rounded-box border border-base-300 p-3 sm:p-4">
-				<summary class="cursor-pointer text-sm font-medium">Данные источника</summary>
-				<div class="mt-3 max-w-full overflow-x-auto">
-					<table class="table table-sm">
-						<thead>
-<tr>
-<th>Интервал / регион / запрос</th>
-for _,term:=range r.Terms {
-<th class="max-w-48 whitespace-normal">{ term }</th>
+ <div class="result-record" data-result data-request={ r.RequestJSON } data-status={ r.Status }>
+  <div class="result-heading">
+   <div><h2>{ r.Title }</h2><p>{ r.Geo }<span> • </span>{ r.Property }<span> • </span>{ r.Period }</p></div>
+   <span class="stale-badge" data-result-stale hidden>Параметры изменены</span>
+  </div>
+  if r.Status=="insufficient_data" {
+   <div class="empty-research empty-result">
+    @lucide.Icon("chart-line","size-8")
+    <h3>Для этого сравнения недостаточно данных</h3>
+    <p>Попробуйте более широкую формулировку, другой регион или длиннее период.</p>
+   </div>
+  } else if len(r.Series)>0 {
+   @InteractiveChart(r)
+  } else if len(r.Regions)>0 {
+   <div class="region-chart">
+    <div class="compact-legend">
+     for i,term:=range r.Terms {
+      <span data-series={ Number(i) }><i class="series-dot"></i>{ term }</span>
+     }
+    </div>
+    for _,row:=range r.Regions {
+     <div class="region-row"><h3>{ row.Label }</h3><div>
+      for i,cell:=range row.Cells {
+       <div class="region-value" data-series={ Number(i) }>
+        if cell.Index!=nil {
+         <progress max="100" value={ ScoreValue(cell.Index) } aria-label={ r.Terms[i]+" / "+row.Label }></progress>
+        }
+        <span>{ cell.Label }</span>
+       </div>
+      }
+     </div></div>
+    }
+    <p class="chart-footnote">Относительный интерес по регионам. Полный список доступен в таблице ниже.</p>
+   </div>
+  } else if len(r.Popular)>0||len(r.Rising)>0 {
+   <div class="related-panels">
+    @RelatedList("Популярные запросы",r.Popular)
+    @RelatedList("Растущие запросы",r.Rising)
+   </div>
+  }
+  <div class="result-footer">
+   <p>Google Trends · HasData<span> • </span>Поисковые фразы<span> • </span>
+    if r.Mode == "related" {
+     <span>Популярные: 0–100; растущие: рост в % или Breakout</span>
+    } else {
+     <span>Относительный индекс 0–100</span>
+    }
+   </p>
+   <a href={ r.ExploreURL } target="_blank" rel="noopener noreferrer">@lucide.Icon("external-link","size-3.5")<span>Открыть источник</span></a>
+  </div>
+  <div class="result-details">
+   <details class="data-details">
+    <summary><span>Таблица данных</span><span class="detail-count">{ Number(len(r.Rows)) } строк</span>@lucide.Icon("chevron-down","size-4")</summary>
+    <div class="data-table-scroll">
+     <table class="table table-sm">
+      <thead><tr><th>Интервал / регион / запрос</th>
+       for _,term:=range r.Terms {
+        <th>{ term }</th>
+       }
+      </tr></thead>
+      <tbody>
+       for _,row:=range r.Rows {
+        <tr><th><span>{ row.Label }</span><small>{ row.Detail }</small></th>
+         for _,cell:=range row.Cells {
+          <td><strong>{ cell.Label }</strong>
+           if cell.Detail!="" {
+            <small>{ cell.Detail }</small>
+           }
+          </td>
+         }
+        </tr>
+       }
+      </tbody>
+     </table>
+    </div>
+   </details>
+   <details class="source-details">
+    <summary><span>Как читать данные и сведения об источнике</span>@lucide.Icon("chevron-down","size-4")</summary>
+    <div class="source-body">
+     for _,note:=range r.Notes {
+      <p>{ note }</p>
+     }
+     <p>Подсказка показывает исходные значения всех фраз. Пропуск, «&lt;1», ноль и незавершенный интервал сохранены отдельно. Недельный интервал может пересекать границу выбранного периода.</p>
+     <p>Проверено: { r.Checked }</p>
+     <pre>{ r.MetadataJSON }</pre>
+    </div>
+   </details>
+  </div>
+ </div>
 }
-</tr>
-</thead>
-						<tbody>
-							for _,row:=range r.Rows {
-								<tr><th class="min-w-40 whitespace-normal font-normal"><span>{ row.Label }</span><span class="mt-1 block text-xs opacity-65">{ row.Detail }</span></th>
-									for _,cell:=range row.Cells {
-<td class="min-w-24"><span class="font-medium">{ cell.Label }</span>
-if cell.Detail!="" {
-<span class="mt-1 block max-w-48 text-xs opacity-65">{ cell.Detail }</span>
+templ InteractiveChart(r ResultModel) {
+ <div class="interactive-chart" data-chart={ r.ChartJSON }>
+  <div class="chart-legend" aria-label="Серии графика">
+   for i,s:=range r.Series {
+    <button type="button" class="series-toggle" data-series-toggle={ Number(i) } data-series={ Number(i) } aria-pressed="true" aria-label={ "Показывать на графике: "+s.Name }>
+     <span class="series-dot"></span>
+     <span class="series-title">{ s.Name }</span>
+     if i<len(r.Metrics) {
+      <span class="series-average"><small>среднее</small><strong>{ r.Metrics[i].Value }</strong></span>
+     }
+    </button>
+   }
+  </div>
+  <div class="chart-stage" data-chart-stage tabindex="0" role="group" aria-roledescription="интерактивный график" aria-label="Интерес во времени. Стрелки влево и вправо выбирают интервал." aria-describedby="chart-help">
+   <div class="chart-y-axis" aria-hidden="true"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div>
+   <div class="chart-plot" data-chart-plot>
+    <svg viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true" class="chart-svg">
+     <g class="chart-grid"><line x1="0" y1="0" x2="1000" y2="0"/><line x1="0" y1="75" x2="1000" y2="75"/><line x1="0" y1="150" x2="1000" y2="150"/><line x1="0" y1="225" x2="1000" y2="225"/><line x1="0" y1="300" x2="1000" y2="300"/></g>
+     for _,s:=range r.Series {
+      <g data-chart-line={ Number(s.Index) } data-series={ Number(s.Index) }>
+       for _,segment:=range s.Segments {
+        <polyline points={ segment } fill="none" class="chart-line" vector-effect="non-scaling-stroke"/>
+       }
+      </g>
+     }
+    </svg>
+    <div class="chart-crosshair" data-crosshair hidden></div>
+    <div class="chart-markers" data-chart-markers></div>
+    <p class="chart-all-hidden" data-chart-all-hidden hidden>Все фразы скрыты. Нажмите на название над графиком.</p>
+   </div>
+   <div class="chart-x-axis" data-x-axis aria-hidden="true"></div>
+   <div class="chart-tooltip" data-chart-tooltip role="tooltip" hidden>
+    <div class="point-heading"><strong data-tooltip-date></strong><button type="button" data-tooltip-close class="icon-button" aria-label="Закрыть подсказку">@lucide.Icon("x","size-4")</button></div>
+    <p class="point-quality" data-tooltip-quality></p>
+    <div data-tooltip-values></div>
+   </div>
+  </div>
+  <div class="chart-bottomline">
+   <p id="chart-help">@lucide.Icon("move-horizontal","size-4")<span>Наведите курсор или коснитесь графика. С клавиатуры: ← →</span></p>
+   if r.CommonPoints>0 {
+    <p>Средние: { Number(r.CommonPoints) } из { Number(r.TotalPoints) } общих полных интервалов</p>
+   } else {
+    <p>Недостаточно общих полных интервалов для средних</p>
+   }
+  </div>
+  <p class="sr-only" data-chart-live aria-live="polite" aria-atomic="true"></p>
+ </div>
 }
-</td>
-}
-								</tr>
-							}
-						</tbody>
-					</table>
-				</div>
-			</details>
-		}
-		for _,note:=range r.Notes {
-<p class="text-xs opacity-75">{ note }</p>
-}
-		if r.ExploreURL!="" {
-			<div class="flex flex-wrap items-center justify-between gap-3 text-xs">
-				<a href={ r.ExploreURL } target="_blank" rel="noopener noreferrer" class="link inline-flex items-center gap-1">
-@lucide.Icon("external-link","size-4")
-<span>Открыть в Google Trends</span></a>
-				<span class="break-words opacity-65">Проверено: { r.Checked }</span>
-			</div>
-		}
-	</div>
+templ RelatedList(title string,items []RelatedItem) {
+ <div class="related-panel"><h3>{ title }</h3>
+  for _,item:=range items {
+   <div class="related-item"><span>{ item.Query }</span><strong>{ item.Value }<small>{ item.Metric }</small></strong></div>
+  }
+ </div>
 }

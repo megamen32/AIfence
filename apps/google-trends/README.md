@@ -89,6 +89,18 @@ Statuses: ok, credentials_required, rate_limited, quota_exhausted, access_denied
 
 The UI and typed tools call the same trends.Service. The UI uses SDK-bundled htmx, templ, DaisyUI, and Lucide. It makes no provider requests on GET or automatic refresh.
 
+## Interactive research screen
+
+The comparison cards are editable and support adding/removing terms up to the source limit. The geographic picker searches verified Russian country/region names and changes the API filter only after an explicit option selection. Date presets cover complete calendar months, with exact dates available on demand.
+
+The main chart supports hover, tap/drag, Arrow Left/Right, Home/End, and Escape. One readout shows the actual source interval and every series, including zero, missing, censored, partial, and unknown states. Hiding a legend entry changes only local visibility and keeps the same scale. The table and source metadata are collapsed secondary views.
+
+Changing filters does not call HasData. The previous chart retains its own terms, region, and dates and is marked as an older comparison until the user submits the draft. A failed request preserves that chart and shows separate feedback. Enter in comparison cards or the geographic search never starts a source request.
+
+The geographic catalog has 3,517 accepted provider codes plus worldwide. It is bundled into the local immutable script, with no runtime geographic lookup. Primary sources: the HasData MCP resource hasdata://google_trends/geo and https://trends.google.com/trends/api/explore/pickers/geo?hl=ru&tz=0. The recorded catalog provenance is in validation/geo-catalog-provenance.json.
+
+For offline browser QA only, the opt-in TestRenderExplorerInteractionFixtures reads TRENDS_UI_PAYLOAD and writes private fixtures to TRENDS_UI_OUTPUT. The normal build skips that renderer. It uses the saved real response and separately marked quality-flag variants, never credentials or a live provider. These fixtures are not HTTP application routes.
+
 ## SDK build and tests
 
 Go 1.26.11 is selected by go.mod. On the current Mac it is already cached at /Users/user/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.11.darwin-arm64/bin/go.

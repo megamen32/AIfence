@@ -30,5 +30,6 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Handler: pages.Home, Access: agentsdk.AccessUser, Description: "Исследование внешнего спроса"})
 	a.RegisterRoute(&agentsdk.Route{Method: "POST", Path: "/query", Handler: pages.Query, Access: agentsdk.AccessUser, Description: "Запрос Google Trends с общей шкалой"})
 	a.RegisterStaticAsset(&agentsdk.StaticAsset{Name: views.AppCSSName, ContentType: "text/css; charset=utf-8", Data: views.AppCSS})
+	a.RegisterStaticAsset(&agentsdk.StaticAsset{Name: views.AppJSName, ContentType: "text/javascript; charset=utf-8", Data: views.AppJS})
 	return a
 }
