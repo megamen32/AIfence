@@ -3,7 +3,11 @@ package competitor
 import (
 	"context"
 	"errors"
+	"net/url"
+	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/airlockrun/agentsdk"
 	"github.com/airlockrun/goai/message"
@@ -18,10 +22,78 @@ type discoveryInput struct {
 }
 
 type discoveryResult struct {
-	Query       string   `json:"query"`
-	SearchText  string   `json:"search_text"`
-	Analysis    string   `json:"analysis"`
-	Limitations []string `json:"limitations"`
+	Query       string                  `json:"query"`
+	SearchText  string                  `json:"search_text"`
+	Analysis    string                  `json:"analysis"`
+	Limitations []string                `json:"limitations"`
+	Rows        []competitorObservation `json:"rows,omitempty"`
+}
+
+var discoveryURLPattern = regexp.MustCompile("https?://[^\\s\\)\\]>\"]+")
+var discoveryHostPattern = regexp.MustCompile("(?i)(?:www\\.)?[a-z0-9-]+\\.(?:ru|biz|com|net|io)\\b")
+
+func extractDiscoveryRows(query, searchText, analysis string) []competitorObservation {
+	// Only URLs present in the search payload become candidates. Every block
+	// starts unknown until a dedicated collector or a human supplies evidence.
+	text := searchText + "\n" + analysis
+	seen := map[string]bool{}
+	target := ""
+	for _, token := range strings.Fields(query) {
+		token = strings.Trim(token, " ,.;()[]{}")
+		if strings.Contains(token, "://") {
+			if parsed, err := url.Parse(token); err == nil {
+				target = strings.TrimPrefix(strings.ToLower(parsed.Hostname()), "www.")
+			}
+		}
+	}
+	sourceHosts := map[string]bool{
+		"metronews.ru": true, "3dnews.ru": true, "cnews.ru": true,
+		"expertnoeseo.ru": true, "google.com": true, "yandex.ru": true,
+		"youtube.com": true, "wikipedia.org": true, "tadviser.ru": true,
+		"raex-rr.com": true, "investfuture.ru": true, "it-stat.ru": true,
+		"kommersant.ru": true, "softline.ru": true,
+	}
+	hosts := make([]string, 0)
+	for _, raw := range append(discoveryURLPattern.FindAllString(text, -1), discoveryHostPattern.FindAllString(text, -1)...) {
+		raw = strings.TrimRight(raw, ".,;:")
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		host := strings.TrimPrefix(strings.ToLower(parsed.Hostname()), "www.")
+		if host == "" || host == target || sourceHosts[host] ||
+			strings.HasSuffix(host, ".cnews.ru") || strings.HasSuffix(host, ".softline.ru") || seen[host] {
+			continue
+		}
+		seen[host] = true
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	rows := make([]competitorObservation, 0, len(hosts)*6)
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, host := range hosts {
+		base := "https://" + host + "/"
+		for _, block := range []string{"search", "price", "purchase", "account", "service", "ux"} {
+			status := "unknown"
+			notes := "Кандидат найден в публичном поиске; блок не проверен автоматически на этапе discovery."
+			if block == "price" {
+				status = "not_connected"
+				notes = "Цена не собирается этим приложением; передайте проверенные строки из существующего источника Mac M1 или оставьте блок Н/Д."
+			}
+			rows = append(rows, competitorObservation{
+				Competitor: host,
+				URL:        base,
+				Block:      block,
+				Criterion:  "discovery candidate",
+				Value:      "Н/Д",
+				Status:     status,
+				SourceURL:  base,
+				CheckedAt:  now,
+				Notes:      notes,
+			})
+		}
+	}
+	return rows
 }
 
 func registerDiscovery(a *agentsdk.Agent) {
@@ -59,9 +131,10 @@ func registerDiscovery(a *agentsdk.Agent) {
 				Query:      query,
 				SearchText: searchText,
 				Analysis:   summary.Text,
+				Rows:       extractDiscoveryRows(query, searchText, summary.Text),
 				Limitations: []string{
 					"Кандидаты основаны на публичном поиске; включение в список не подтверждает коммерческую сопоставимость.",
-					"Проверь домен, редакцию продукта и актуальность цены перед экспортом.",
+					"Проверь домен и редакцию продукта; цена передаётся из существующего источника Mac M1, а без неё блок price остаётся not_connected.",
 				},
 			}, nil
 		}).Build()

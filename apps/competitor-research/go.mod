@@ -6,6 +6,7 @@ require (
 	github.com/airlockrun/agentsdk v0.11.0
 	github.com/airlockrun/goai v0.3.4
 	github.com/airlockrun/sol v0.1.23
+	github.com/mxschmitt/playwright-go v0.6401.0
 )
 
 require (
@@ -15,8 +16,10 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cli/browser v1.3.0 // indirect
+	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/gofrs/flock v0.13.1 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
