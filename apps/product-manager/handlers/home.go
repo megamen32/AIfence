@@ -26,6 +26,19 @@ type Handler struct {
 	svc             product.Service
 	files           *agentsdk.Agent
 	catalogOverview func(context.Context, catalogoverview.GetInput) (catalogoverview.Overview, error)
+	delivery        Delivery
+}
+
+// Delivery pushes an approved card to the customer's tracker. Approve calls
+// it only after the owner's explicit confirmation POST.
+type Delivery interface {
+	AfterApprove(ctx context.Context, r decision.Record)
+	TaskLink(ctx context.Context, r decision.Record) (id, url string, ok bool)
+}
+
+func (h *Handler) WithDelivery(d Delivery) *Handler {
+	h.delivery = d
+	return h
 }
 
 func New(s product.Service, agent ...*agentsdk.Agent) *Handler {
@@ -262,6 +275,11 @@ func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decisio
 	}
 	if r.Task != nil {
 		v.TaskID, v.TaskTag, v.TaskURL = r.Task.ID, r.Task.Tag, r.Task.URL
+		if h.delivery != nil {
+			if id, link, ok := h.delivery.TaskLink(ctx, r); ok {
+				v.TaskID, v.TaskURL = id, link
+			}
+		}
 	}
 	if r.Assessment != nil {
 		v.Assessment = r.Assessment.Reason
@@ -574,6 +592,11 @@ func (h *Handler) Approve(w http.ResponseWriter, r *http.Request) error {
 	_, err = h.svc.Send(r.Context(), decision.SendInput{HypothesisID: id, Confirmed: true, IdempotencyKey: "backlog/" + id, ExpectedVersion: &version})
 	if err != nil {
 		return err
+	}
+	if h.delivery != nil {
+		if rec, gerr := h.svc.Get(r.Context(), decision.GetInput{HypothesisID: id}); gerr == nil {
+			h.delivery.AfterApprove(r.Context(), rec)
+		}
 	}
 	http.Redirect(w, r, href("id", id), http.StatusSeeOther)
 	return nil
