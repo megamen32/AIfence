@@ -53,14 +53,21 @@ async function existing() {
   throw Error("File catalog pagination limit; cannot establish run identity");
 }
 function result(file,doc,reused) {
+  // A private snapshot keeps its values in the protected owner-scoped file.
+  // The hosted return carries only the receipt and counts, never a percentage,
+  // a control or a magnitude that came from a local_project_only document.
+  const privateSnapshot = doc.source_policy === "local_project_only";
   return {run_id,product_key,reused,snapshot:file,status:doc.status,
     sources:doc.sources.map(s=>({source:s.source,status:s.status,count:s.batch?.observations?.length||0,
       observed_count:s.batch?.observations?.filter(o=>o.status==="observed").length||0,
       reason:s.reason||null,file:s.file||null})),document_refs:doc.document_refs,
-    watchdog_cases:(doc.watchdog_cases||[]).map(c=>({dataset_id:c.dataset_id,candidate_id:c.candidate_id,signal_id:c.signal_id,
-      kind:c.kind,period:c.period,control_product_key:c.control_product_key,relative_change_pct:c.relative_change_pct,
-      control_change_pct:c.control_change_pct,observations:c.document?.batches?.reduce((n,b)=>n+(b.observations?.length||0),0)||0,
-      first_alert_magnitude:c.document?.first_alert_magnitude||null})),
+    watchdog_cases:(doc.watchdog_cases||[]).map(c=>{
+      const observations=c.document?.batches?.reduce((n,b)=>n+(b.observations?.length||0),0)||0;
+      if(privateSnapshot) return {dataset_id:c.dataset_id,candidate_id:c.candidate_id,observations};
+      return {dataset_id:c.dataset_id,candidate_id:c.candidate_id,signal_id:c.signal_id,
+        kind:c.kind,period:c.period,control_product_key:c.control_product_key,relative_change_pct:c.relative_change_pct,
+        control_change_pct:c.control_change_pct,observations,first_alert_magnitude:c.document?.first_alert_magnitude||null};
+    }),
     previous_snapshot:doc.previous_snapshot,warnings:doc.warnings};
 }
 const old=await existing();
@@ -149,7 +156,9 @@ try {
   // Reaching the page limit is reported, never presented as a complete scan.
   if(pages===pageLimit) watchdog_warnings.push("watchdog: page limit reached; remaining candidates were not collected");
 } catch(e) {
-  watchdog_warnings.push("watchdog cases: "+(e instanceof Error?e.message:"app access, scan or case contract failed"));
+  // A provider error can quote a row, a phrase or a token. Report the class of
+  // failure only; the message text never reaches the hosted return.
+  watchdog_warnings.push("watchdog cases: app access, scan or case contract failed");
 }
 for(const id of request.evidence_file_ids) {
   try {const r=await platform.files({operation:"read",fileId:id});add(batch(JSON.parse(r.text)),ref(r.file));}

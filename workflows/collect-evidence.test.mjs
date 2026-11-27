@@ -62,6 +62,41 @@ test('reaching the page limit is reported instead of silently truncating', async
  assert.equal(r.status,'partial');
 });
 
+test('a private snapshot returns only a receipt and counts, never its values', async () => {
+ const s=setup();
+ s.apps.metrika_analyst.tools.scan_watchdog_series=async()=>({status:'alert',dataset_id:'ds-private',candidate_count:1,
+  candidates:[{candidate_id:'c-private',signal_id:'watchdog/private',kind:'controlled_decline',period:{from:'2026-06-01',to:'2026-06-07'},
+   control_product_key:'astra_linux_special_edition',control_change_pct:10.4,magnitude:{relative_change_pct:-21.875}}]});
+ s.apps.metrika_analyst.tools.collect_selected_watchdog_case=async q=>({status:'alert',first_alert_signal_id:'watchdog/private',
+  first_alert_magnitude:{relative_change_pct:-21.875},document:caseDoc('local_project_only',q.candidate_id)});
+ const r=await invoke(s.a,s.platform,s.apps);
+ const c=r.watchdog_cases[0];
+ // The hosted return names the case and its size only.
+ assert.deepEqual(Object.keys(c).sort(),['candidate_id','dataset_id','observations']);
+ assert.equal(c.observations,1);
+ // The protected file still holds the whole document with its policy and locators.
+ const stored=JSON.parse(s.store.get(r.snapshot.id).text);
+ assert.equal(stored.source_policy,'local_project_only');
+ assert.equal(stored.watchdog_cases[0].document.source_policy,'local_project_only');
+ assert.equal(stored.watchdog_cases[0].document.batches[0].observations[0].source_ref.locator,'watch-series.json#2026-06-01');
+ // And the stored case keeps the measured values that the return omits.
+ assert.equal(stored.watchdog_cases[0].relative_change_pct,-21.875);
+});
+
+test('a provider error message never reaches the hosted return', async () => {
+ const s=setup();
+ s.apps.metrika_analyst.tools.scan_watchdog_series=async()=>({status:'alert',dataset_id:'ds-err',candidate_count:1,
+  candidates:[{candidate_id:'c-err',kind:'controlled_decline',control_product_key:'astra_linux_special_edition',magnitude:{relative_change_pct:-21.875}}]});
+ // The message quotes a row the way a provider sometimes does.
+ s.apps.metrika_analyst.tools.collect_selected_watchdog_case=async()=>{throw Error('row 42: "касперский" token=abc123');};
+ const r=await invoke(s.a,s.platform,s.apps);
+ const warning=r.warnings.find(w=>w.startsWith('watchdog cases'));
+ assert.ok(warning);
+ assert.ok(!/row 42|касперский|abc123/.test(JSON.stringify(r)));
+ assert.equal(r.watchdog_cases.length,0);
+ assert.equal(r.status,'partial');
+});
+
 function caseDoc(policy, signal) {
  const obs=[{id:'watchdog/'+signal,kind:'metric',product_key:'kes',metric_key:'watchdog.alert',value:true,unit:'boolean',period:{from:'2026-05-11',to:'2026-06-07'},segment:'mobile',source_ref:{source_id:'aifence-watchdog',locator:'watch-series.json#2026-06-01'},status:'observed',details:{control_product_key:'astra_linux_special_edition'}}];
  return {schema_version:'aifence.case.v1',...(policy?{source_policy:policy}:{}),as_of:'2026-07-19T23:59:59Z',batches:[{schema_version:'aifence.v1',source:'sales',as_of:'2026-07-19T23:59:59Z',status:'ok',observations:obs,warnings:[]}]};
@@ -79,7 +114,7 @@ test('every scanned controlled-decline case is saved with its own policy and loc
    {candidate_id:'c-3',signal_id:'watchdog/three',kind:'temporary_spike',period:{from:'2026-06-01',to:'2026-06-07'},reason:'temporary_lift_overlaps_documented_campaign',magnitude:{basis:'capped_four_week_relative_change',unit:'percent',relative_change_pct:40}}
   ],warnings:[]};};
  const asked=[];
- s.apps.metrika_analyst.tools.collect_selected_watchdog_case=async q=>{asked.push(q);return {status:'alert',first_alert_signal_id:'watchdog/'+(q.candidate_id==='c-1'?'one':'two'),document:caseDoc(q.candidate_id==='c-2'?'local_project_only':'',q.candidate_id)};};
+ s.apps.metrika_analyst.tools.collect_selected_watchdog_case=async q=>{asked.push(q);return {status:'alert',first_alert_signal_id:'watchdog/'+(q.candidate_id.startsWith('adb')?'one':'two'),document:caseDoc('',q.candidate_id)};};
  const r=await invoke(s.a,s.platform,s.apps);
  // Both controlled candidates are collected; the spike is not a controlled case.
  assert.deepEqual(asked.map(q=>q.candidate_id),['adb16360713a259a573d8888ab57a2da6351488875c1a3ff884b75966669f823','c-2']);
@@ -91,9 +126,9 @@ test('every scanned controlled-decline case is saved with its own policy and loc
  assert.equal(r.watchdog_cases[0].observations,1);
  const stored=JSON.parse(s.store.get(r.snapshot.id).text);
  assert.equal(stored.watchdog_cases.length,2);
- // The private case keeps its own policy and the snapshot becomes private.
- assert.equal(stored.watchdog_cases[1].document.source_policy,'local_project_only');
- assert.equal(stored.source_policy,'local_project_only');
+ // A public snapshot stays public and returns its measured values.
+ assert.equal(stored.source_policy,undefined);
+ assert.equal(r.watchdog_cases[1].relative_change_pct,-8);
  // Every alert keeps the producer's locator; nothing is rewritten.
  const alerts=stored.watchdog_cases.flatMap(c=>c.document.batches.flatMap(b=>b.observations));
  assert.ok(alerts.every(o=>o.source_ref.locator==='watch-series.json#2026-06-01'));
