@@ -49,18 +49,18 @@ PNG-файлы взяты из проверенных кадров `docs/qa/scen
 
 | Шаг | Фактическое состояние | Кадр |
 |---|---|---|
-| Вход и каталог | Каталог Airlock открылся. Product Manager и metrika-analyst показаны как работающие | [08-login-live.png](video-one-take-27-11/08-login-live.png) |
-| Metrika Analyst | Пример «Что изменилось?» открылся, сообщение отправлено один раз. Через 10 секунд оставалось `Выполнено 7 · run_js`, полный ответ не появился | [01-metrika-live.png](video-one-take-27-11/01-metrika-live.png) |
-| Product Manager | Карточка открылась. Видны Kaspersky Endpoint Security, Astra Linux Special Edition, график и evidence. Одновременно показаны `−33,9 %` и `−32,7 %`, блок цены задержки пуст, в задаче виден внутренний `PM-c0eeda9e06e2acf3` | [02-pm-live.png](video-one-take-27-11/02-pm-live.png) |
+| Вход и каталог | Каталог Airlock открылся. Product Manager и metrika-analyst показаны как работающие | [08-login-live-1440.png](video-one-take-27-11/08-login-live-1440.png) |
+| Metrika Analyst | Пример «Что изменилось?» открылся, сообщение отправлено один раз. Через 10 секунд оставалось `Выполнено 7 · run_js`, полный ответ не появился | [01-metrika-live-1440.png](video-one-take-27-11/01-metrika-live-1440.png) |
+| Product Manager | Карточка открылась. Видны Kaspersky Endpoint Security, Astra Linux Special Edition, график и evidence. Одновременно показаны `−33,9 %` и `−32,7 %`, блок цены задержки пуст, в задаче виден внутренний `PM-c0eeda9e06e2acf3` | [02-pm-live-1440.png](video-one-take-27-11/02-pm-live-1440.png) |
 | Delivery | `/delivery` открылся. Формы уже имели абсолютные actions `/delivery/sync` и `/delivery/dion`. Кнопка «Сверить сейчас» нажата один раз. После клика вкладка потеряла соединение с bezbrowser, read-back результата не получен | [03-delivery-sync.png](video-one-take-27-11/03-delivery-sync.png) |
 | Redmine | В этой попытке не открывался после sync, чтобы не повторять действие при неизвестном результате | [04-redmine-issue.png](video-one-take-27-11/04-redmine-issue.png) |
 | Dion | Кнопка не нажималась после потери соединения. Новая отправка не подтверждена | [05-dion-message.png](video-one-take-27-11/05-dion-message.png) |
 
 ### Визуальные дефекты, найденные в живом кадре
 
-1. В карточке две разные величины одного сигнала, `−33,9 %` в evidence и `−32,7 %` в соседней строке. Исправлено в коде дедупликацией одинаковых пар показателя и источника при построении pins. Кадр [02-pm-live.png](video-one-take-27-11/02-pm-live.png).
-2. Блок «Цена задержки» не показывает значение и оставляет пустое пространство до раскрытия допущений. Добавлена короткая подсказка с требуемыми входами для расчёта ₽/неделю. Кадр [02-pm-live.png](video-one-take-27-11/02-pm-live.png).
-3. Заголовок «Задача в бэклоге · Redmine» сопровождался локальным ID `PM-c0eeda9e06e2acf3`. Добавлена маркировка системы задачи, чтобы локальный бэклог не выдавался за Redmine. Кадр [02-pm-live.png](video-one-take-27-11/02-pm-live.png).
+1. В карточке две разные величины одного сигнала, `−33,9 %` в evidence и `−32,7 %` в соседней строке. Исправлено в коде дедупликацией одинаковых пар показателя и источника при построении pins. Кадр [02-pm-live-1440.png](video-one-take-27-11/02-pm-live-1440.png).
+2. Блок «Цена задержки» не показывает значение и оставляет пустое пространство до раскрытия допущений. Добавлена короткая подсказка с требуемыми входами для расчёта ₽/неделю. Кадр [02-pm-live-1440.png](video-one-take-27-11/02-pm-live-1440.png).
+3. Заголовок «Задача в бэклоге · Redmine» сопровождался локальным ID `PM-c0eeda9e06e2acf3`. Добавлена маркировка системы задачи, чтобы локальный бэклог не выдавался за Redmine. Кадр [02-pm-live-1440.png](video-one-take-27-11/02-pm-live-1440.png).
 4. Форма доставки в исходнике использовала относительные paths `./delivery/sync` и `./delivery/dion`. Исправлено на `/delivery/sync` и `/delivery/dion`. Текущий live runtime уже показывал абсолютные actions до нажатия. Кадр [03-delivery-sync.png](video-one-take-27-11/03-delivery-sync.png).
 5. В текущем delivery read-back оставались placeholder names `demo_target` и `demo_control`, старый сигнал `watchdog/39fec477…` и issue `#7`. Это относится к сохранённому старому состоянию, новая задача по текущему сигналу не подтверждена.
 
