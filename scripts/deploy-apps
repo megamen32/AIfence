@@ -7,8 +7,8 @@ python_bin="${AIFENCE_PYTHON:-/opt/homebrew/bin/python3}"
 if [[ ! -x "$python_bin" ]]; then python_bin="$(command -v python3)"; fi
 export GOMAXPROCS="${GOMAXPROCS:-2}" GOFLAGS="${GOFLAGS:--p=1}"
 verify_main_release() {
-  "$python_bin" - "$ROOT" "$commit" <<'VERIFY_MAIN'
-import pathlib, subprocess, sys
+  "$python_bin" - "$ROOT" "$commit" "${1:-}" <<'VERIFY_MAIN'
+import json, pathlib, subprocess, sys
 root, commit = pathlib.Path(sys.argv[1]), sys.argv[2]
 main = subprocess.check_output(["git", "-C", str(root), "rev-parse", "refs/heads/main"], text=True).strip()
 if commit != main:
@@ -18,6 +18,28 @@ for name in ("scripts/deploy-apps", "scripts/personal-build-apps.py", "scripts/p
     path = root / name
     if path.is_symlink() or not path.is_file() or path.read_bytes() != data:
         sys.exit(name + " differs from the selected main commit; commit the deployment inputs first")
+# Load trusted policy code from the selected commit, not an editable worktree helper.
+policy_path = "scripts/personal-mac-rollout.py"
+policy_source = subprocess.check_output(["git", "-C", str(root), "show", commit + ":" + policy_path])
+policy = {"__name__": "personal_release_policy", "__file__": str(root / policy_path)}
+exec(compile(policy_source, commit + ":" + policy_path, "exec"), policy)
+if sys.platform == "darwin":
+    approved_path = pathlib.Path.home() / "AIfence/.runtime/personal-releases/current"
+elif sys.platform == "linux":
+    approved_path = pathlib.Path("/home/roomhacker/Airlock/personal/releases/current")
+else:
+    sys.exit("Live personal deployment requires an installed M1 or server-88 release policy")
+frozen, _, approved, _ = policy["approved_release"](approved_path)
+lock = json.loads(subprocess.check_output([
+    "git", "-C", str(root), "show", commit + ":platform/personal-release.lock.json"]))
+pins = {name: policy["digest"](lock.get(name), 40, "app platform " + name)
+        for name in ("airlock", "agentsdk", "sol")}
+if frozen and pins != approved:
+    sys.exit("App platform dependencies differ from the frozen release")
+if sys.argv[3]:
+    receipt = json.loads(pathlib.Path(sys.argv[3]).read_bytes())
+    if receipt.get("source_commit") != commit or {name: receipt.get(name) for name in pins} != pins:
+        sys.exit("App bundle platform dependencies or source commit differ from the committed release lock")
 VERIFY_MAIN
 }
 usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager" >&2; exit 2; }
@@ -180,7 +202,7 @@ with tarfile.open(archive_path) as archive:
     archive.extractall(destination, filter="data")
 UNPACK_NATIVE
 stage="$native_stage"
-verify_main_release
+verify_main_release "$release_dir/packages/apps.json"
 # Import only an actual synchronized SDK binding. Never manufacture or refresh
 # its source ETag to make a stale workspace pass the server's source CAS.
 mkdir -p "$stage/.airlock/local"
@@ -219,7 +241,7 @@ fi
 if [[ "$create" == 1 && -f "$stage/.airlock/local/agent.toml" ]]; then
   echo 'Refusing --create with existing binding; inspect state first.' >&2; exit 1
 fi
-verify_main_release
+verify_main_release "$release_dir/packages/apps.json"
 mkdir -p "$state"
 chmod 700 "$state"
 printf '%s\n' "$commit" > "$state/desired-commit"
