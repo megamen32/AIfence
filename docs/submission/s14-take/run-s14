@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# One native Playwright recording per invocation.
+set -eu
+umask 077
+
+bundle_dir="$(cd "$(dirname "$0")" && pwd)"
+action="${1:-help}"
+if [ "$#" -gt 0 ]; then shift; fi
+usage() {
+  cat <<'HELP'
+run-s14 review                     Show and record the existing S14 case on the contest Mac.
+run-s14 fresh [recorder options]   Run the director's question in a dedicated S14 profile.
+run-s14 prepare [options]          Prepare a clean profile with the frozen case inputs.
+run-s14 verify RAW_WEBM EXPORT_MP4 [--receipt receipt.json]
+run-s14 doctor                     Check Python, Playwright and the browser installation.
+Options --out and --profile are forwarded to the corresponding tool.
+HELP
+}
+
+choose_python() {
+  for candidate in "${AIFENCE_TAKE_PYTHON:-}" /opt/homebrew/opt/python@3.11/bin/python3.11 /opt/homebrew/bin/python3.11 python3; do
+    if [ -n "$candidate" ] && "$candidate" -c 'from playwright.sync_api import Page; assert hasattr(Page, "screencast")' >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"; return 0
+    fi
+  done
+  return 1
+}
+python_exe=""
+case "$action" in
+  help|-h|--help) usage;exit 0;;
+  prepare|fresh|review|verify|doctor) ;;
+  *) usage >&2; exit 2;;
+esac
+if ! python_exe="$(choose_python)"; then
+  echo "Install the pinned requirements with Python 3.11 and run python -m playwright install chromium." >&2; exit 2
+fi
+if [ "$action" = review ]; then
+  for arg in "$@"; do case "$arg" in -h|--help) exec "$python_exe" "$bundle_dir/review_take.py" --help;; esac; done
+fi
+case "$action" in
+  verify) exec "$python_exe" "$bundle_dir/verify_take.py" "$@";;
+  doctor)
+    exec "$python_exe" - "$bundle_dir" <<'PYDOCTOR'
+import importlib.metadata
+import platform
+import subprocess
+import sys
+from argparse import Namespace
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+sys.path.insert(0, sys.argv[1])
+from recorder import get_tools
+chrome, ffmpeg = get_tools(Namespace(chrome=None, ffmpeg=None))
+with sync_playwright() as driver:
+    exe = chrome or driver.chromium.executable_path
+    if not Path(exe).is_file():
+        raise SystemExit("Chromium executable is missing. Run python -m playwright install chromium.")
+    browser = driver.chromium.launch(executable_path=exe, headless=True)
+    print(platform.machine(), "Playwright", importlib.metadata.version("playwright"), "Chromium", browser.version)
+    browser.close()
+print(exe)
+version = subprocess.check_output([ffmpeg, "-version"], text=True).splitlines()[0]
+print(version)
+PYDOCTOR
+    ;;
+  prepare) exec "$python_exe" "$bundle_dir/prepare_case.py" "$@";;
+esac
+if [ "$action" = fresh ]; then
+  has_profile=false
+  for arg in "$@"; do
+    case "$arg" in --profile|--profile=*) has_profile=true;; -h|--help) exec "$python_exe" "$bundle_dir/recorder.py" --help;; esac
+  done
+  if [ "$has_profile" = false ]; then
+    qa_root="${AIFENCE_QA_ROOT:-$HOME/AIfence}"
+    inputs="${AIFENCE_S14_INPUTS:-$HOME/AIfence-worktrees/blind-catalog-verification/.runtime/blind-director/run-a1a920496bbd616bf084c4d0/inputs/case-06}"
+    owner_dir="${AIFENCE_TAKES_DIR:-$HOME/AIfence/.runtime/s14-demo-takes}/owners/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    "$python_exe" "$qa_root/scripts/lint-placeholder-names.py" "$inputs"
+    "$python_exe" "$bundle_dir/prepare_case.py" --qa-root "$qa_root" --inputs "$inputs" --out "$owner_dir"
+    "$python_exe" "$bundle_dir/resolve_evidence.py" --profile-dir "$owner_dir" --inputs "$inputs"
+    set -- --profile "$owner_dir/access.json" "$@"
+  fi
+fi
+dest=""
+expect_out=false
+for arg in "$@"; do
+  if [ "$expect_out" = true ]; then dest="$arg"; expect_out=false; continue; fi
+  case "$arg" in --out) expect_out=true;; --out=*) dest="${arg#--out=}";; esac
+done
+if [ "$expect_out" = true ]; then echo "--out requires a directory" >&2; exit 2; fi
+if [ -z "$dest" ]; then
+  dest="${AIFENCE_TAKES_DIR:-$HOME/AIfence/.runtime/s14-demo-takes}/$action-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  set -- "$@" --out "$dest"
+fi
+case "$action" in
+  review) "$python_exe" "$bundle_dir/review_take.py" "$@";;
+  fresh) "$python_exe" "$bundle_dir/recorder.py" --mode fresh "$@";;
+esac
+# Keep the untouched raw recording if verification fails.
+if ! "$python_exe" "$bundle_dir/verify_take.py" "$dest/take.webm" "$dest/take.mp4" --receipt "$dest/receipt.json" --json "$dest/verification.json"; then
+  if [ -f "$dest/take.mp4" ] && [ ! -e "$dest/take.unverified.mp4" ]; then
+    mv "$dest/take.mp4" "$dest/take.unverified.mp4"
+  fi
+  exit 4
+fi
+printf 'Ready: %s/take.mp4\n' "$dest"
