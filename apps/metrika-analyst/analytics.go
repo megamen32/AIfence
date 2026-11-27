@@ -61,16 +61,19 @@ type Query struct {
 }
 type Compare struct {
 	// SourceMode=live pins the counter independently of the dashboard file selection.
-	SourceMode        string   `json:"source_mode,omitempty" jsonschema:"enum=live,description=Use live to compare the configured counter even when a historical dashboard file is selected. Omit to use the configured source."`
-	IncludeIncomplete bool     `json:"include_incomplete,omitempty"`
-	ProductKey        string   `json:"product_key"`
-	MetricKeys        []string `json:"metric_keys"`
-	BaselineFrom      string   `json:"baseline_from"`
-	BaselineTo        string   `json:"baseline_to"`
-	CurrentFrom       string   `json:"current_from"`
-	CurrentTo         string   `json:"current_to"`
-	Segment           string   `json:"segment,omitempty"`
-	SourcePath        string   `json:"source_path,omitempty"`
+	SourceMode        string `json:"source_mode,omitempty" jsonschema:"enum=live,description=Use live to compare the configured counter even when a historical dashboard file is selected. Omit to use the configured source."`
+	IncludeIncomplete bool   `json:"include_incomplete,omitempty"`
+	// DemoReplay serves the embedded synthetic Kaspersky weekly index with its dates
+	// shifted onto the requested weeks. Every answer is labelled as a demo.
+	DemoReplay   bool     `json:"demo_replay,omitempty" jsonschema:"description=Demo only: replay the embedded synthetic orders_index fall on the requested weeks, labelled as demo. Requires metric_keys=[orders_index] and product_key kaspersky_small_office_security."`
+	ProductKey   string   `json:"product_key"`
+	MetricKeys   []string `json:"metric_keys"`
+	BaselineFrom string   `json:"baseline_from"`
+	BaselineTo   string   `json:"baseline_to"`
+	CurrentFrom  string   `json:"current_from"`
+	CurrentTo    string   `json:"current_to"`
+	Segment      string   `json:"segment,omitempty"`
+	SourcePath   string   `json:"source_path,omitempty"`
 }
 type CheckInput struct {
 	SourcePath string `json:"source_path,omitempty"`
@@ -367,6 +370,12 @@ func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
 		return Batch{}, fmt.Errorf("source_mode must be live or omitted")
 	}
 	path := chosen(in.SourcePath, cfg.EvidencePath)
+	if in.DemoReplay {
+		if in.SourceMode != "" || in.SourcePath != "" || len(in.MetricKeys) != 1 || strings.TrimSpace(in.MetricKeys[0]) != "orders_index" || in.ProductKey != demoReplayProduct {
+			return Batch{}, fmt.Errorf("demo_replay requires metric_keys=[orders_index], product_key %s and no source_mode or source_path", demoReplayProduct)
+		}
+		path = demoReplayPath
+	}
 	weekly := path != "" && len(in.MetricKeys) == 1 && strings.TrimSpace(in.MetricKeys[0]) == "orders_index"
 	if weekly && in.Segment == "" {
 		in.Segment = "self_service"

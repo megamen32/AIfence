@@ -33,11 +33,14 @@ type Window struct {
 	// SKUs selects an explicit reviewed set for family_price_week_delta. Family
 	// lets Market Watch discover candidates from indexed titles. Both exclude
 	// the single exact SKU.
-	SKUs    []string `json:"skus,omitempty"`
-	Family  string   `json:"family,omitempty"`
-	Metric  string   `json:"metric"`
-	DropPct float64  `json:"drop_pct"`
-	Monday  string   `json:"monday"`
+	SKUs   []string `json:"skus,omitempty"`
+	Family string   `json:"family,omitempty"`
+	Metric string   `json:"metric"`
+	// DemoReplay asks Metrika Analyst for its labelled synthetic Kaspersky snapshot
+	// shifted onto the checked weeks. It requires metric orders_index.
+	DemoReplay bool    `json:"demo_replay,omitempty"`
+	DropPct    float64 `json:"drop_pct"`
+	Monday     string  `json:"monday"`
 }
 
 func (w Window) Validate() (time.Time, error) {
@@ -98,6 +101,13 @@ func (w Window) Validate() (time.Time, error) {
 	}
 	switch w.Metric {
 	case "visits", "users", "pageviews", "orders", "revenue", "purchase_conversion", "average_order_value", "product_views", "add_to_cart":
+		if w.DemoReplay {
+			return time.Time{}, errors.New("demo_replay requires metric orders_index")
+		}
+	case "orders_index":
+		if !w.DemoReplay || w.ProductKey == "" {
+			return time.Time{}, errors.New("orders_index is available only as a labelled demo_replay of one product family")
+		}
 	default:
 		return time.Time{}, errors.New("select one supported live store metric")
 	}
@@ -295,6 +305,9 @@ func Check(ctx context.Context, w Window, approved bool, read Read, launch Launc
 	query := map[string]any{"product_key": target, "metric_keys": []string{w.Metric}, "baseline_from": before.From, "baseline_to": before.To, "current_from": current.From, "current_to": current.To}
 	if w.ProductKey == "" {
 		query["source_mode"] = "live"
+	}
+	if w.DemoReplay {
+		query["demo_replay"] = true
 	}
 	if w.Segment != "" {
 		query["segment"] = w.Segment
