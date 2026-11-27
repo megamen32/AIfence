@@ -101,6 +101,9 @@ templ investigationPanel(v *Investigation) {
 		} else {
 			<p class="monitor-empty">Для графика нужны хотя бы две сопоставимые недели продаж товара и контроля. Спросите в чате «Что изменилось за неделю?», агент дочитает продажи.</p>
 		}
+		if v.Demand != nil {
+			@demandPanel(v.Demand)
+		}
 		if v.ReleaseDate != "" {
 			<p class="monitor-release">
 				@lucide.Icon("flag", "size-4")
@@ -172,6 +175,33 @@ templ investigationPanel(v *Investigation) {
 				}
 			</section>
 		}
+	</section>
+}
+
+templ demandPanel(v *DemandComparison) {
+	<section class="demand-panel" aria-label="Сравнение спроса">
+		<div class="demand-heading"><div><span class="demand-eyebrow">Спрос</span><h3>KES и Astra Linux ищут одинаково?</h3></div><small>{ v.Origin }</small></div>
+		<div class="demand-source-grid">
+			for _, source := range v.Sources {
+				<article class="demand-source-card">
+					<div class="demand-source-title"><strong>{ source.Name }</strong><span>{ source.Status }</span></div>
+					if source.TargetCurrent != "" {
+						<div class="demand-metric-grid">
+							<div><small>{ v.Product }</small><strong>{ source.TargetCurrent }</strong><em>{ source.TargetChange }</em></div>
+							<div><small>{ v.Control }</small><strong>{ source.ControlCurrent }</strong><em>{ source.ControlChange }</em></div>
+						</div>
+						<div class="demand-bars" aria-label={ source.Name + ": " + v.Product + " и " + v.Control }>
+							<span class="demand-bar target" style={ "width:" + source.TargetWidth + "%" }></span>
+							<span class="demand-bar control" style={ "width:" + source.ControlWidth + "%" }></span>
+						</div>
+						<p class="demand-period">{ source.Period } · база { source.TargetBaseline } / { source.ControlBaseline } { source.Unit }</p>
+					} else {
+						<p class="demand-empty">{ source.Hint }</p>
+					}
+				</article>
+			}
+		</div>
+		<p class="demand-footnote">Источники спроса показывают интерес к поиску и не доказывают причину падения заказов.</p>
 	</section>
 }
 

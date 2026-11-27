@@ -71,11 +71,24 @@ type Investigation struct {
 	Prices                                                                        *MarketPrices
 	Product, BackURL, Origin, Detected, Week, Control, Scale, Cost, SnapshotURL   string
 	Chart                                                                         Chart
+	Demand                                                                        *DemandComparison
 	Release, ReleaseDate, ReleaseURL                                              string
 	Before, After, Assessment                                                     string
 	Frames                                                                        []BrowserFrame
 	Evidence                                                                      []EvidenceRow
 	RecordURL, Orders, Margin, CostError, ProductKey, SnapshotID, CardID, AlertID string
+}
+
+type DemandComparison struct {
+	Product, Control, Origin string
+	Sources                  []DemandSource
+}
+
+type DemandSource struct {
+	Name, Unit, Period, Status, Hint               string
+	TargetBaseline, TargetCurrent, TargetChange    string
+	ControlBaseline, ControlCurrent, ControlChange string
+	TargetWidth, ControlWidth                      string
 }
 
 type BrowserFrame struct{ Device, Step, Verdict, Image, SourceURL, Tone string }

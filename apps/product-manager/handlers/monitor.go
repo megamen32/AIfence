@@ -417,6 +417,7 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 		if signal.details.Control != "" {
 			v.Control = observedProductName(signal.details.Control, *signal)
 		}
+		v.Demand = demandComparison(key, signal.details.Control, rows)
 		v.SnapshotURL = href("snapshot", signal.snapshot, "obs", signal.ID)
 		v.Magnitude = signalMagnitude(evidence.WatchdogWindow(signal.Row))
 	}
@@ -506,6 +507,81 @@ func investigation(key string, rows []monitorObservation, records []decision.Rec
 	}
 	attachEvidencePins(v)
 	return v
+}
+
+type demandPoint struct {
+	from, to string
+	number   float64
+}
+
+func demandComparison(product, control string, rows []monitorObservation) *views.DemandComparison {
+	if control == "" {
+		control = "astra_linux_special_edition"
+	}
+	result := &views.DemandComparison{
+		Product: observedProductName(product, monitorObservation{Row: evidence.Row{Product: product}}),
+		Control: productName(control),
+		Origin:  preparedOrigin,
+	}
+	configs := []struct {
+		name, unit string
+		match      func(monitorObservation) bool
+	}{
+		{name: "Wordstat", unit: "запросов", match: func(row monitorObservation) bool {
+			return row.Metric == "search_queries" && strings.Contains(strings.ToLower(row.Ref.SourceID), "wordstat")
+		}},
+		{name: "Google Trends", unit: "индекс 0–100", match: func(row monitorObservation) bool {
+			return row.Metric == "search_interest" && strings.Contains(strings.ToLower(row.Ref.SourceID), "google")
+		}},
+	}
+	for _, cfg := range configs {
+		target := demandPoints(product, cfg.match, rows)
+		controlPoints := demandPoints(control, cfg.match, rows)
+		source := views.DemandSource{Name: cfg.name, Unit: cfg.unit, Status: "Нет наблюдения", Hint: "Источник не прислал две сопоставимые недели."}
+		if len(target) >= 2 && len(controlPoints) >= 2 {
+			t0, t1 := target[0], target[len(target)-1]
+			c0, c1 := controlPoints[0], controlPoints[len(controlPoints)-1]
+			source.TargetBaseline, source.TargetCurrent = demandNumber(t0.number), demandNumber(t1.number)
+			source.ControlBaseline, source.ControlCurrent = demandNumber(c0.number), demandNumber(c1.number)
+			source.TargetChange, source.ControlChange = demandChange(t0.number, t1.number), demandChange(c0.number, c1.number)
+			maxValue := math.Max(t1.number, c1.number)
+			if maxValue > 0 {
+				source.TargetWidth = num(t1.number / maxValue * 100)
+				source.ControlWidth = num(c1.number / maxValue * 100)
+			}
+			source.Period = span(t0.from, t1.to)
+			source.Status, source.Hint = "Сопоставимые недели", "ДЕМО · синтетический срез из сохранённого снимка"
+		}
+		result.Sources = append(result.Sources, source)
+	}
+	return result
+}
+
+func demandPoints(product string, match func(monitorObservation) bool, rows []monitorObservation) []demandPoint {
+	points := make([]demandPoint, 0, 8)
+	for _, row := range rows {
+		if row.Product != product || !match(row) || row.Status != "observed" {
+			continue
+		}
+		value, err := strconv.ParseFloat(row.Value, 64)
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+			continue
+		}
+		points = append(points, demandPoint{from: row.Period.From, to: row.Period.To, number: value})
+	}
+	slices.SortStableFunc(points, func(a, b demandPoint) int { return strings.Compare(a.from, b.from) })
+	return points
+}
+
+func demandNumber(value float64) string {
+	return strings.TrimSuffix(strings.TrimSuffix(num(value), "0"), ",")
+}
+
+func demandChange(before, after float64) string {
+	if before <= 0 {
+		return "н/д"
+	}
+	return signalPercent((after/before - 1) * 100)
 }
 
 func attachEvidencePins(v *views.Investigation) {

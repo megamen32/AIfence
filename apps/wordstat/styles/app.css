@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "./design-system.css";
 @plugin "../.airlock/toolchain/lib/tailwind/daisyui.mjs" {
- themes: business --default, corporate --preferslight;
+ themes: dark --default, light --preferslight;
 }
 :root{font-family:var(--aif-font-sans)}
 [hidden]{display:none!important}
