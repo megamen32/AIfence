@@ -150,11 +150,9 @@ templ Result(v ResultView) {
    </details>
    <details>
     <summary><span>Период и ограничения источника</span>@lucide.Icon("chevron-down","size-4")</summary>
-    <div class="source-body"><p>{ v.WindowNote }</p><p>Частотность не измеряет покупателей, заказы или выручку. Пересекающиеся фразы и вложенные территории нельзя суммировать.</p><p>Обращение к источнику: { v.CheckedAt }. Это время запроса, не дата данных.</p><pre>{ v.Metadata }</pre></div>
+    <div class="source-body"><p>{ v.WindowNote }</p><p>Частотность не измеряет покупателей, заказы или выручку. Пересекающиеся фразы и вложенные территории нельзя суммировать.</p><p>Обращение к источнику: { v.CheckedAt }. Это время запроса, не дата данных.</p><p>{ v.SourceDetails }</p></div>
    </details>
-   if v.Raw!="" {
- <details><summary><span>Исходный ответ Wordstat</span>@lucide.Icon("chevron-down","size-4")</summary><div class="source-body"><pre>{ v.Raw }</pre></div></details>
- }
+   <details><summary><span>Ограничения источника</span>@lucide.Icon("chevron-down","size-4")</summary><div class="source-body"><p>Расширенный технический ответ скрыт. Используйте строки, график и период рядом с результатом.</p></div></details>
   </div>
  </div>
 }

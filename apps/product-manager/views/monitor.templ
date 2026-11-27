@@ -121,7 +121,7 @@ templ investigationPanel(v *Investigation) {
 				<p>{ v.Scale }</p>
 			</div>
 			<div>
-				<h4>Стоимость потерь</h4>
+				<h4>Цена задержки</h4>
 				if v.Weekly != "" {
 					<p class="cost-value" title={ v.WeeklyBasis }>{ v.Weekly }</p>
 				}
@@ -148,6 +148,14 @@ templ investigationPanel(v *Investigation) {
 				</details>
 			</div>
 		</div>
+		if len(v.Chart.Pins) > 0 {
+			<section class="monitor-section" aria-label="Доказательства на графике">
+				<h3>Доказательства на точках</h3>
+				for _, pin := range v.Chart.Pins {
+					<a class="monitor-evidence" href={ pin.URL }><strong>{ pin.Kind }</strong><span>{ pin.Title }</span><small>{ pin.Detail }</small></a>
+				}
+			</section>
+		}
 		if len(v.Evidence) > 0 || v.RecordURL != "" || v.SnapshotURL != "" {
 			<section class="monitor-section">
 				<details>
@@ -190,6 +198,13 @@ templ trend(c Chart, control string) {
 					<circle class="trend-control-dot" cx={ p.X } cy={ p.ControlY } r="4"><title>{ p.Label }</title></circle>
 				}
 				<circle class="trend-target-dot" cx={ p.X } cy={ p.TargetY } r="4"><title>{ p.Label }</title></circle>
+			}
+			for _, pin := range c.Pins {
+				<g class="trend-pin" transform={ "translate(" + pin.X + "," + pin.Y + ")" }>
+					<circle cx="0" cy="-16" r="10" fill="var(--panel)" stroke="var(--accent)" stroke-width="2"></circle>
+					<text x="0" y="-16" text-anchor="middle" dominant-baseline="central" fill="var(--ink)" font-size="10" font-weight="700">{ pin.Kind }</text>
+					<title>{ pin.Title } · { pin.Detail }</title>
+				</g>
 			}
 			<text class="trend-tick" x="30" y="21">{ c.Max }</text>
 			<text class="trend-tick" x="30" y="196">{ c.First }</text>

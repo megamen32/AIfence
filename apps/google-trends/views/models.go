@@ -67,7 +67,7 @@ type RelatedItem struct {
 }
 type ResultModel struct {
 	Status, Message, Mode, Title, Period, Geo, Property, Category, Checked, ExploreURL string
-	RequestJSON, ChartJSON, MetadataJSON                                               string
+	RequestJSON, ChartJSON, MetadataJSON, SourceDetails                                string
 	Terms                                                                              []string
 	Metrics                                                                            []Metric
 	Rows                                                                               []Row

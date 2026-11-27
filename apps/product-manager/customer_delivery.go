@@ -386,7 +386,7 @@ a{color:var(--accent)}form{display:inline}.tag{font-size:.8rem;border:1px solid 
 <p class="muted">Следующая сверка: {{.NextSync}} <form method="post" action="./delivery/sync"><button>Сверить сейчас</button></form></p>
 <p><span class="tag">сгенерирована ИИ-помощником</span> <span class="muted">— отдельный флаг и ID сигнала в полях задачи.</span></p></section>
 <section><h2>Сводка в Dion</h2>
-{{if not .ChatSet}}<p class="warn">Тестовый чат не задан (настройка dion_test_chat).</p>{{end}}
+{{if not .ChatSet}}<p class="warn">Чат для сводки не подключён. Укажите получателя Dion в настройках доставки.</p>{{end}}
 {{with .Draft}}<p class="muted">{{.Day}} · {{if .Sent}}<span class="ok">отправлено</span>{{else}}<span class="warn">не отправлено</span>{{end}}</p><pre>{{.Text}}</pre>{{else}}<p class="muted">Сегодня сводка ещё не уходила.</p>{{end}}
 <p class="muted">Следующая: {{.NextDion}} <form method="post" action="./delivery/dion"><button>Отправить сейчас</button></form></p></section>
 </main></html>`))

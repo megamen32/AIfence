@@ -282,7 +282,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 	case path != "":
 		v.SourceChip = "Выгрузка Метрики · " + path
 	case c.Counter > 0:
-		v.SourceChip = "Яндекс Метрика · счётчик " + strconv.FormatInt(c.Counter, 10)
+		v.SourceChip = "Яндекс Метрика · подключённый счётчик"
 	default:
 		v.State = "setup"
 		v.EmptyTitle = "Счётчик Метрики не подключён"
@@ -420,7 +420,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 			v.Sources = append(v.Sources, sourceCard{Mark: "М", Title: metricTitles[k], Detail: "не получено", Status: "нет данных", Tone: "amber"})
 			continue
 		}
-		card := sourceCard{Mark: "М", Title: metricTitles[k], Detail: o.SourceRef.SourceID, Locator: o.SourceRef.Locator, Status: "наблюдение", Tone: "green"}
+		card := sourceCard{Mark: "М", Title: metricTitles[k], Detail: "Яндекс Метрика", Locator: "Период и показатель из источника", Status: "наблюдение", Tone: "green"}
 		if o.Status == "estimated" {
 			card.Status, card.Tone = "выборка", "amber"
 		}
