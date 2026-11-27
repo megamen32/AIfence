@@ -145,12 +145,6 @@ services:
   postgres: {platform: linux/amd64}
   postgres-bootstrap: {platform: linux/amd64}
   caddy-proxy: {platform: linux/amd64}
-services:
-  airlock: {platform: linux/amd64}
-  frontend: {platform: linux/amd64}
-  postgres: {platform: linux/amd64}
-  postgres-bootstrap: {platform: linux/amd64}
-  caddy-proxy: {platform: linux/amd64}
 EOF
   sync_file "$TMP/airlock.override.yml" "$ROOT/airlock/compose.server100.yml"
   cat > "$TMP/redmine-db.override.yml" <<EOF
