@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import time
 from urllib.request import urlopen
 
@@ -44,7 +45,7 @@ def platform_components(release):
     return {name: digest(release.get(field), 40, "release " + field)
             for name, field in (("airlock", "core"), ("agentsdk", "agentsdk"), ("sol", "sol"))}
 
-def verify_release_channel(manifest, revision):
+def approved_release():
     # Policy comes only from the installed copy of the published channel.
     approved = RUNTIME / "personal-releases/current"
     _, channel = release_object(approved / "channel.json")
@@ -67,6 +68,26 @@ def verify_release_channel(manifest, revision):
         raise ValueError("approved platform archives must be an object")
     expected_archives = {service: digest(archives.get(archive), 64, "release " + archive)
                          for service, archive in (("airlock", "backend.tar.gz"), ("frontend", "frontend.tar.gz"))}
+    return frozen, expected_hash, expected, expected_archives
+
+def verified_image_receipts(manifest, expected_archives):
+    try:
+        rows = read_json(manifest)
+    except (OSError, ValueError) as error:
+        raise ValueError("cannot read image receipt") from error
+    if not isinstance(rows, list) or len(rows) != len(SERVICES):
+        raise ValueError("approved release requires exactly two image receipts")
+    image_archives = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("service") not in SERVICES or row["service"] in image_archives:
+            raise ValueError("invalid or duplicate image service")
+        image_archives[row["service"]] = digest(row.get("sha256"), 64, "image archive hash")
+    if image_archives != expected_archives:
+        raise ValueError("image archives differ from the approved release")
+    return {row["service"]: row for row in rows}
+
+def verify_release_channel(manifest, revision):
+    frozen, expected_hash, expected, archives = approved_release()
     if not frozen:
         return
     candidate_bytes, candidate = release_object(manifest.parent / "release.json")
@@ -74,19 +95,14 @@ def verify_release_channel(manifest, revision):
         raise ValueError("frozen platform component revisions cannot change")
     if hashlib.sha256(candidate_bytes).hexdigest() != expected_hash:
         raise ValueError("candidate platform manifest differs from the frozen release")
-    try:
-        rows = read_json(manifest)
-    except (OSError, ValueError) as error:
-        raise ValueError("cannot read candidate image receipt") from error
-    if not isinstance(rows, list) or len(rows) != len(SERVICES):
-        raise ValueError("frozen release requires exactly two image receipts")
-    image_archives = {}
-    for row in rows:
-        if not isinstance(row, dict) or row.get("service") not in SERVICES or row["service"] in image_archives:
-            raise ValueError("invalid or duplicate frozen image service")
-        image_archives[row["service"]] = digest(row.get("sha256"), 64, "image archive hash")
-    if image_archives != expected_archives:
-        raise ValueError("candidate image archives differ from the frozen release")
+    verified_image_receipts(manifest, archives)
+
+def installed_release():
+    _, _, expected, archives = approved_release()
+    rows = verified_image_receipts(RUNTIME / "personal-overlay/manifest.json", archives)
+    if any(row.get("revision") != expected["airlock"] for row in rows.values()):
+        raise ValueError("installed images differ from the approved revision")
+    return rows, expected["airlock"]
 
 def save(path, value):
     tmp = path.with_name("." + path.name + ".new")
@@ -297,6 +313,10 @@ def apply(manifest, revision, schema, root):
         raise
 
 def main():
+    if sys.argv[1:] == ["--check-installed"]:
+        rows, revision = installed_release()
+        verify_images(rows, revision)
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--revision", required=True)
