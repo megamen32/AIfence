@@ -1,5 +1,7 @@
 # AIfence repository rules
 
+1. **Work, not checks (first rule, 28.11).** Before any task, read [.agents/skills/work-not-checks/SKILL.md](.agents/skills/work-not-checks/SKILL.md). No repeated `git status`/`ls`/`rev-parse`, no re-reading AGENTS.md or skills, no hindsight lookups without a question, no sleep-polling loops. Time goes into real edits, builds, deploys and the mandatory visual checks. Stand shortcuts: [.agents/skills/stand-accelerators/SKILL.md](.agents/skills/stand-accelerators/SKILL.md).
+
 Read README.md, docs/architecture.md, contracts/README.md and your assigned docs/tracks/*.md before coding.
 
 - The installed native M1 profile uses the exact Airlock, SDK and Sol revisions in platform/personal-release.lock.json. platform/airlock.lock.json retains the original v0.8.15 bootstrap pin. Build native apps with the existing scripts/personal-build-apps.py profile; do not copy closed platform source or older Product Studio implementation into Git. The platform revision is pinned, not a development target.
