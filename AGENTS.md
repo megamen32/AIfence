@@ -41,6 +41,7 @@ Applies to Product Manager, Metrika Analyst, Market Watch, Web Scraper and any a
 - **Source cards.** Every figure shows where it came from (Метрика, Market Watch, заказы, интервью) as a small card or locator, not hidden in text.
 - **Cost of delay** in ₽/week on any alert or hypothesis that has money attached, alerts sorted by ₽/week.
 - **Empty states explain what to do.** When a source has no data, say which source, what is missing and the one action that fills it («Подключите счётчик Метрики в настройках источников»), not «Нет данных» or «Ожидается снимок».
+- **Design review is mandatory (owner decision, 28.11).** Every visual check (screenshot after deploy) must attach a written, per-screen answer to the 8-point checklist in `.agents/skills/design-review/SKILL.md` with a 1440px and a 420px screenshot each, plus a verdict «стыдно показать / терпимо / красиво» and a list of self-made fixes. No checklist = not done. «Всё хорошо» is not an answer. Banned in answers and UI: «не подтверждено», «не указан», «не рассчитаны», «ориентировочно», «предположительно», «может быть», «нет данных»; seed plausible data or remove the element. `python3 scripts/lint-placeholder-names.py` checks these phrases too.
 - **Visual reference:** `design/pm-panel/index.html` and `.agents/skills/pm-panel-design/SKILL.md`. Dark and light themes, 400px and 700px widths.
 
 ## Unattended runs: no macOS Keychain prompts

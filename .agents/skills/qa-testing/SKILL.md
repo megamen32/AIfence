@@ -168,7 +168,7 @@ Fix the system prompt, tools, data contracts or evidence, then rerun the same va
 
 ## Definition of done
 
-Completion requires live verification on the deployed 42080 stand. Log in through a dedicated browser profile, open the changed application, and verify the user-visible behavior on screen. Save a 1440px screenshot as evidence.
+Completion requires live verification on the deployed 42080 stand. Log in through a dedicated browser profile, open the changed application, and verify the user-visible behavior on screen. Save screenshots at 1440px and 420px as evidence, and attach the written design review (`.agents/skills/design-review/SKILL.md`, all 8 points, answered per screen with concrete elements, plus verdict and fix list). A screenshot without the written checklist is not evidence, and «готово» is not accepted without it; a verdict «стыдно показать» means not done. `python3 scripts/lint-placeholder-names.py` and `python3 -m unittest tests/test_lint_ui_slop.py` must pass.
 
 When a change touches the background loop, rerun the full chain on 42080 in order:
 
@@ -178,4 +178,4 @@ When a change touches the background loop, rerun the full chain on 42080 in orde
 4. Redmine task.
 5. Dion digest queued.
 
-Confirm every chain step on screen and save screenshot evidence. If a step fails, fix it, redeploy through the single deployer, rerun the chain, and continue until it passes. Never report completion while a required step remains unverified. In the final reply and the session `REPORT.md`, list every unverified step and explain why it could not be verified.
+Confirm every chain step on screen, save screenshot evidence and run the design review on each screen of the chain. If a step fails, fix it, redeploy through the single deployer, rerun the chain, and continue until it passes. Never report completion while a required step remains unverified. In the final reply and the session `REPORT.md`, list every unverified step and explain why it could not be verified.
