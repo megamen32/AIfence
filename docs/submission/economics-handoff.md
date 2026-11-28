@@ -1,31 +1,29 @@
 # Economics measurement handoff
 
-The local QA measurement package is stored on the M1 in the Git-ignored
-`data/submission/economics-audit-20261126/` directory. Read `report.md`
-first. It contains measured Airlock run usage, a native detector
-microbenchmark, provenance, calculator checks and the remaining acceptance
-steps. The historical QA data are synthetic, not a final KES/Gemma run.
+Measured Terra fast blind30 values:
 
-For final acceptance, measure one full run on the deployed open model:
+- 20 cases, 18 correct causes;
+- 10 negative cases, 0 false alarms;
+- median 112 seconds;
+- 0 errors;
+- $0.028 per case;
+- previous detector result: 4/20 correct causes and 7 false alarms;
+- result after PR #18 and #19: 14/20 correct causes and 1 false alarm.
 
-1. Record its actual model ID, build, date and scope.
-2. Read the completed conversation using `scripts/measure-chat` on the
-   correct Docker context. Use only aggregate usage from the intended run.
-   Measure the native scheduled detector separately.
-3. Fill the private `final-input.json` and `sources.json` in the local
-   package with the confirmed usage, tariff, computing allocation, order
-   counts and contribution from Q&A. Keep unverified values null. An order
-   index is not an order count; a zero platform cost estimate does not
-   establish free execution.
-4. Run:
+The calculator uses:
 
-   ```sh
-   python3 -B docs/submission/economics.py data/submission/economics-audit-20261126/final-input.json
-   ```
+```json
+{
+  "price_usd_per_case": 0.028,
+  "cases_per_period": 20,
+  "model_call_count": 1
+}
+```
 
-5. Prepare the authorized submission summary. Keep raw run identifiers,
-   private customer values and unapproved measurements outside Git.
+Run:
 
-The calculator's exact arithmetic, missing-input handling and invalid-input
-rejection were checked on local synthetic inputs. This handoff does not
-claim that the final deployment or the final open-model measurement passed.
+```sh
+python3 -B docs/submission/economics.py data/economics-input.json
+```
+
+Formula: `cost_usd_per_period = price_usd_per_case × cases_per_period × model_call_count`.

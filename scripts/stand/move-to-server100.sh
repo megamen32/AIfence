@@ -76,7 +76,7 @@ if ! done_phase build; then
   retry "cd '$ROOT/build/airlock' && docker build --platform linux/amd64 --label org.opencontainers.image.revision=$AIRLOCK_SHA -t aifence-js-executor:$AGENT_TAG -f Dockerfile.js-executor ."
   retry "cd '$ROOT/build/airlock' && docker build --platform linux/amd64 --label org.opencontainers.image.revision=$AIRLOCK_SHA -t aifence-airlock:$AGENT_TAG -f Dockerfile.airlock ."
   retry "cd '$ROOT/build/airlock' && docker build --platform linux/amd64 --label org.opencontainers.image.revision=$AIRLOCK_SHA -t aifence-frontend:$AGENT_TAG -f Dockerfile.frontend ."
-  sync_file "$SRC/.runtime/personal-releases/2026.11.27.6/backend.tar.gz" "$ROOT/build/backend.tar.gz"
+  sync_file "$SRC/.runtime/personal-releases/2026.11.27.6-steps200/backend.tar.gz" "$ROOT/build/backend.tar.gz"
   sync_file "$SRC/.runtime/personal-releases/2026.11.27.6/frontend.tar.gz" "$ROOT/build/frontend.tar.gz"
   remote "printf '%s\\n' 'FROM aifence-airlock:$AGENT_TAG' 'ADD backend.tar.gz /' > '$ROOT/build/Dockerfile.airlock-personal'; printf '%s\\n' 'FROM aifence-frontend:$AGENT_TAG' 'ADD frontend.tar.gz /' > '$ROOT/build/Dockerfile.frontend-personal"
   retry "cd '$ROOT/build' && docker build --platform linux/amd64 --label org.opencontainers.image.revision=$CORE_SHA -t aifence-airlock:$AIRLOCK_TAG -f Dockerfile.airlock-personal ."
