@@ -114,6 +114,11 @@ class EmbeddedCookiePolicy(unittest.TestCase):
             self.check_flow(host, {"Sec-Fetch-Dest": "document"}, False)
             self.check_flow(host, {}, False)
 
+    def test_wordstat_embedded_documents(self):
+        self.check_flow("wordstat.localhost", {"Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "cross-site"}, True)
+        self.check_flow("wordstat.localhost", {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Storage-Access": "none"}, True)
+        self.check_flow("wordstat.localhost", {"Sec-Fetch-Dest": "document"}, False)
+
     def test_unrelated_origins(self):
         for host in ("localhost", "other.localhost", "market-watch.localhost.example", "product-manager.localhost.example"):
             self.check_flow(host, {"Sec-Fetch-Dest": "iframe"}, False)
