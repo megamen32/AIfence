@@ -298,6 +298,8 @@ h3{font-size:1.03rem;font-weight:650;letter-spacing:-.015em;margin-bottom:.6rem}
 .catalog-tile.signal-associated {stroke:var(--blue);stroke-width:3}
 .catalog-treemap text {fill:var(--ink);font-size:13px;font-weight:620;pointer-events:none}
 .catalog-treemap .catalog-value,.catalog-treemap .catalog-meaning {font-size:11px;font-weight:560;fill:var(--muted)}
+.catalog-treemap .catalog-label-focus {font-size:11px;font-weight:720;fill:var(--ink)}
+.catalog-treemap .catalog-label-focus .catalog-value {font-size:10px}
 .catalog-treemap .catalog-meaning {font-size:10px;letter-spacing:.01em}
 .catalog-other-groups {display:grid;gap:.45rem;margin-top:.6rem;padding:.45rem .55rem;border:1px solid var(--rule);border-radius:.4rem;font-size:.72rem}
 .catalog-other-groups summary,.catalog-legend summary {cursor:pointer;color:var(--muted);font-weight:650}

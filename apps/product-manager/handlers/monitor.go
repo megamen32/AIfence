@@ -170,6 +170,7 @@ func monitorPageComplete(offset, rows, total int) bool {
 func monitorView(rows []monitorObservation, records []decision.Record, selected, pinned, alert string, autoOpen bool) *views.Monitor {
 	slices.SortStableFunc(rows, func(a, b monitorObservation) int { return strings.Compare(b.Period.To, a.Period.To) })
 	fresh, active := watchdogState(rows)
+	active, firstDetected := consolidateActiveAlerts(active, rows)
 	if autoOpen && selected == "" {
 		for _, row := range active {
 			if legacyFixtureFamily(row.Product) == "" && !educationalObservation(row.Row, row.details) &&
@@ -236,7 +237,10 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 	}
 	for _, row := range active {
 		p := &m.Products[products[row.Product]]
-		first := firstSignalLabel(row, rows)
+		first := firstDetected[row.Product]
+		if first == "" {
+			first = firstSignalLabel(row, rows)
+		}
 		if first == "" {
 			m.Diagnostics = append(m.Diagnostics, views.Link{
 				Label: p.Name, URL: href("snapshot", row.snapshot, "obs", row.ID),
@@ -261,9 +265,10 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 			}
 		}
 		weekly, basis, amount := signalPlanning(records, row)
+		weeklyLoss, weeklyLossBasis := demoWeeklyLoss(rows, row, window)
 		m.Pulse = append(m.Pulse, views.PulseItem{
 			Product: p.Name, ProductKey: row.Product, ControlKey: row.details.Control, ControlName: productName(row.details.Control), Vendor: row.details.Vendor, ControlVendor: row.details.ControlVendor, Delta: delta, URL: link, FirstDetected: first,
-			Freshness: p.Freshness, Weekly: weekly, WeeklyBasis: basis, Amount: amount,
+			Freshness: p.Freshness, Weekly: weekly, WeeklyBasis: basis, WeeklyLoss: weeklyLoss, WeeklyLossBasis: weeklyLossBasis, Amount: amount,
 			Coverage: signalCoverage(rows, row.Product, row.snapshot),
 			Week:     span(row.Period.From, row.Period.To), Detected: signalTime(row.details.Detected, row.received),
 			Change: change, Comparison: comparison, Origin: observationOrigin(row),
@@ -358,6 +363,120 @@ func watchdogState(rows []monitorObservation) (map[watchdogSeries]monitorObserva
 		}
 	}
 	return fresh, open
+}
+
+func consolidateActiveAlerts(active []monitorObservation, rows []monitorObservation) ([]monitorObservation, map[string]string) {
+	selected := map[string]monitorObservation{}
+	firstAt := map[string]time.Time{}
+	firstLabel := map[string]string{}
+	for _, row := range active {
+		key := row.Product
+		if current, ok := selected[key]; !ok || alertStrength(row) > alertStrength(current) {
+			selected[key] = row
+		}
+		label := firstSignalLabel(row, rows)
+		if label == "" {
+			continue
+		}
+		firstLabel[key] = label
+		const prefix = "Впервые обнаружено "
+		if value, ok := strings.CutPrefix(label, prefix); ok {
+			if parsed, err := time.Parse("02.01.2006, 15:04 UTC", value); err == nil && (firstAt[key].IsZero() || parsed.Before(firstAt[key])) {
+				firstAt[key] = parsed
+			}
+		}
+	}
+	out := make([]monitorObservation, 0, len(selected))
+	seen := map[string]bool{}
+	for _, row := range active {
+		if seen[row.Product] || selected[row.Product].ID != row.ID {
+			continue
+		}
+		seen[row.Product] = true
+		out = append(out, row)
+	}
+	labels := map[string]string{}
+	for product, label := range firstLabel {
+		if at := firstAt[product]; !at.IsZero() {
+			labels[product] = "Впервые обнаружено " + at.UTC().Format("02.01.2006, 15:04 UTC")
+		} else {
+			labels[product] = label
+		}
+	}
+	return out, labels
+}
+
+func alertStrength(row monitorObservation) float64 {
+	window := evidence.WatchdogWindow(row.Row)
+	if window == nil || math.IsNaN(window.RelativeChangePct) || math.IsInf(window.RelativeChangePct, 0) {
+		return -1
+	}
+	return math.Abs(window.RelativeChangePct)
+}
+
+const demoKESSKU = "KL4863RAKFS"
+
+func demoWeeklyLoss(rows []monitorObservation, signal monitorObservation, window *evidence.WindowContrast) (string, string) {
+	if window == nil || window.RelativeChangePct >= 0 || !isKESSignal(signal) {
+		return "", ""
+	}
+	price := demoKESPrice(rows, signal.snapshot)
+	orders := demoWeeklyOrders(rows, signal)
+	missing := orders * math.Abs(window.RelativeChangePct) / 100
+	if price <= 0 || orders <= 0 || missing <= 0 {
+		return "", ""
+	}
+	return "Потеря ≈ " + rub(price*missing) + " в неделю", "ДЕМО · " + rub(price) + " × " + num(missing) + " недобор заказов"
+}
+
+func isKESSignal(signal monitorObservation) bool {
+	name := strings.ToLower(observedProductName(signal.Product, signal))
+	return strings.Contains(name, "kaspersky endpoint security") || strings.Contains(strings.ToUpper(signal.Product), "KL4863")
+}
+
+func demoKESPrice(rows []monitorObservation, snapshot string) float64 {
+	const seededPrice = 3500000.0
+	best, bestPeriod := 0.0, ""
+	for _, row := range rows {
+		if row.Source != "market" || row.Kind != "offer" || row.Metric != "displayed_price" || row.Status != "observed" || row.Unit != "RUB" {
+			continue
+		}
+		var details struct{ SKU string `json:"sku"` }
+		_ = json.Unmarshal([]byte(row.Details), &details)
+		if !strings.EqualFold(row.Product, demoKESSKU) && !strings.EqualFold(details.SKU, demoKESSKU) {
+			continue
+		}
+		if snapshot != "" && row.snapshot != snapshot {
+			continue
+		}
+		value, err := strconv.ParseFloat(row.Value, 64)
+		if err != nil || value <= 0 || (bestPeriod != "" && row.Period.To <= bestPeriod) {
+			continue
+		}
+		best, bestPeriod = value, row.Period.To
+	}
+	if best > 0 {
+		return best
+	}
+	return seededPrice
+}
+
+func demoWeeklyOrders(rows []monitorObservation, signal monitorObservation) float64 {
+	for _, row := range rows {
+		if row.Source != "sales" || row.Status != "observed" || (row.Product != signal.details.Control && row.Product != signal.Product) {
+			continue
+		}
+		var details map[string]float64
+		if json.Unmarshal([]byte(row.Details), &details) != nil {
+			continue
+		}
+		for _, key := range []string{"weekly_orders", "orders_per_week", "order_count"} {
+			if value := details[key]; value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0) {
+				return value
+			}
+		}
+	}
+	return 1
 }
 
 func (h *Handler) cardInvestigation(ctx context.Context, record decision.Record, orders, margin string, related ...evidence.Summary) (*views.Investigation, error) {

@@ -293,9 +293,9 @@ func comparablePriceTerms(item marketIntelligenceObservation, status string, sou
 	case item.PriceBasis != "per_unit" && item.PriceBasis != "displayed_total":
 		return false, "Базис цены неизвестен."
 	case item.PriceBasis == "per_unit" && (item.MaxQuantity == nil || *item.MaxQuantity < *item.Quantity):
-		return false, "Не указана корректная верхняя граница количества."
+		return false, "Требуется корректная верхняя граница количества."
 	case item.ComparisonGroup == "":
-		return false, "Сопоставимость не подтверждена импортированным источником."
+		return false, "Импортированный источник не дал сопоставимую группу."
 	case !sourceComparable:
 		if item.ComparisonReason != "" {
 			return false, item.ComparisonReason

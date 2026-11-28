@@ -137,11 +137,11 @@ func quoteComparable(key quoteKey, source *quoteComparison) (bool, string) {
 	case key.basis != "per_unit" && key.basis != "displayed_total":
 		return false, "Базис цены неизвестен."
 	case key.basis == "per_unit" && key.max == 0:
-		return false, "Не указана верхняя граница количества."
+		return false, "Требуется верхняя граница количества."
 	case key.incomparable:
 		return false, "Источник пометил условия как несопоставимые."
 	case source == nil || source.Group == "":
-		return false, "Сопоставимость не подтверждена Market Watch."
+		return false, "Market Watch не дал сопоставимую группу."
 	case !source.Comparable:
 		return false, source.Reason
 	default:
@@ -150,7 +150,7 @@ func quoteComparable(key quoteKey, source *quoteComparison) (bool, string) {
 }
 
 func quoteGroupTitle(k quoteKey) string {
-	qty := "Количество не указано"
+	qty := "Количество из источника"
 	if k.quantity > 0 {
 		qty = fmt.Sprintf("%d шт.", k.quantity)
 		if k.max > k.quantity {

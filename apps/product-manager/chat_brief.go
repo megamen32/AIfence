@@ -223,7 +223,7 @@ func causeNumber(value *float64) string {
 
 func causeWeekCount(weeks *int) string {
 	if weeks == nil {
-		return "не указано"
+		return "за доступный период"
 	}
 	return fmt.Sprintf("%d", *weeks)
 }
@@ -240,7 +240,7 @@ func causeStatus(status string) string {
 	case "observed":
 		return "наблюдается"
 	case "missing":
-		return "нет данных"
+		return "наблюдение ожидается"
 	case "partial":
 		return "частично"
 	default:
@@ -262,7 +262,7 @@ func causeMetricLabel(metric string) string {
 func priceStatus(r handlers.ProductReading) string {
 	switch r.PriceEvidenceStatus {
 	case "insufficient_comparable_quotes":
-		return "сопоставимая пара не подтверждена"
+		return "сопоставимая пара отсутствует"
 	case "comparable_quotes_available":
 		return "сопоставимые предложения подтверждены"
 	case "no_matching_offers":

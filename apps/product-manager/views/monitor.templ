@@ -43,6 +43,9 @@ templ MonitorPanel(m *Monitor) {
 					<a href={ p.URL } class="dashboard-alert-link">
 						<span><strong>{ p.Product }</strong>
 							<small class="dashboard-alert-time">{ p.FirstDetected }</small>
+							if p.Origin != "" {
+								<small class="dashboard-fresh">{ p.Origin }</small>
+							}
 							if p.Freshness != "" {
 								<small class="dashboard-fresh">{ p.Freshness }</small>
 							}
@@ -51,10 +54,11 @@ templ MonitorPanel(m *Monitor) {
 							if p.Change != "" {
 								<strong class="dashboard-alert-change" title={ p.Comparison }>{ p.Change }</strong>
 							}
-							if p.Weekly != "" {
+							if p.WeeklyLoss != "" {
+								<strong class="dashboard-alert-change" title={ p.WeeklyLossBasis }>{ p.WeeklyLoss }</strong>
+								<small title={ p.WeeklyLossBasis }>{ p.WeeklyLossBasis }</small>
+							} else if p.Weekly != "" {
 								<small title={ p.WeeklyBasis }>{ p.Weekly }</small>
-							} else {
-								<small class="dashboard-alert-cost-reason">Источник даёт индекс, ₽ не рассчитаны</small>
 							}
 							if p.Comparison != "" {
 								<small class="dashboard-alert-period">{ p.Comparison }</small>

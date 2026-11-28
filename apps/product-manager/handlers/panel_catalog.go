@@ -179,8 +179,13 @@ func catalogSignalDelta(alert views.PulseItem) *float64 {
 }
 
 func catalogFocusLabel(g mapGroup) string {
+	first, second := catalogFocusLines(g)
+	return strings.TrimSpace(first + " " + second)
+}
+
+func catalogFocusLines(g mapGroup) (string, string) {
 	if strings.Contains(g.tone, "control-context") {
-		return "Astra · контроль"
+		return "Astra", "контроль"
 	}
 	if strings.Contains(g.tone, "signal-associated") {
 		name := g.name
@@ -188,11 +193,11 @@ func catalogFocusLabel(g mapGroup) string {
 			name = "KES"
 		}
 		if g.signal != "" {
-			return name + " " + g.signal
+			return name, g.signal
 		}
-		return name + " · сигнал"
+		return name, "сигнал"
 	}
-	return g.name
+	return g.name, ""
 }
 
 func matchVendor(groups []mapGroup, vendor, product string) int {
@@ -406,17 +411,19 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 			}
 			focus := strings.Contains(g.tone, "signal-associated") || strings.Contains(g.tone, "control-context")
 			displayName := g.name
+			line1, line2 := g.name, ""
 			if focus {
 				displayName = catalogFocusLabel(g)
+				line1, line2 = catalogFocusLines(g)
 			}
 			aria := g.name + " · " + value
 			if g.signalTitle != "" {
 				aria += " · " + g.signalTitle
 			}
 			tiles = append(tiles, views.CatalogTile{
-				Name: g.name, DisplayName: displayName, Label: aria, Value: value, Tone: g.tone, URL: link,
+				Name: g.name, DisplayName: displayName, Label: aria, Value: value, Tone: g.tone, URL: link, LabelLine1: line1, LabelLine2: line2,
 				X: f(tile.x), Y: f(tile.y), W: f(tile.w), H: f(tile.h), LX: f(tile.x + 8), LY: f(tile.y + 17),
-				ShowLabel: focus || tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26,
+				ShowLabel: focus || tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26, Focus: focus,
 			})
 			at += length
 		}

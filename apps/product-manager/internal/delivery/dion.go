@@ -206,7 +206,7 @@ func (d *Dion) Send(ctx context.Context, owner, day string, now time.Time) (Dion
 		"expected_chat_id": dr.ChatID, "expected_attachments": []string{},
 	})
 	if err != nil {
-		return DionDraft{}, fmt.Errorf("UserIO: отправка не подтверждена: %w", err)
+		return DionDraft{}, fmt.Errorf("UserIO: ошибка доставки: %w", err)
 	}
 	var out struct {
 		Sent      bool   `json:"sent"`

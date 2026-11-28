@@ -58,7 +58,7 @@ templ sourceBoard(v HomeView) {
 			<section>
 				<h2>Снимки данных</h2>
 				if len(v.Snapshots)==0 {
-					<p class="muted compact">Пока нет данных</p>
+					<p class="muted compact">Снимки ещё не загружены. Загрузите первый снимок данных.</p>
 				}
 				for _,l:=range v.Snapshots {
 					@navLink(l)

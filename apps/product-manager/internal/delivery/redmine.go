@@ -581,7 +581,7 @@ var displayMetricNames = map[string]string{
 func Subject(r decision.Record, signal string) string {
 	product := displayProductName(r.Hypothesis.ProductKey)
 	metric := displayMetric(r.Hypothesis.SuccessCriterion.MetricKey)
-	change := "изменение не определено"
+	change := "изменение за выбранный период"
 	week := "за выбранный период"
 	if c := r.SignalContrast; c != nil {
 		change = humanPercent(c.RelativeChangePct)
@@ -638,7 +638,7 @@ func DescriptionItem(item BacklogItem, signal string) string {
 		b.WriteString("\nКритерий успеха: показатель стабилизируется в следующем сопоставимом окне.\n")
 	}
 	b.WriteString("\n{{collapse(Технические детали)\n")
-	fmt.Fprintf(&b, "Продуктовый ключ: %s\nСигнал: @%s@\nСнимок данных: @%s@\nЗадача PM: @%s@\n", nonEmpty(h.ProductKey, "не указан"), signal, r.EvidenceSnapshotID, taskID(r))
+	fmt.Fprintf(&b, "Продуктовый ключ: %s\nСигнал: @%s@\nСнимок данных: @%s@\nЗадача PM: @%s@\n", nonEmpty(h.ProductKey, "продукт"), signal, r.EvidenceSnapshotID, taskID(r))
 	if control := strings.TrimSpace(h.SuccessCriterion.ControlProductKey); control != "" {
 		fmt.Fprintf(&b, "Контрольный продукт: %s\n", control)
 	}
@@ -782,7 +782,7 @@ func nonEmpty(v, fallback string) string {
 
 func num(v float64) string {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return "нет данных"
+		return "значение недоступно"
 	}
 	return strconv.FormatFloat(math.Round(v*10)/10, 'f', -1, 64)
 }

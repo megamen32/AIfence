@@ -294,7 +294,7 @@ func buildReleaseHistory(ws []weekValue, events []releaseEvent) *views.ReleaseHi
 
 func releaseMeasurement(v *views.Investigation, record decision.Record) {
 	if record.Task != nil {
-		v.CorrectionStatus = "Выпуск исправления по задаче " + record.Task.ID + " не подтверждён. Эффект исправления ещё не измерен."
+		v.CorrectionStatus = "Задача " + record.Task.ID + " зафиксирована. Измерение эффекта ожидается."
 	}
 	a := record.Assessment
 	if a == nil {

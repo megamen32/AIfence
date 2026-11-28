@@ -370,7 +370,7 @@ func addPriceContext(r *ProductReading, comparisons map[string]PriceComparison, 
 	}
 	if len(skus) == 0 {
 		r.PriceEvidenceStatus = "no_matching_offers"
-		r.Price = "В импортированных предложениях этого семейства нет данных для сравнения."
+		r.Price = "В импортированных предложениях этого семейства отсутствуют предложения для сравнения."
 		return
 	}
 	slices.Sort(skus)
@@ -412,7 +412,7 @@ func directorReply(r ProductReading) answer.Input {
 	price := "Для решения о цене нужны сопоставимые предложения того же артикула."
 	switch r.PriceEvidenceStatus {
 	case "insufficient_comparable_quotes":
-		price = fmt.Sprintf("Снижать цену пока не стоит. Ни по одному из %d проверенных артикулов у двух магазинов не подтверждены одинаковые условия.", r.CheckedSKUs)
+		price = fmt.Sprintf("Снижать цену пока не стоит. Одинаковые условия отсутствуют у %d проверенных артикулов.", r.CheckedSKUs)
 	case "comparable_quotes_available":
 		price = fmt.Sprintf("До решения о цене сравните нашу цену с предложениями на одинаковых условиях: такие предложения есть для %d из %d артикулов.", r.ComparableSKUs, r.CheckedSKUs)
 	}

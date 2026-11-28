@@ -70,7 +70,7 @@ func checkDraft(in SaveInput) error {
 			return errors.New("сценарная сумма требует валюты и допущений")
 		}
 	default:
-		return errors.New("в черновике экономический эффект может быть unknown или scenario")
+		return errors.New("в черновике экономический эффект допускает только unknown или scenario")
 	}
 	return nil
 }
@@ -145,7 +145,7 @@ func assess(r Record, in EvaluateInput, now time.Time) (Assessment, error) {
 		return a, nil
 	}
 	if m.Quality != "comparable" {
-		a.Reason = "Сопоставимость периодов не подтверждена."
+		a.Reason = "Периоды имеют разную сопоставимость."
 		return a, nil
 	}
 	start, end := MeasurementWindow(released, c.ObservationDays)

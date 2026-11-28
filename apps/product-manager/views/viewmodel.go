@@ -56,7 +56,7 @@ type MonitorCell struct{ Label, Tone string }
 
 type PulseItem struct {
 	Product, URL, Week, Detected, Change, Comparison, Origin                                                  string
-	FirstDetected, Freshness, Weekly, WeeklyBasis, ProductKey, ControlKey, ControlName, Vendor, ControlVendor string
+	FirstDetected, Freshness, Weekly, WeeklyBasis, WeeklyLoss, WeeklyLossBasis, ProductKey, ControlKey, ControlName, Vendor, ControlVendor string
 	Amount, Delta                                                                                             *float64
 	Coverage                                                                                                  []CoverageItem
 }
@@ -137,9 +137,9 @@ type CatalogGroup struct {
 }
 
 type CatalogTile struct {
-	Name, DisplayName, Label, Value, Tone, URL string
-	X, Y, W, H, LX, LY                         string
-	ShowLabel                                  bool
+	Name, DisplayName, Label, Value, Tone, URL, LabelLine1, LabelLine2 string
+	X, Y, W, H, LX, LY                                               string
+	ShowLabel, Focus                                                  bool
 }
 
 type ReleaseHistory struct {
