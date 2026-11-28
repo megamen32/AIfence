@@ -37,7 +37,11 @@ if [ -z "$MODE" ]; then
   [ -n "$APPS_CSV" ] && MODE=no-state || MODE=state
 fi
 [ -n "$APPS_CSV" ] || APPS_CSV=$FULL_APPS
-PIN_KEY=$(git -C "$SOURCE_ROOT" rev-parse --short=12 HEAD)
+if [ "$MODE" = no-state ]; then
+  PIN_KEY=$(git -C "$SOURCE_ROOT" rev-parse --short=12 "${STAND_SYNC_SOURCE_REF:-refs/heads/main}^{commit}")
+else
+  PIN_KEY=$(git -C "$SOURCE_ROOT" rev-parse --short=12 HEAD)
+fi
 SYNC_KEY=$(printf "%s|%s|%s" "$PIN_KEY" "$MODE" "$APPS_CSV" | sha256sum | cut -c1-16)
 retry_cmd="$0 --to server-100"
 [ -n "$APPS_CSV" ] && retry_cmd="$retry_cmd --apps $APPS_CSV"
