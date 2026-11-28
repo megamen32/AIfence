@@ -45,6 +45,7 @@
       <h2 id="title">Новое исследование</h2>
       <p class="hint">Заполните известные данные. Неизвестные конкуренты можно найти через чат приложения.</p>
     </div>
+    {{if .StudyID}}<p class="notice" role="status">Исследование {{.StudyID}}{{if .View}} · представление {{.View}}{{end}}</p>{{end}}
     {{if .Submitted}}<p class="notice" role="status">Параметры сохранены в форме. Запустите исследование в чате «Конкуренты», чтобы получить проверяемые наблюдения и CSV.</p>{{end}}
     <form method="get" action="/">
       <input type="hidden" name="submitted" value="1">

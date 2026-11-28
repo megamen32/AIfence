@@ -120,6 +120,7 @@ func newAgent() *agentsdk.Agent {
 	file := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "evidence_path", Description: "Необязательный путь к явно выбранному evidence-v1 JSON в файлах Airlock; пусто — live MCP"})
 	demoRoot := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "demo_data_root", Description: "Разрешённый каталог demo_sources/data с original/sandbox evidence-v1 JSON"})
 	watchContext := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "watch_context_path", Description: "Путь к авторизованному JSON с релизами, задачами, разрывами и интервью"})
+	appBase := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "app_base_url", Description: "Базовый URL приложения для ссылок из источников", Default: "http://metrika-analyst.localhost:42080"})
 	a.RegisterDirectory("evidence", agentsdk.DirectoryOpts{
 		Read: agentsdk.AccessUser, Write: agentsdk.AccessAdmin, List: agentsdk.AccessUser, Scope: agentsdk.ScopeUser,
 		Description: "Authorized evidence files provisioned for this caller or workspace",
@@ -143,7 +144,8 @@ func newAgent() *agentsdk.Agent {
 		n, _ := strconv.ParseInt(id, 10, 64)
 		e, _ := ec.Get(ctx)
 		p, _ := file.Get(ctx)
-		return Settings{n, e == "true", p}
+		base, _ := appBase.Get(ctx)
+		return Settings{Counter: n, Ecommerce: e == "true", EvidencePath: p, AppBaseURL: base}
 	}, read: func(ctx context.Context, p string) ([]byte, error) {
 		if fixture, ok := embeddedEvidence(p); ok {
 			return fixture, nil
@@ -202,7 +204,7 @@ func newAgent() *agentsdk.Agent {
 	a.RegisterRoute(&agentsdk.Route{Method: "GET", Path: "/", Access: agentsdk.AccessUser, Description: "Неделя магазина по данным Метрики", Handler: func(w http.ResponseWriter, r *http.Request) error {
 		data := s.dashboard(r.Context(), time.Now().UTC())
 		q := r.URL.Query()
-		if q.Get("from") != "" {
+		if validDashboardDate(q.Get("from")) && validDashboardDate(q.Get("to")) && validDashboardDate(q.Get("current_from")) && validDashboardDate(q.Get("current_to")) {
 			segment := "all"
 			if data.ProductKey == "kaspersky_endpoint_security" {
 				segment = "self_service"

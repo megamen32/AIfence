@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type Ref struct {
 	Locator  string `json:"locator"`
 	URL      string `json:"url,omitempty"`
 	Revision string `json:"revision,omitempty"`
+	DeepLink string `json:"deep_link,omitempty"`
 }
 type Observation = EvidenceObservation[float64]
 type Batch = EvidenceBatch[float64]
@@ -89,7 +91,17 @@ type Settings struct {
 	Counter      int64
 	Ecommerce    bool
 	EvidencePath string
+	AppBaseURL   string
 }
+
+func validDashboardDate(value string) bool {
+	if value == "" {
+		return false
+	}
+	_, err := time.Parse(time.DateOnly, value)
+	return err == nil
+}
+
 type Service struct {
 	call   func(context.Context, string, any) (json.RawMessage, error)
 	config func(context.Context) Settings
@@ -197,7 +209,34 @@ func (s Service) Query(ctx context.Context, q Query) (Batch, error) {
 	if e != nil {
 		return Batch{}, e
 	}
-	return s.query(ctx, q, s.config(ctx))
+	c := s.config(ctx)
+	out, err := s.query(ctx, q, c)
+	addDeepLinks(&out, c.AppBaseURL, q.ProductKey, q.From, q.To)
+	return out, err
+}
+
+func addDeepLinks(out *Batch, base, query, from, to string) {
+	if out == nil {
+		return
+	}
+	if base == "" {
+		base = "http://metrika-analyst.localhost:42080"
+	}
+	params := url.Values{}
+	if query != "" {
+		params.Set("q", query)
+	}
+	if from != "" {
+		params.Set("from", from)
+	}
+	if to != "" {
+		params.Set("to", to)
+	}
+	params.Set("view", "trend")
+	link := strings.TrimRight(base, "/") + "/?" + params.Encode()
+	for i := range out.Observations {
+		out.Observations[i].SourceRef.DeepLink = link
+	}
 }
 func (s Service) query(ctx context.Context, q Query, c Settings) (Batch, error) {
 	out := batch()
@@ -397,10 +436,14 @@ func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
 		return Batch{}, fmt.Errorf("require non-overlapping chronological periods, equal except for weekly index means")
 	}
 	if weekly {
-		return s.compareWeekly(ctx, in, path, a, b)
+		out, err := s.compareWeekly(ctx, in, path, a, b)
+		addDeepLinks(&out, cfg.AppBaseURL, in.ProductKey, a.From, b.To)
+		return out, err
 	}
 	if cfg.Counter > 0 && chosen(a.SourcePath, cfg.EvidencePath) == "" {
-		return s.compareLive(ctx, a, b, cfg)
+		out, err := s.compareLive(ctx, a, b, cfg)
+		addDeepLinks(&out, cfg.AppBaseURL, in.ProductKey, a.From, b.To)
+		return out, err
 	}
 	x, e := s.query(ctx, a, cfg)
 	if e != nil {
@@ -428,6 +471,7 @@ func (s Service) Compare(ctx context.Context, in Compare) (Batch, error) {
 			}
 		}
 	}
+	addDeepLinks(&out, cfg.AppBaseURL, in.ProductKey, a.From, b.To)
 	return out, nil
 }
 func deltas(a, b Observation) []Observation {
