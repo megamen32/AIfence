@@ -147,7 +147,7 @@ if slug == 'product-manager' and config.exists():
     if not isinstance(runtime_files, list) or any(not isinstance(x, str) for x in runtime_files):
         sys.exit('Invalid build.runtime_files in airlock.toml')
     if 'pathcheck/check_purchase_path.py' in runtime_files:
-        source = 'apps/path-check/check_purchase_path.py'
+        source = 'apps/product-manager/pathcheck/check_purchase_path.py'
         entry = subprocess.check_output(['git', '-C', str(root), 'ls-tree', '-z', commit, '--', source]).split(b'\0')
         entry = [x for x in entry if x]
         if len(entry) != 1:
