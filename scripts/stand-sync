@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$SELF_DIR/.." && pwd)
+SOURCE_ROOT=${STAND_SYNC_SOURCE_ROOT:-$REPO_ROOT}
+TARGET_LABEL=
+APPS_CSV=
+MODE=
+FULL_APPS=market-watch,metrika-analyst,product-manager,competitor-research,google-trends,wordstat,web-scraper,baserow,redmine,userio
+REMOTE_ROOT=${STAND_SYNC_REMOTE_ROOT:-/home/roomhacker/aifence-move}
+TARGET_HOST=${STAND_SYNC_TARGET_HOST:-server100}
+DOCKER_BIN=${STAND_SYNC_DOCKER_BIN:-}
+if [ -z "$DOCKER_BIN" ]; then
+  DOCKER_BIN=$(command -v docker 2>/dev/null || true)
+  [ -n "$DOCKER_BIN" ] || [ ! -x /opt/homebrew/bin/docker ] || DOCKER_BIN=/opt/homebrew/bin/docker
+fi
+GO_BIN=${STAND_SYNC_GO_BIN:-}
+if [ -z "$GO_BIN" ]; then
+  GO_BIN=$(command -v go 2>/dev/null || true)
+  [ -n "$GO_BIN" ] || [ ! -x /usr/local/go/bin/go ] || GO_BIN=/usr/local/go/bin/go
+fi
+if rsync --help 2>&1 | grep -q append-verify; then
+  RSYNC_RESUME=(--partial --append-verify)
+else
+  RSYNC_RESUME=(--partial --append)
+fi
+RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
+RUN_DIR=$SOURCE_ROOT/.runtime/stand-sync/$RUN_ID
+MANIFEST=$RUN_DIR/manifest.tsv
+TIMINGS=$RUN_DIR/timings.tsv
+PHASE=
+usage() {
+  cat >&2 <<'EOF'
+Usage: scripts/stand-sync --to server-100 [--apps app,...] [--state|--no-state]
+No --apps performs a full stateful migration. With --apps, default is code-only.
+EOF
+  exit 2
+}
+while (($#)); do
+  case "$1" in
+    --to) (($# >= 2)) || usage; TARGET_LABEL=$2; shift 2;;
+    --apps) (($# >= 2)) || usage; APPS_CSV=$2; shift 2;;
+    --state) [ -z "$MODE" ] || { echo "--state and --no-state are mutually exclusive" >&2; exit 2; }; MODE=state; shift;;
+    --no-state) [ -z "$MODE" ] || { echo "--state and --no-state are mutually exclusive" >&2; exit 2; }; MODE=no-state; shift;;
+    -h|--help) usage;;
+    *) echo "Unknown argument: $1" >&2; usage;;
+  esac
+done
+[ "$TARGET_LABEL" = server-100 ] || { echo "Only --to server-100 is supported" >&2; exit 2; }
+if [ -z "$MODE" ]; then
+  [ -n "$APPS_CSV" ] && MODE=no-state || MODE=state
+fi
+[ -n "$APPS_CSV" ] || APPS_CSV=$FULL_APPS
+if [ "$MODE" = no-state ]; then
+  PIN_KEY=$(git -C "$SOURCE_ROOT" rev-parse --short=12 "${STAND_SYNC_SOURCE_REF:-refs/heads/main}^{commit}")
+else
+  PIN_KEY=$(git -C "$SOURCE_ROOT" rev-parse --short=12 HEAD)
+fi
+SYNC_KEY=$(printf "%s|%s|%s" "$PIN_KEY" "$MODE" "$APPS_CSV" | sha256sum | cut -c1-16)
+retry_cmd="$0 --to server-100"
+[ -n "$APPS_CSV" ] && retry_cmd="$retry_cmd --apps $APPS_CSV"
+[ "$MODE" = state ] && retry_cmd="$retry_cmd --state"
+[ "$MODE" = no-state ] && retry_cmd="$retry_cmd --no-state"
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "stand-sync failed in phase $PHASE. Next command: $retry_cmd" >&2; fi; exit "$rc"' EXIT
+mkdir -p "$RUN_DIR"
+chmod 700 "$RUN_DIR"
+printf 'phase\tstarted\tfinished\tstatus\n' > "$TIMINGS"
+printf 'app\tsource_sha\tsource_contract\ttarget_sha\ttarget_image\tsmoke\n' > "$MANIFEST"
+ssh_target() { ssh -o BatchMode=yes -o ConnectTimeout=${STAND_SYNC_SSH_TIMEOUT:-12} "$TARGET_HOST" "$@"; }
+mark_path() { printf '%s/.stand-sync/%s-%s.done' "$REMOTE_ROOT" "$SYNC_KEY" "$1"; }
+phase_done() { ssh_target "test -f $(printf '%q' "$(mark_path "$1")")"; }
+begin_phase() { PHASE=$1; START_EPOCH=$(date +%s); printf '%s\t%s\t\tstart\n' "$PHASE" "$(date -u +%FT%TZ)" >> "$TIMINGS"; }
+end_phase() { printf '%s\t%s\t%s\t%s\n' "$PHASE" "$START_EPOCH" "$(date -u +%FT%TZ)" "$1" >> "$TIMINGS"; }
+remote_mark() { ssh_target "mkdir -p $(printf '%q' "$REMOTE_ROOT/.stand-sync") && : > $(printf '%q' "$(mark_path "$1")")"; }
+run_phase() {
+  p=$1; shift
+  PHASE=$p
+  if [ "$p" != pin ] && phase_done "$p"; then echo "stand-sync: phase $p already complete"; return; fi
+  begin_phase "$p"; "$@"; remote_mark "$p"; end_phase ok
+}
+pin_phase() {
+  if [ "$MODE" = no-state ]; then
+    source_ref=${STAND_SYNC_SOURCE_REF:-refs/heads/main}
+  else
+    source_ref=HEAD
+  fi
+  sha=$(git -C "$SOURCE_ROOT" rev-parse --verify "$source_ref^{commit}")
+  contract=$(git -C "$SOURCE_ROOT" grep -h -E 'check_source_watch|contract_version|manifest_version' "$sha" -- apps 2>/dev/null | sha256sum | awk '{print $1}' || true)
+  printf 'source_sha\t%s\nsource_contract\t%s\nmode\t%s\n' "$sha" "${contract:-unknown}" "$MODE" > "$RUN_DIR/pin.env"
+  oldifs=$IFS; IFS=,
+  for app in $APPS_CSV; do
+    [ -n "$app" ] || continue
+    case "$app" in *[!a-z0-9_-]*) echo "Invalid app name: $app" >&2; IFS=$oldifs; return 2;; esac
+    printf '%s\t%s\t%s\t\t\tPENDING\n' "$app" "$sha" "${contract:-unknown}" >> "$MANIFEST"
+  done
+  IFS=$oldifs
+  if [ -n "$DOCKER_BIN" ] && "$DOCKER_BIN" --context colima-aifence context inspect >/dev/null 2>&1; then
+    "$DOCKER_BIN" --context colima-aifence image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' > "$RUN_DIR/source-images.tsv" || true
+    chmod 600 "$RUN_DIR/source-images.tsv"
+    "$DOCKER_BIN" --context colima-aifence ps --format '{{.Names}}\t{{.Image}}' > "$RUN_DIR/source-agents.tsv" || true
+    "$DOCKER_BIN" --context colima-aifence exec aifence-postgres-1 psql -At -F '|' -U airlock -d airlock -c "select id,slug,source_ref,image_ref from agents where status in ('active','building') order by slug" > "$RUN_DIR/source-apps.tsv" || true
+    "$DOCKER_BIN" --context colima-aifence exec aifence-postgres-1 psql -At -F "|" -U airlock -d airlock -c "select agent_id,grantee_id,role from agent_grants order by agent_id,grantee_id,role" > "$RUN_DIR/source-grants.tsv" || true
+    chmod 600 "$RUN_DIR/source-grants.tsv"
+    chmod 600 "$RUN_DIR/source-apps.tsv"
+    {
+      printf 'name\timage\tid\trevision\tversion\n' 
+      while IFS=$'\t' read -r name image; do
+        [ -n "$name" ] || continue
+        id=$("$DOCKER_BIN" --context colima-aifence inspect --format '{{.Id}}' "$name" 2>/dev/null || true)
+        rev=$("$DOCKER_BIN" --context colima-aifence inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$name" 2>/dev/null || true)
+        ver=$("$DOCKER_BIN" --context colima-aifence inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$name" 2>/dev/null || true)
+        printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$image" "$id" "$rev" "$ver"
+      done < "$RUN_DIR/source-agents.tsv"
+    } > "$RUN_DIR/source-agent-shas.tsv"
+    chmod 600 "$RUN_DIR/source-agents.tsv" "$RUN_DIR/source-agent-shas.tsv"
+  fi
+  chmod 600 "$RUN_DIR/pin.env" "$MANIFEST"
+}
+build_full() {
+  [ -x "$SOURCE_ROOT/scripts/stand/move-to-server100.sh" ] || { echo "Missing scripts/stand/move-to-server100.sh" >&2; return 1; }
+  "$SOURCE_ROOT/scripts/stand/move-to-server100.sh"
+}
+build_code() {
+  [ -n "$GO_BIN" ] || { echo "Go toolchain is required on source Mac (set STAND_SYNC_GO_BIN)" >&2; return 48; }
+  sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
+  bundle=$RUN_DIR/source-bundle
+  worktree=$RUN_DIR/source-worktree
+  rm -rf "$bundle" "$worktree"
+  mkdir -p "$bundle/apps"
+  git worktree add --detach "$worktree" "$sha" >/dev/null
+  printf 'app\timage_ref\n' > "$bundle/app-image-refs.tsv"
+  [ -s "$RUN_DIR/source-apps.tsv" ] || { echo "Source Airlock apps.tsv is required for exact image refs" >&2; return 47; }
+  cp "$RUN_DIR/source-apps.tsv" "$bundle/source-apps.tsv"
+  cp "$RUN_DIR/source-grants.tsv" "$bundle/source-grants.tsv"
+  oldifs=$IFS
+  IFS=,
+  for app in $APPS_CSV; do
+    [ -n "$app" ] || continue
+    appdir=$worktree/apps/$app
+    [ -d "$appdir" ] || { echo "Pinned source is missing apps/$app" >&2; IFS=$oldifs; return 46; }
+    if [ -f "$appdir/go.mod" ]; then
+      cache=${AIFENCE_PERSONAL_CACHE:-$SOURCE_ROOT/.runtime/m1-native-sourcewatch-20261127/clones/$app/.personal-modules}
+      if [ -d "$cache/$app/.personal-modules" ]; then cache=$cache/$app/.personal-modules; fi
+      if [ -d "$cache" ]; then
+        mkdir -p "$appdir/.personal-modules"
+        rsync -a --delete --exclude .git "$cache/" "$appdir/.personal-modules/"
+        for mod in agentsdk sol goai; do
+          if [ -d "$appdir/.personal-modules/$mod" ]; then
+            case "$mod" in
+              agentsdk) (cd "$appdir" && "$GO_BIN" mod edit -replace github.com/airlockrun/agentsdk=./.personal-modules/agentsdk);;
+              sol) (cd "$appdir" && "$GO_BIN" mod edit -replace github.com/airlockrun/sol=./.personal-modules/sol);;
+              goai) (cd "$appdir" && "$GO_BIN" mod edit -replace github.com/airlockrun/goai=./.personal-modules/goai);;
+            esac
+          fi
+        done
+      fi
+      vendor_env=(GOPROXY=off GOFLAGS=-mod=mod)
+      [ -n "${GOPRIVATE+x}" ] && vendor_env+=(GOPRIVATE="$GOPRIVATE")
+      [ -n "${GONOSUMDB+x}" ] && vendor_env+=(GONOSUMDB="$GONOSUMDB")
+      [ -n "${AIFENCE_PERSONAL_CACHE+x}" ] && vendor_env+=(AIFENCE_PERSONAL_CACHE="$AIFENCE_PERSONAL_CACHE")
+      (cd "$appdir" && env "${vendor_env[@]}" "$GO_BIN" tool templ generate && env "${vendor_env[@]}" "$GO_BIN" mod vendor)
+    fi
+    if [ "$app" = product-manager ] && [ -f "$worktree/apps/path-check/check_purchase_path.py" ]; then
+      mkdir -p "$appdir/pathcheck"
+      cp "$worktree/apps/path-check/check_purchase_path.py" "$appdir/pathcheck/check_purchase_path.py"
+    fi
+    rsync -a --delete --partial --exclude .git --exclude .runtime --exclude private --exclude data --exclude materials --exclude ".airlock/local" "$appdir/" "$bundle/apps/$app/"
+    image_ref=$(awk -F '|' -v a="$app" '$2==a {print $4; exit}' "$RUN_DIR/source-apps.tsv" 2>/dev/null || true)
+    [ -n "$image_ref" ] || { echo "No exact Airlock image_ref for $app in source-apps.tsv" >&2; IFS=$oldifs; return 47; }
+    printf '%s\t%s\n' "$app" "$image_ref" >> "$bundle/app-image-refs.tsv"
+  done
+  IFS=$oldifs
+  tar -C "$bundle" -cf "$RUN_DIR/source-bundle.tar" .
+  remote_dir="$REMOTE_ROOT/.stand-sync/$SYNC_KEY"
+  bundle_remote="$remote_dir/bundle"
+  tar_remote="$remote_dir/source-bundle.tar"
+  helper_remote="$remote_dir/stand-sync-build"
+  reconcile_remote="$remote_dir/stand-sync-reconcile"
+  refs_remote="$remote_dir/built-image-refs.tsv"
+  ssh_target "mkdir -p $(printf '%q' "$remote_dir")"
+  rsync "${RSYNC_RESUME[@]}" "$RUN_DIR/source-bundle.tar" "$TARGET_HOST:$tar_remote"
+  rsync "${RSYNC_RESUME[@]}" "$SOURCE_ROOT/scripts/stand-sync-build" "$TARGET_HOST:$helper_remote"
+  rsync "${RSYNC_RESUME[@]}" "$SOURCE_ROOT/scripts/stand-sync-reconcile" "$TARGET_HOST:$reconcile_remote"
+  ssh_target "set -Eeuo pipefail; rm -rf $(printf '%q' "$bundle_remote"); mkdir -p $(printf '%q' "$bundle_remote"); tar -xf $(printf '%q' "$tar_remote") -C $(printf '%q' "$bundle_remote"); chmod 700 $(printf '%q' "$helper_remote"); $(printf '%q' "$helper_remote") $(printf '%q' "$REMOTE_ROOT") $(printf '%q' "$bundle_remote") $(printf '%q' "$APPS_CSV") $(printf '%q' "$bundle_remote/app-image-refs.tsv") $(printf '%q' "$refs_remote")"
+  rsync "${RSYNC_RESUME[@]}" "$TARGET_HOST:$refs_remote" "$RUN_DIR/built-image-refs.tsv"
+  target_sha=$sha
+  if [ -s "$RUN_DIR/built-image-refs.tsv" ]; then
+    tmp=$RUN_DIR/manifest.tmp
+    awk -F '\t' -v OFS='\t' -v target="$target_sha" 'NR==FNR{img[$1]=$2;next} NR==1{print;next}{$4=target;$5=img[$1];print}' "$RUN_DIR/built-image-refs.tsv" "$MANIFEST" > "$tmp"
+    mv "$tmp" "$MANIFEST"
+  fi
+}
+state_phase() { [ "$MODE" = state ] || printf 'state skipped (code-only)\n' > "$RUN_DIR/state-skipped"; }
+restore_phase() { [ "$MODE" = state ] || printf 'restore skipped (code-only)\n' > "$RUN_DIR/restore-skipped"; }
+reconcile_phase() {
+  if [ -n "${STAND_SYNC_RECONCILE_CMD:-}" ]; then
+    refs_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/built-image-refs.tsv"
+    ssh_target "set -Eeuo pipefail; export STAND_SYNC_IMAGE_REFS_FILE=$(printf '%q' "$refs_remote"); eval $(printf '%q' "$STAND_SYNC_RECONCILE_CMD")"
+  else
+    source_sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
+    reconcile_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/stand-sync-reconcile"
+    refs_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/built-image-refs.tsv"
+    bundle_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/bundle"
+    ssh_target "set -Eeuo pipefail; bash $(printf '%q' "$reconcile_remote") $(printf '%q' "$REMOTE_ROOT") $(printf '%q' "$APPS_CSV") $(printf '%q' "$source_sha") $(printf '%q' "$bundle_remote") $(printf '%q' "$refs_remote")"
+  fi
+  rsync "${RSYNC_RESUME[@]}" "$TARGET_HOST:$refs_remote" "$RUN_DIR/built-image-refs.tsv"
+  if [ -s "$RUN_DIR/built-image-refs.tsv" ]; then
+    tmp=$RUN_DIR/manifest.tmp
+    awk -F '\t' -v OFS='\t' 'NR==FNR{img[$1]=$2;next} NR==1{print;next}{$5=img[$1];print}' "$RUN_DIR/built-image-refs.tsv" "$MANIFEST" > "$tmp"
+    mv "$tmp" "$MANIFEST"
+  fi
+}
+health_phase() {
+  url=${STAND_SYNC_HEALTH_URL:-https://${STAND_SYNC_PUBLIC_HOST:-move.aifence.bezrabotnyi.com}/health}
+  curl --fail --silent --show-error --max-time ${STAND_SYNC_CURL_TIMEOUT:-20} "$url" -o "$RUN_DIR/health.json"
+}
+smoke_phase() {
+  smoke_dir=$RUN_DIR/smoke; mkdir -p "$smoke_dir"; : > "$RUN_DIR/smoke.tsv"
+  urls=${STAND_SYNC_SMOKE_URLS:-https://${STAND_SYNC_PUBLIC_HOST:-move.aifence.bezrabotnyi.com}/}
+  oldifs=$IFS; IFS=,; for u in $urls; do
+    name=$(printf '%s' "$u" | sha256sum | cut -c1-12)
+    code=$(curl --connect-timeout 10 --max-time 30 -sS -o "$smoke_dir/$name.body" -w '%{http_code}' "$u" || true)
+    case "$code" in 2*|3*) echo -e "$u\tPASS\t$code" >> "$RUN_DIR/smoke.tsv";; *) echo -e "$u\tFAIL\t$code" >> "$RUN_DIR/smoke.tsv";; esac
+  done
+  IFS=$oldifs
+  if [ -n "${STAND_SYNC_SCREENSHOT_CMD:-}" ]; then (cd "$smoke_dir" && eval "$STAND_SYNC_SCREENSHOT_CMD"); fi
+  status=PASS
+  grep -q $'\tFAIL\t' "$RUN_DIR/smoke.tsv" && status=FAIL || true
+  tmp=$RUN_DIR/manifest.tmp
+  awk -F '\t' -v OFS='\t' -v s="$status" 'NR==1{print;next}{$6=s;print}' "$MANIFEST" > "$tmp"
+  mv "$tmp" "$MANIFEST"
+  chmod -R go-rwx "$smoke_dir" "$RUN_DIR/smoke.tsv"
+}
+if [ "$MODE" = state ]; then
+  run_phase pin pin_phase; run_phase build build_full; run_phase state state_phase; run_phase restore restore_phase
+else
+  run_phase pin pin_phase; run_phase build build_code; run_phase state state_phase; run_phase restore restore_phase
+fi
+run_phase reconcile reconcile_phase
+run_phase health health_phase
+run_phase smoke smoke_phase
+printf '\napp\tsource_sha\ttarget_sha\tsmoke\n'
+awk -F '\t' 'NR>1 {print $1"\t"$2"\t"$4"\t"$6}' "$MANIFEST"
+echo "stand-sync complete; timings: $TIMINGS; smoke: $RUN_DIR/smoke.tsv"
