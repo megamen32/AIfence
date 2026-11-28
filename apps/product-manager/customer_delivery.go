@@ -478,12 +478,12 @@ a{color:var(--accent)}form{display:inline}.tag{font-size:.8rem;border:1px solid 
 {{range .Issues}}<div class="row"><span><span class="ok">#{{.IssueID}}</span> {{.Subject}}{{if .Noted}} <span class="tag">комментарий к существующей</span>{{else if .Reused}} <span class="tag">уже была</span>{{end}}</span><a href="{{.URL}}" target="_blank" rel="noopener">Открыть ↗</a></div>{{end}}
 {{range .Waiting}}<div class="row"><span class="warn">{{.Hypothesis.Title}}</span><span class="muted">в очереди</span></div>{{end}}
 {{if and (not .Issues) (not .Waiting)}}<p class="muted">Сигналов с проверенными цифрами пока нет.</p>{{end}}
-<p class="muted">Следующая сверка: {{.NextSync}} <form method="post" action="/delivery/sync"><button>Сверить сейчас</button></form></p>
+<p class="muted">Следующая сверка: {{.NextSync}} <form method="post" action="sync"><button>Сверить сейчас</button></form></p>
 <p><span class="tag">сгенерирована ИИ-помощником</span> <span class="muted">— отдельный флаг и ID сигнала в полях задачи.</span></p></section>
 <section><h2>Сводка в Dion</h2>
 {{if not .ChatSet}}<p class="warn">Чат для сводки не подключён. Укажите получателя Dion в настройках доставки.</p>{{end}}
 {{with .Draft}}<p class="muted">{{.Day}} · {{if .Sent}}<span class="ok">отправлено</span>{{else}}<span class="warn">не отправлено</span>{{end}}</p><pre>{{.Text}}</pre>{{else}}<p class="muted">Сегодня сводка ещё не уходила.</p>{{end}}
-<p class="muted">Следующая: {{.NextDion}} <form method="post" action="/delivery/dion"><button>Отправить сейчас</button></form></p></section>
+<p class="muted">Следующая: {{.NextDion}} <form method="post" action="dion"><button>Отправить сейчас</button></form></p></section>
 <section><h2>Настройки доставки</h2>
 <div class="row"><span>Сверка Redmine</span><span class="muted">каждые {{.SyncHours}} ч.</span></div>
 <div class="row"><span>Утренняя заметка Dion</span><span class="muted">{{printf "%02d:00" .MorningLocal}} по местному времени (UTC+5)</span></div>

@@ -519,8 +519,18 @@ func vendorProductGroups(vendor string, vendorCount int64, rows []monitorObserva
 	}
 	if len(groups) == 0 {
 		groups = seededVendorGroups(vendor, mode)
-	} else if strings.Contains(strings.ToLower(vendor), "kaspersky") && len(groups) < 2 {
-		groups = append(groups, seededVendorGroups(vendor, mode)[1:]...)
+	} else {
+		seeded := seededVendorGroups(vendor, mode)
+		seen := make(map[string]bool, len(groups))
+		for _, group := range groups {
+			seen[strings.ToLower(group.name)] = true
+		}
+		for _, group := range seeded {
+			if !seen[strings.ToLower(group.name)] {
+				groups = append(groups, group)
+				seen[strings.ToLower(group.name)] = true
+			}
+		}
 	}
 	if vendorCount > int64(len(groups)) {
 		groups[0].count = maxInt64(1, vendorCount/2)

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"agent/internal/catalogoverview"
+	"agent/internal/evidence"
 	"agent/views"
 	"context"
 	"fmt"
@@ -98,5 +99,17 @@ func TestVendorDrilldownSeedsProductsAndKeepsKESHypothesisLink(t *testing.T) {
 	}
 	if kes.link == "" || !strings.Contains(kes.link, "tab=hypothesis") {
 		t.Fatalf("KES drilldown link = %q", kes.link)
+	}
+	row := monitorObservation{Row: evidence.Row{Product: ksosFamily}, details: monitorDetails{Vendor: "Kaspersky"}}
+	withSnapshot := vendorProductGroups("Kaspersky", 3377, []monitorObservation{row}, nil, nil, "demo")
+	seen := map[string]bool{}
+	for _, group := range withSnapshot {
+		if seen[group.name] {
+			t.Fatalf("duplicate vendor product %q", group.name)
+		}
+		seen[group.name] = true
+	}
+	if !seen["Kaspersky Endpoint Security"] || !seen["Kaspersky Small Office Security"] {
+		t.Fatalf("seeded Kaspersky products = %+v", withSnapshot)
 	}
 }
