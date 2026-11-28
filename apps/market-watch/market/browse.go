@@ -275,7 +275,7 @@ func groupOffers(rows []Observation, more, partial bool) []ComparisonGroup {
 		}
 		switch {
 		case more:
-			g.Reason = "Показаны первые 100 вариантов артикула. Общий минимум не рассчитан."
+		g.Reason = "Показаны первые 100 вариантов артикула. Минимум относится к этой выборке."
 		case partial:
 			g.Reason = "Снимок охватывает часть магазинов или содержит ранее сохранённые цены."
 		case keysInvalidTerms(first):

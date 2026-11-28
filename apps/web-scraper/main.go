@@ -155,7 +155,7 @@ func statusName(s string) string {
 	case "migration_staged":
 		return "Подготовлен к переносу"
 	default:
-		return "Нет данных"
+		return "Источник не сообщил результат"
 	}
 }
 func badge(s string) string {

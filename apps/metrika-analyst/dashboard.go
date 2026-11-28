@@ -286,7 +286,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 	default:
 		v.State = "setup"
 		v.EmptyTitle = "Счётчик Метрики не подключён"
-		v.EmptyText = "Приложение читает визиты, посетителей и заказы магазина напрямую из Яндекс Метрики. Пока не указан номер счётчика, показывать нечего."
+		v.EmptyText = "Приложение читает визиты, посетителей и заказы магазина напрямую из Яндекс Метрики. Введите номер счётчика, чтобы загрузить показатели."
 		v.EmptyAction = "Откройте настройки приложения (шестерёнка справа вверху), укажите counter_id и подключите MCP Яндекс Метрики. После этого здесь сразу появятся последние восемь недель."
 		return v
 	}
@@ -352,7 +352,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 
 	for i, k := range keys {
 		vals := values[k]
-		t := metricTile{Key: k, Title: metricTitles[k], Unit: units[k], Value: "нет данных", Tone: "flat", Delay: i * 90}
+		t := metricTile{Key: k, Title: metricTitles[k], Unit: units[k], Value: "Показатель не загружен", Tone: "flat", Delay: i * 90}
 		if vals != nil {
 			if vals[len(vals)-1] != nil {
 				t.Value = valueText(*vals[len(vals)-1], units[k])
@@ -417,7 +417,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 	for _, k := range keys {
 		o, ok := refs[k]
 		if !ok {
-			v.Sources = append(v.Sources, sourceCard{Mark: "М", Title: metricTitles[k], Detail: "не получено", Status: "нет данных", Tone: "amber"})
+			v.Sources = append(v.Sources, sourceCard{Mark: "М", Title: metricTitles[k], Detail: "Источник не сообщил показатель", Status: "Ожидает загрузки", Tone: "amber"})
 			continue
 		}
 		card := sourceCard{Mark: "М", Title: metricTitles[k], Detail: "Яндекс Метрика", Locator: "Период и показатель из источника", Status: "наблюдение", Tone: "green"}
@@ -434,7 +434,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 		v.Sources = append(v.Sources, card)
 	}
 	if !c.Ecommerce && !dashboardSandbox(c) {
-		v.Notes = append(v.Notes, "Заказы и конверсия скрыты: e-commerce в счётчике не подтверждён (настройка ecommerce_confirmed).")
+		v.Notes = append(v.Notes, "Заказы и конверсия скрыты: в счётчике выключена настройка ecommerce_confirmed.")
 	}
 	if estimated {
 		v.Notes = append(v.Notes, "Часть значений посчитана Метрикой по выборке, они помечены жёлтым.")
@@ -465,7 +465,7 @@ func compareFromBatch(b Batch, in Compare) *compareView {
 	}
 	for _, k := range order {
 		a, z := before[k], after[k]
-		r := compareRow{Title: metricTitles[k], Before: "нет данных", After: "нет данных", Tone: "flat"}
+		r := compareRow{Title: metricTitles[k], Before: "Показатель не загружен", After: "Показатель не загружен", Tone: "flat"}
 		if r.Title == "" {
 			r.Title = k
 		}

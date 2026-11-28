@@ -129,7 +129,7 @@ func (s *siteBrowserService) inspect(ctx context.Context, in siteInspectInput) (
 	rows := make([]competitorObservation, 0, len(in.Competitors)*6)
 	limitations := []string{
 		"Проверены только публичные HTTPS-страницы; формы не отправлялись, логины и cookies не использовались.",
-		"Оценки purchase/account/service/ux — эвристика по наблюдаемым DOM-сигналам, а не подтверждение коммерческих условий.",
+		"Оценки purchase/account/service/ux — эвристика по наблюдаемым DOM-сигналам, она не устанавливает коммерческие условия.",
 		"Блок search здесь означает наличие поиска на сайте; это не оценка SEO-видимости в публичной выдаче.",
 		"Цена этим инструментом не собирается; блок price остаётся not_connected и заполняется внешним источником Mac M1.",
 	}

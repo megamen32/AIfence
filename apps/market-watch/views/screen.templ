@@ -280,7 +280,7 @@ templ sources(p Page) {
 					if src.Last != "" {
 						<time>{ src.Last }</time>
 					} else {
-						<span>Нет данных</span>
+						<span>Источник не сообщил значение</span>
 					}
 				</div>
 				<section class="coverage-data">
@@ -292,7 +292,7 @@ templ sources(p Page) {
 						if src.Expected != "" {
 							@statLine("URL в карте сайта", src.Expected)
 						} else {
-							@statLine("URL в карте сайта", "Знаменатель не подтверждён")
+							@statLine("URL в карте сайта", "Знаменатель: источник не сообщил")
 						}
 						@statLine("URL с ценой", src.Priced)
 						@statLine("Без публичной цены", src.NoPrice)
@@ -310,7 +310,7 @@ templ sources(p Page) {
 	</div>
 	<aside class="coverage-note">
 		@lucide.Icon("list-filter", "size-5")
-		<div><h2>Полнота каталогов</h2><p>Счётчики показывают предложения с ценой в базе Market Watch. Для оценки охвата нужна сверка URL лицензий с картой сайта каждого магазина. Страница может быть недоступна, не иметь публичной цены или ожидать разбора.</p></div>
+		<div><h2>Полнота каталогов</h2><p>Счётчики показывают предложения с ценой в базе Market Watch. Для оценки охвата нужна сверка URL лицензий с картой сайта каждого магазина. Статус страницы: недоступна, без публичной цены или ожидает разбора.</p></div>
 	</aside>
 }
 

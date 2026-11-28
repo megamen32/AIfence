@@ -181,7 +181,7 @@ func resultModel(r trends.Result) views.ResultModel {
 func scoreCell(s trends.Score) views.Cell {
 	switch s.State {
 	case "missing":
-		return views.Cell{Label: "Нет данных", Detail: "Источник не подтвердил значение"}
+		return views.Cell{Label: "Источник не сообщил значение", Detail: "Показатель отсутствует в ответе"}
 	case "below_one":
 		return views.Cell{Label: "<1", Detail: "Значение ниже единицы"}
 	default:
@@ -191,7 +191,7 @@ func scoreCell(s trends.Score) views.Cell {
 		}
 		detail := ""
 		if s.HasData == nil {
-			detail = "Наличие данных не подтверждено"
+		detail = "Статус показателя: источник не сообщил значение"
 		}
 		return views.Cell{Label: label, Detail: detail, Index: s.Index}
 	}

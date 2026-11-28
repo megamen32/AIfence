@@ -54,7 +54,7 @@ func metricStatus(status string) string {
 	case "incomparable":
 		return "Несопоставимо"
 	case "missing":
-		return "Нет данных"
+		return "Источник не сообщил показатель"
 	default:
 		return status
 	}

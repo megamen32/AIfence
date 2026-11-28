@@ -133,7 +133,7 @@ func registerDiscovery(a *agentsdk.Agent) {
 				Analysis:   summary.Text,
 				Rows:       extractDiscoveryRows(query, searchText, summary.Text),
 				Limitations: []string{
-					"Кандидаты основаны на публичном поиске; включение в список не подтверждает коммерческую сопоставимость.",
+					"Кандидаты основаны на публичном поиске; включение в список не устанавливает коммерческую сопоставимость.",
 					"Проверь домен и редакцию продукта; цена передаётся из существующего источника Mac M1, а без неё блок price остаётся not_connected.",
 				},
 			}, nil

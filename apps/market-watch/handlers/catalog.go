@@ -36,7 +36,7 @@ var licenses = []views.Option{
 	{Value: "upgrade", Label: "Обновление версии"},
 	{Value: "subscription", Label: "Подписка"},
 	{Value: "perpetual", Label: "Бессрочная"},
-	{Value: "unknown", Label: "Вид не указан"},
+	{Value: "unknown", Label: "Тип источника отсутствует"},
 }
 
 func storeName(id string) string {
@@ -106,7 +106,7 @@ func quantity(d market.Details) string {
 		if d.MaxQuantity != nil {
 			return fmt.Sprintf("До %d шт.", *d.MaxQuantity)
 		}
-		return "Количество не указано"
+		return "Количество отсутствует"
 	}
 	if d.MaxQuantity != nil {
 		if *d.MaxQuantity != *d.Quantity {
@@ -324,7 +324,7 @@ func (h Pages) sources(ctx context.Context, p *views.Page) error {
 				s.CoverageAt = dateTime(report.AsOf)
 			}
 			if !c.Known {
-				s.CoverageNote = "Полный список URL лицензий ещё не подтверждён."
+			s.CoverageNote = "Полный список URL лицензий: проверка источника не завершена."
 				continue
 			}
 			s.Expected = grouped(int64(c.Total))

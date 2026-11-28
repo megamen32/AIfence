@@ -119,7 +119,7 @@ func resultView(out demand.Result) views.ResultView {
 	}
 	v.RequestJSON = views.JSON(request)
 	for _, row := range out.Rows {
-		display := "Нет данных"
+		display := "Источник не сообщил частотность"
 		if row.Count != nil {
 			display = countText(*row.Count)
 		}
@@ -258,7 +258,7 @@ func monthName(value string) string {
 	return names[int(t.Month())-1] + " " + strconv.Itoa(t.Year())
 }
 func rankRow(row demand.Row) views.RankedRow {
-	v := views.RankedRow{Label: row.Label, RawCount: row.Count, Count: "Нет данных", BarValue: "0"}
+	v := views.RankedRow{Label: row.Label, RawCount: row.Count, Count: "Источник не сообщил частотность", BarValue: "0"}
 	if row.Count != nil {
 		v.Count = countText(*row.Count)
 		v.BarValue = strconv.FormatInt(*row.Count, 10)
@@ -310,7 +310,7 @@ func buildChart(v *views.ResultView, out demand.Result) {
 	var maxCount int64
 	for month := start; !month.After(end); month = month.AddDate(0, 1, 0) {
 		key := month.Format("2006-01")
-		p := views.ChartPoint{Month: key, Label: monthName(key), Count: "Нет данных", State: "missing"}
+		p := views.ChartPoint{Month: key, Label: monthName(key), Count: "Источник не сообщил частотность", State: "missing"}
 		if row, ok := byMonth[key]; ok && !ambiguous[key] && row.Count != nil && *row.Count >= 0 {
 			p.Count = countText(*row.Count)
 			p.RawDate = row.Label

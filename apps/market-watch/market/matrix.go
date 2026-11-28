@@ -49,17 +49,17 @@ func conditionsLabel(o Observation, label string) string {
 	case label != "":
 		pieces = append(pieces, label)
 	case d.Quantity == nil:
-		pieces = append(pieces, "Количество не указано")
+		pieces = append(pieces, "Количество отсутствует")
 	case d.PriceBasis == "per_unit":
 		if d.MaxQuantity != nil {
 			pieces = append(pieces, fmt.Sprintf("За единицу, %d…%d шт.", *d.Quantity, *d.MaxQuantity))
 		} else {
-			pieces = append(pieces, fmt.Sprintf("За единицу, минимум %d шт.; предел не указан", *d.Quantity))
+		pieces = append(pieces, fmt.Sprintf("За единицу, минимум %d шт.; предел отсутствует", *d.Quantity))
 		}
 	case d.PriceBasis == "displayed_total":
 		pieces = append(pieces, fmt.Sprintf("Сумма за %d шт.", *d.Quantity))
 	default:
-		pieces = append(pieces, "Основание цены не подтверждено")
+		pieces = append(pieces, "Основание цены отсутствует в источнике")
 	}
 	return strings.Join(pieces, " · ")
 }

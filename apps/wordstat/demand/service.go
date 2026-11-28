@@ -292,7 +292,7 @@ func (s *Service) run(ctx context.Context, name string, args any, out Result) (R
 	}
 	if !json.Valid(payload) {
 		out.Status = "upstream_error"
-		out.Message = "Источник не вернул структурированную статистику. Частотность не определена."
+		out.Message = "Источник не вернул структурированную статистику. Частотность отсутствует в ответе."
 		return finish(out)
 	}
 	var data map[string]any
@@ -300,7 +300,7 @@ func (s *Service) run(ctx context.Context, name string, args any, out Result) (R
 	decoder.UseNumber()
 	if decoder.Decode(&data) != nil || data == nil {
 		out.Status = "upstream_error"
-		out.Message = "Источник не вернул JSON-объект статистики. Частотность не определена."
+		out.Message = "Источник не вернул JSON-объект статистики. Частотность отсутствует в ответе."
 		return finish(out)
 	}
 	out.Status = "ok"

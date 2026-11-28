@@ -53,7 +53,7 @@ func cmpURL(p *views.Page, start, end string, q int64) string {
 func shortCondition(o market.Observation, reason string) string {
 	switch {
 	case o.Details.Quantity == nil:
-		return "Количество не указано"
+		return "Количество отсутствует"
 	case strings.Contains(reason, "одного магазина"):
 		return "Один магазин"
 	case strings.Contains(reason, "верхняя граница"):
