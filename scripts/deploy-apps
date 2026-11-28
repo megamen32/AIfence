@@ -253,3 +253,6 @@ else
   go tool air deploy --url "$url" --agent "$slug" -m "AIfence $slug" --wait
 fi
 go tool air status --url "$url" --agent "$slug" --wait
+if [[ "$personal_target" == personal && "${AIFENCE_SKIP_OWNER_REGRANT:-0}" != 1 ]]; then
+  "$ROOT/scripts/regrant-owner-ui.py" --url "$url"
+fi
