@@ -40,3 +40,22 @@ func TestRender(t *testing.T) {
 		}
 	}
 }
+
+func TestDeepLinkSelectsResultByIDOrURL(t *testing.T) {
+	sources := []Source{
+		{ID: "job-42", Sitemap: "https://example.test/sitemap.xml", Seeds: []string{"https://example.test/catalog"}},
+		{ID: "job-43", Sitemap: "https://other.test/sitemap.xml"},
+	}
+	if got := selectedSource(sources, "result", "job-42", ""); got == nil || got.ID != "job-42" {
+		t.Fatalf("id deep link selected %+v", got)
+	}
+	if got := selectedSource(sources, "result", "", "https://example.test/catalog"); got == nil || got.ID != "job-42" {
+		t.Fatalf("url deep link selected %+v", got)
+	}
+	if got := selectedSource(sources, "result", "missing", "https://example.test/catalog"); got != nil {
+		t.Fatalf("invalid id selected %+v", got)
+	}
+	if got := selectedSource(sources, "other", "job-42", ""); got == nil || got.ID != "job-42" {
+		t.Fatalf("legacy source link selected %+v", got)
+	}
+}

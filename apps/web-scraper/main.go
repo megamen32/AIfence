@@ -292,9 +292,14 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) error {
 	if e != nil {
 		return e
 	}
-	p := pageData{Snapshot: x, Tab: r.URL.Query().Get("tab")}
+	q := r.URL.Query()
+	p := pageData{Snapshot: x, Tab: q.Get("tab")}
 	if p.Tab == "" {
 		p.Tab = "overview"
+	}
+	selectedID := q.Get("source")
+	if selectedID == "" && q.Get("view") == "result" {
+		selectedID = q.Get("id")
 	}
 	for i := range x.Sources {
 		v := &x.Sources[i]
@@ -305,10 +310,8 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) error {
 		if v.Status == "needs_review" || v.Status == "stale" || v.Status == "stopped" {
 			p.Review++
 		}
-		if v.ID == r.URL.Query().Get("source") {
-			p.Selected = v
-		}
 	}
+	p.Selected = selectedSource(x.Sources, q.Get("view"), selectedID, q.Get("q"))
 	if p.Selected != nil {
 		p.Tab = "source"
 	}
@@ -323,6 +326,39 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	return view.Execute(w, p)
+}
+
+func selectedSource(sources []Source, view, id, rawURL string) *Source {
+	for i := range sources {
+		if sources[i].ID == id {
+			return &sources[i]
+		}
+	}
+	if view != "result" || id != "" {
+		return nil
+	}
+	for i := range sources {
+		if sourceURLMatches(&sources[i], rawURL) {
+			return &sources[i]
+		}
+	}
+	return nil
+}
+
+func sourceURLMatches(s *Source, raw string) bool {
+	if raw == "" {
+		return false
+	}
+	u, err := url.ParseRequestURI(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return false
+	}
+	for _, candidate := range append(append([]string{}, s.Seeds...), s.Sitemap, s.SampleURL) {
+		if candidate == raw {
+			return true
+		}
+	}
+	return false
 }
 func newAgent() *agentsdk.Agent {
 	a := agentsdk.New(agentsdk.Config{Description: "Сборщик сайтов: источники, правила разбора, охват и результаты сбора.", Icon: "🔎"})

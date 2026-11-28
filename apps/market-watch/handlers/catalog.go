@@ -167,15 +167,26 @@ func pageLink(p views.Page, n int) string {
 	return "./?" + q.Encode()
 }
 
+func tabFromQuery(q url.Values) string {
+	if tab := q.Get("tab"); tab != "" {
+		return tab
+	}
+	switch q.Get("view") {
+	case "prices":
+		return "catalog"
+	case "offers":
+		return "compare"
+	default:
+		return "catalog"
+	}
+}
+
 func (h Pages) Home(w http.ResponseWriter, r *http.Request) error {
 	q := r.URL.Query()
 	now := time.Now().UTC()
-	p := views.Page{Tab: q.Get("tab"), Query: strings.TrimSpace(q.Get("q")), Source: q.Get("source"), License: q.Get("license"), From: q.Get("from"), To: q.Get("to"), Licenses: licenses, CatalogURL: link("catalog", ""), CompareURL: link("compare", ""), ChangesURL: link("changes", ""), SourcesURL: link("sources", "")}
+	p := views.Page{Tab: tabFromQuery(q), Query: strings.TrimSpace(q.Get("q")), Source: q.Get("source"), License: q.Get("license"), From: q.Get("from"), To: q.Get("to"), Licenses: licenses, CatalogURL: link("catalog", ""), CompareURL: link("compare", ""), ChangesURL: link("changes", ""), SourcesURL: link("sources", "")}
 	if h.CatalogLink != nil {
 		p.BaserowURL = h.CatalogLink(r.Context())
-	}
-	if p.Tab == "" {
-		p.Tab = "catalog"
 	}
 	if p.From == "" {
 		p.From = now.AddDate(0, 0, -6).Format(time.DateOnly)
@@ -324,7 +335,7 @@ func (h Pages) sources(ctx context.Context, p *views.Page) error {
 				s.CoverageAt = dateTime(report.AsOf)
 			}
 			if !c.Known {
-			s.CoverageNote = "Полный список URL лицензий: проверка источника не завершена."
+				s.CoverageNote = "Полный список URL лицензий: проверка источника не завершена."
 				continue
 			}
 			s.Expected = grouped(int64(c.Total))

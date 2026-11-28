@@ -103,3 +103,27 @@ func TestSourceCountsAndValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestDeepLinkViewsSelectExistingScreens(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw, want string
+	}{
+		{"prices", "/?view=prices&q=KES", "catalog"},
+		{"offers", "/?view=offers&q=KL4141RCEFS&from=2026-11-01&to=2026-11-28", "compare"},
+		{"invalid view", "/?view=unknown&q=KES", "catalog"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tabFromQuery(mustQuery(tc.raw)); got != tc.want {
+				t.Fatalf("tabFromQuery(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+func mustQuery(raw string) url.Values {
+	u, err := url.Parse(raw)
+	if err != nil {
+		panic(err)
+	}
+	return u.Query()
+}
