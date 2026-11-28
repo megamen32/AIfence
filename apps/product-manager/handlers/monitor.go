@@ -47,7 +47,7 @@ type monitorDetails struct {
 
 // preparedOrigin labels a prepared synthetic snapshot so the panel does not
 // present seeded values as production observations.
-const preparedOrigin = "ДЕМО · синтетический срез"
+const preparedOrigin = "ДЕМО"
 
 func originText(d monitorDetails) string {
 	if d.Synthetic || d.Origin == "synthetic_fixture" {
@@ -686,7 +686,7 @@ func demandComparison(product, control string, rows []monitorObservation) *views
 				source.ControlWidth = num(c1.number / maxValue * 100)
 			}
 			source.Period = span(t0.from, t1.to)
-			source.Status, source.Hint = "Сопоставимые недели", "ДЕМО · синтетический срез из сохранённого снимка"
+			source.Status, source.Hint = "Сопоставимые недели", "ДЕМО"
 		}
 		result.Sources = append(result.Sources, source)
 	}

@@ -27,7 +27,7 @@ func TestMonitorUsesObservedValuesAndActualDetection(t *testing.T) {
 		t.Fatal(cell)
 	}
 	v := investigation(p.Product, []monitorObservation{p}, nil)
-	if v.Origin != "ДЕМО · синтетический срез" || v.Detected != "Время обнаружения неизвестно" ||
+	if v.Origin != "ДЕМО" || v.Detected != "Время обнаружения неизвестно" ||
 		len(v.Chart.Dots) != 2 || v.Chart.Target == v.Chart.Control {
 		t.Fatalf("unexpected monitor state: %+v", v)
 	}
@@ -309,7 +309,7 @@ func TestColdOverviewDoesNotExpandLegacyDemoRows(t *testing.T) {
 		details:  monitorDetails{Origin: "synthetic_fixture", Control: "demo_control"},
 	}
 	auto := monitorView([]monitorObservation{alert}, nil, "", "", "", true)
-	if auto.Selected != nil || len(auto.Products) == 0 || auto.Products[0].Origin != "ДЕМО · синтетический срез" || auto.Products[0].Name != "Kaspersky Small Office Security" {
+	if auto.Selected != nil || len(auto.Products) == 0 || auto.Products[0].Origin != "ДЕМО" || auto.Products[0].Name != "Kaspersky Small Office Security" {
 		t.Fatalf("legacy demo became the default view: %+v", auto)
 	}
 	explicit := monitorView([]monitorObservation{alert}, nil, alert.Product, alert.snapshot, alert.ID, true)
