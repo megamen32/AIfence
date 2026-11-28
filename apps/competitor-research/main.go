@@ -40,6 +40,8 @@ type competitorResearchPageData struct {
 	Offer       string
 	Goal        string
 	Competitors string
+	StudyID     string
+	View        string
 	Submitted   bool
 }
 
@@ -52,8 +54,19 @@ func competitorResearchPage(w http.ResponseWriter, r *http.Request) error {
 		Offer:       strings.TrimSpace(q.Get("offer")),
 		Goal:        strings.TrimSpace(q.Get("goal")),
 		Competitors: strings.TrimSpace(q.Get("competitors")),
+		StudyID:     strings.TrimSpace(q.Get("id")),
+		View:        validResearchView(q.Get("view")),
 		Submitted:   q.Get("submitted") == "1",
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	return uiPage.Execute(w, data)
+}
+
+func validResearchView(view string) string {
+	switch view {
+	case "matrix", "sources":
+		return view
+	default:
+		return ""
+	}
 }

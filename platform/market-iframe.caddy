@@ -1,7 +1,7 @@
 # Chrome partitions these local apps' embedded logins from their standalone sessions.
 # Leave top-level navigation and other applications on the upstream policy.
 @market_embedded_login {
-	host market-watch.localhost baserow.localhost openai-byok-local.localhost userio-dion-local.localhost product-manager.localhost metrika-analyst.localhost
+	host market-watch.localhost baserow.localhost openai-byok-local.localhost userio-dion-localhost product-manager.localhost metrika-analyst.localhost wordstat.localhost
 	expression `{http.request.header.Sec-Fetch-Dest} == "iframe" || ({http.request.header.Sec-Fetch-Dest} != "document" && {http.request.header.Sec-Fetch-Storage-Access} != "")`
 }
 header @market_embedded_login {

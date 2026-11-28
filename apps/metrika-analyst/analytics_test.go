@@ -29,13 +29,32 @@ func TestDeltas(t *testing.T) {
 }
 func TestReport(t *testing.T) {
 	q := Query{ProductKey: "store", From: "2026-01-01", To: "2026-01-07", Segment: "all"}
-	o := report(json.RawMessage(`{"result":{"totals":{"ym:s:usersPurchasePercentage":4},"meta":{"sampled":false}}}`), q, "purchase_conversion", metrics["purchase_conversion"], Ref{"x", "q", "", ""})
+	o := report(json.RawMessage(`{"result":{"totals":{"ym:s:usersPurchasePercentage":4},"meta":{"sampled":false}}}`), q, "purchase_conversion", metrics["purchase_conversion"], Ref{SourceID: "x", Locator: "q"})
 	if o.Value == nil || *o.Value != .04 || o.Status != "observed" {
 		t.Fatalf("%+v", o)
 	}
 	o = report(json.RawMessage(`{"totals":{"ym:s:ecommercePurchases":0},"meta":{"sampled":true}}`), q, "orders", metrics["orders"], Ref{})
 	if o.Value == nil || *o.Value != 0 || o.Status != "estimated" {
 		t.Fatalf("%+v", o)
+	}
+}
+
+func TestQueryAddsDeepLinkToSourceRef(t *testing.T) {
+	s := Service{
+		config: func(context.Context) Settings { return Settings{Counter: 42, AppBaseURL: "https://metrics.example"} },
+		call: func(_ context.Context, name string, _ any) (json.RawMessage, error) {
+			if name != "run_report" {
+				t.Fatal(name)
+			}
+			return json.RawMessage(`{"totals":{"ym:s:visits":123},"meta":{"sampled":false}}`), nil
+		},
+	}
+	b, err := s.Query(context.Background(), Query{ProductKey: "store", MetricKeys: []string{"visits"}, From: "2026-01-01", To: "2026-01-07"})
+	if err != nil || len(b.Observations) != 1 {
+		t.Fatalf("query failed: %+v %v", b, err)
+	}
+	if got := b.Observations[0].SourceRef.DeepLink; got != "https://metrics.example/?from=2026-01-01&q=store&to=2026-01-07&view=trend" {
+		t.Fatalf("deep link = %q", got)
 	}
 }
 func TestHistorical(t *testing.T) {

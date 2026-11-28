@@ -127,6 +127,20 @@ func TestGeographyIgnoresInapplicableFormFilters(t *testing.T) {
 	}
 }
 
+func TestDeepLinkFormParsesValidViewAndFilters(t *testing.T) {
+	form, ok := deepLinkForm(url.Values{"q": {"Astra Linux"}, "from": {"2026-08"}, "to": {"2026-09"}, "region": {"225"}, "view": {"dynamics"}})
+	if !ok || form.Phrase != "Astra Linux" || form.Kind != "dynamics" || form.FromMonth != "2026-08" || form.ToMonth != "2026-09" || form.RegionIDs != "225" || form.PeriodPreset != "custom" {
+		t.Fatalf("unexpected deep-link form: %+v, ok=%v", form, ok)
+	}
+}
+
+func TestInvalidDeepLinkFallsBackToNormalForm(t *testing.T) {
+	form, ok := deepLinkForm(url.Values{"q": {"Astra Linux"}, "from": {"2026-09"}, "to": {"2026-08"}, "view": {"dynamics"}})
+	if ok || form.Phrase != defaults().Phrase || form.Kind != defaults().Kind {
+		t.Fatalf("invalid deep link was accepted: %+v, ok=%v", form, ok)
+	}
+}
+
 type replayCaller struct{ response *agentsdk.MCPToolCallResponse }
 
 func (p replayCaller) CallTool(_ context.Context, name string, _ any) (*agentsdk.MCPToolCallResponse, error) {
