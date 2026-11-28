@@ -114,7 +114,13 @@ def main():
         raise FileExistsError(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     repos = locked_sources(args.cache.resolve(), lock)
-    env = dict(os.environ, AIFENCE_DEPLOY_COMMIT=rev, GOWORK="off")
+    # The private SDK is the only one that publishes the read-only manifest bit
+    # and JobContext.ReadAppTool. The airlock_private build tag selects the
+    # matching sources; a plain public build uses the published SDK instead.
+    goflags = os.environ.get("GOFLAGS", "").strip()
+    if "-tags=airlock_private" not in goflags and "-tags airlock_private" not in goflags:
+        goflags = (goflags + " -tags=airlock_private").strip()
+    env = dict(os.environ, AIFENCE_DEPLOY_COMMIT=rev, GOWORK="off", GOFLAGS=goflags)
     with tempfile.TemporaryDirectory(prefix="personal-release-", dir=target.parent) as tmp:
         out = Path(tmp)
         helper = out / "source-bundle-helper.go"

@@ -1,5 +1,10 @@
 # Проверка пути KES
 
+Скрипт сборщика теперь живёт в дереве приложения Product Manager:
+`apps/product-manager/pathcheck/check_purchase_path.py` — оттуда он попадает в
+образ как runtime-файл `pathcheck/check_purchase_path.py`. Этот каталог остаётся
+документацией утилиты.
+
 Из корня репозитория запустите утилиту Python с Playwright 1.60.0.
 Нужен установленный Google Chrome для `--channel chrome` или Chromium,
 установленный через `python3 -m playwright install chromium`, для запуска
@@ -8,7 +13,7 @@
 ```sh
 umask 077
 run_dir=$(mktemp -d /tmp/aifence-path-check.XXXXXXXX)
-GOMAXPROCS=2 GOFLAGS=-p=1 python3 apps/path-check/check_purchase_path.py \
+GOMAXPROCS=2 GOFLAGS=-p=1 python3 apps/product-manager/pathcheck/check_purchase_path.py \
   --channel chrome > "$run_dir/evidence.json" 2> "$run_dir/artifacts.txt"
 jq -Rs '{document: .}' "$run_dir/evidence.json" > "$run_dir/pm-input.json"
 ```

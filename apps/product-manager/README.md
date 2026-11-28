@@ -9,7 +9,7 @@
 ```sh
 cd /Users/user/AIfence
 # Устанавливает штатное приложение из зафиксированных в Git исходников.
-# Сборщик включает проверку пути покупки из apps/path-check.
+# Сборщик включает проверку пути покупки из apps/product-manager/pathcheck.
 AIRLOCK_URL=http://localhost:42080 ./scripts/deploy-apps product-manager
 cd apps/product-manager
 go tool air status --url http://localhost:42080 --agent product-manager --target production --json
