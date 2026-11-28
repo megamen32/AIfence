@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Idempotently apply the AIfence stand configuration to an Airlock stand.
+
+Usage:
+  scripts/stand-config-sync --url http://localhost:42080 [--local-caddy] [--dry-run]
+  scripts/stand-config-sync --url https://airlock.bezrabotnyi.com
+
+Applies, skipping what is already in place:
+  1. search provider "omniroute-search" (perplexity type, OmniRoute /v1/search -> Keenable)
+  2. competitor-research slot competitor_search -> that provider
+  3. MCP tokens: wordstat (service token), hasdata_google_trends (HasData key)
+  4. --local-caddy: cookie-rewrite hosts for embedded app logins (local Caddy only;
+     on a real HTTPS domain app subdomains are same-site and need no rewrite)
+
+Auth: the saved air CLI session for --url (Library/Application Support/airlock/credentials.json)
+or AIRLOCK_TOKEN. Secrets are read from env or local files and never printed:
+  OMNIROUTE_API_KEY            (env, else export line in ~/.zshrc)
+  WORDSTAT_SERVICE_TOKEN       (env, else apps/wordstat/.runtime/service-token in AIFENCE_SECRETS_ROOT)
+  HASDATA_API_KEY              (env, else apps/google-trends/.runtime/hasdata.env in AIFENCE_SECRETS_ROOT)
+AIFENCE_SECRETS_ROOT defaults to /Users/user/AIfence-worktrees/external-demand.
+"""
+import argparse, json, os, re, subprocess, sys, urllib.request
+from pathlib import Path
+
+PROVIDER_SLUG = "omniroute-search"
+PROVIDER_BASE = "https://omniroute.bezrabotnyi.com/v1"
+SEARCH_APP, SEARCH_SLOT = "competitor-research", "competitor_search"
+MCP = [("wordstat", "wordstat", "Wordstat"), ("google-trends", "hasdata_google_trends", "HasData")]
+CADDY_HOSTS = ["market-watch", "baserow", "openai-byok-local", "userio-dion-local", "product-manager",
+               "metrika-analyst", "wordstat", "google-trends", "competitor-research", "web-scraper", "redmine"]
+CADDY_PATH = "/config/apps/http/servers/srv0/routes/2/handle/0/routes/0/match/0/host"
+
+
+def die(msg):
+    sys.exit("stand-config-sync: " + msg)
+
+
+class Api:
+    def __init__(self, url, token, dry):
+        self.url, self.token, self.dry = url.rstrip("/"), token, dry
+
+    def call(self, method, path, body=None, write=False):
+        if write and self.dry:
+            print("  [dry-run]", method, path)
+            return 200, {}
+        req = urllib.request.Request(self.url + path, method=method,
+                                     data=None if body is None else json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json", "Authorization": "Bearer " + self.token})
+        try:
+            r = urllib.request.urlopen(req, timeout=60)
+            raw = r.read().decode()
+            return r.status, (json.loads(raw) if raw else {})
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode()
+            try:
+                return e.code, json.loads(raw)
+            except ValueError:
+                return e.code, {"error": raw[:200]}
+
+
+def session_token(url):
+    if os.environ.get("AIRLOCK_TOKEN"):
+        return os.environ["AIRLOCK_TOKEN"]
+    p = Path.home() / "Library/Application Support/airlock/credentials.json"
+    try:
+        return json.loads(p.read_text())["sessions"][url.rstrip("/")]["accessToken"]
+    except (OSError, KeyError, ValueError):
+        die("no saved air session for %s (run: go tool air login %s) or set AIRLOCK_TOKEN" % (url, url))
+
+
+def secret(env, relpath, pattern=None):
+    if os.environ.get(env):
+        return os.environ[env].strip()
+    if env == "OMNIROUTE_API_KEY":
+        m = re.search(r'OMNIROUTE_API_KEY="([^"]+)"', (Path.home() / ".zshrc").read_text())
+        if m:
+            return m.group(1)
+    root = Path(os.environ.get("AIFENCE_SECRETS_ROOT", "/Users/user/AIfence-worktrees/external-demand"))
+    f = root / relpath
+    if f.is_file():
+        txt = f.read_text()
+        if pattern:
+            m = re.search(pattern, txt, re.M)
+            return m.group(1).strip().strip('"') if m else die("no key in " + str(f))
+        return txt.strip()
+    die("secret %s not found (env %s or %s)" % (relpath, env, f))
+
+
+def agents(api):
+    s, d = api.call("GET", "/api/v1/agents")
+    if s != 200:
+        die("cannot list agents: HTTP %s" % s)
+    return {a["slug"]: a["id"] for a in d.get("agents", [])}
+
+
+def ensure_provider(api):
+    s, d = api.call("GET", "/api/v1/providers")
+    for p in d.get("providers", []):
+        if p.get("slug") == PROVIDER_SLUG:
+            print("provider %s: present" % PROVIDER_SLUG)
+            return p["id"]
+    key = secret("OMNIROUTE_API_KEY", "")
+    s, d = api.call("POST", "/api/v1/providers", {
+        "providerId": "perplexity", "slug": PROVIDER_SLUG, "displayName": "OmniRoute Search (Keenable)",
+        "baseUrl": PROVIDER_BASE, "apiKey": key, "isEnabled": True}, write=True)
+    if s not in (200, 201):
+        die("create provider failed: HTTP %s %s" % (s, str(d)[:150].replace(key, "***")))
+    print("provider %s: created" % PROVIDER_SLUG)
+    return d.get("provider", {}).get("id", "dry-run")
+
+
+def ensure_slot(api, aid, pid):
+    s, d = api.call("GET", "/api/v1/agents/%s/models" % aid)
+    cfg = d.get("config", {})
+    slots = cfg.get("slots", [])
+    cur = next((x for x in slots if x["slug"] == SEARCH_SLOT), None)
+    if cur is None:
+        die("agent has no slot %s (deploy competitor-research first)" % SEARCH_SLOT)
+    if cur.get("assignedProviderId") == pid:
+        print("slot %s: present" % SEARCH_SLOT)
+        return
+    cfg.pop("systemDefaults", None)
+    for x in slots:
+        x.pop("resolvedModel", None); x.pop("resolvedProviderId", None)
+        if x["slug"] == SEARCH_SLOT:
+            x["assignedProviderId"], x["assignedModel"] = pid, ""
+    s, d = api.call("PUT", "/api/v1/agents/%s/models" % aid, {"config": cfg}, write=True)
+    if s != 200:
+        die("bind slot failed: HTTP %s %s" % (s, str(d)[:150]))
+    print("slot %s: bound" % SEARCH_SLOT)
+
+
+def ensure_mcp(api, aid, app, slug, name):
+    s, d = api.call("GET", "/api/v1/agents/%s/mcp-servers" % aid)
+    cur = next((m for m in d.get("mcpServers", []) if m["slug"] == slug), None)
+    if cur is None:
+        print("mcp %s/%s: not declared, skip (app not deployed with it)" % (app, slug))
+        return
+    if cur.get("authorized"):
+        print("mcp %s/%s: present" % (app, slug))
+        return
+    if slug == "wordstat":
+        key = secret("WORDSTAT_SERVICE_TOKEN", "apps/wordstat/.runtime/service-token")
+    else:
+        key = secret("HASDATA_API_KEY", "apps/google-trends/.runtime/hasdata.env", r"^HASDATA_API_KEY=(.*)$")
+    s, d = api.call("POST", "/api/v1/agents/%s/mcp-servers/%s/credentials" % (aid, slug),
+                    {"apiKey": key, "displayName": name}, write=True)
+    if s != 200:
+        die("mcp %s failed: HTTP %s %s" % (slug, s, str(d)[:150].replace(key, "***")))
+    print("mcp %s/%s: token set" % (app, slug))
+
+
+def local_caddy(dry):
+    env = dict(os.environ, PATH="/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", ""))
+    base = ["docker", "--context", "colima-aifence", "exec", "aifence-caddy-local-1", "curl", "-s", "--noproxy", "*"]
+    cur = json.loads(subprocess.check_output(base + ["http://localhost:2019" + CADDY_PATH], env=env))
+    for h in CADDY_HOSTS:
+        host = h + ".localhost"
+        if host in cur:
+            continue
+        if dry:
+            print("  [dry-run] caddy add", host); continue
+        subprocess.check_call(base + ["-o", "/dev/null", "-X", "POST", "-H", "Content-Type: application/json",
+                                      "--data-binary", json.dumps(host), "http://localhost:2019" + CADDY_PATH], env=env)
+        print("caddy host added:", host)
+    print("caddy hosts: ok (persist in .runtime/caddy-market-iframe/market-iframe.caddy)")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--url", required=True)
+    ap.add_argument("--local-caddy", action="store_true")
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+    api = Api(a.url, session_token(a.url), a.dry_run)
+    ids = agents(api)
+    pid = ensure_provider(api)
+    if SEARCH_APP in ids:
+        ensure_slot(api, ids[SEARCH_APP], pid)
+    else:
+        print("app %s not deployed on this stand, slot skipped" % SEARCH_APP)
+    for app, slug, name in MCP:
+        if app in ids:
+            ensure_mcp(api, ids[app], app, slug, name)
+        else:
+            print("app %s not deployed on this stand, mcp skipped" % app)
+    if a.local_caddy:
+        local_caddy(a.dry_run)
+
+
+if __name__ == "__main__":
+    main()
