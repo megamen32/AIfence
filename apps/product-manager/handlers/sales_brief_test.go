@@ -102,3 +102,32 @@ func TestBriefDropsDuplicateAndStaleAlerts(t *testing.T) {
 		t.Fatalf("%+v", result.Readings)
 	}
 }
+
+func TestBriefPrefersCurrentDemoAlertOverOldRealLeftover(t *testing.T) {
+	mk := func(snapshot, product, currentFrom, origin string) monitorObservation {
+		start, _ := time.Parse(time.DateOnly, currentFrom)
+		end := start.AddDate(0, 0, 27)
+		d := evidence.WindowContrast{
+			Baseline:    evidence.Period{From: start.AddDate(0, 0, -28).Format(time.DateOnly), To: start.AddDate(0, 0, -1).Format(time.DateOnly)},
+			Current:     evidence.Period{From: currentFrom, To: end.Format(time.DateOnly)},
+			WindowWeeks: 4, BaselineMean: 110, CurrentMean: 74, ControlBaselineMean: 100, ControlCurrentMean: 97.4,
+			RelativeChangePct: (74.0/110 - 1) * 100,
+		}
+		raw, _ := json.Marshal(d)
+		return monitorObservation{snapshot: snapshot, details: monitorDetails{Origin: origin, Metric: "orders_index", Control: "astra_linux_special_edition"},
+			Row: evidence.Row{Product: product, Segment: "self_service", Source: "sales", Metric: watchdogMetric, Status: "observed", Value: "true", Details: string(raw),
+				Ref:    evidence.SourceRef{SourceID: "sales", Locator: "orders#" + snapshot},
+				Period: evidence.Period{From: end.AddDate(0, 0, -6).Format(time.DateOnly), To: end.Format(time.DateOnly)}}}
+	}
+	demo := mk("a", "kaspersky_endpoint_security", "2026-10-12", "synthetic_fixture")
+	leftover := mk("b", "kaspersky_small_office_security", "2023-01-30", "imported_historical")
+	result := salesBrief([]monitorObservation{leftover, demo}, nil, BriefQuery{Summary: true})
+	if len(result.Readings) != 1 || result.Readings[0].Product != "Kaspersky Endpoint Security" {
+		t.Fatalf("%+v", result.Readings)
+	}
+	fresh := mk("c", "kaspersky_small_office_security", "2026-10-26", "imported_historical")
+	result = salesBrief([]monitorObservation{fresh, demo}, nil, BriefQuery{Summary: true})
+	if len(result.Readings) != 1 || result.Readings[0].Product != "Kaspersky Small Office Security" {
+		t.Fatalf("a current real alert must win: %+v", result.Readings)
+	}
+}

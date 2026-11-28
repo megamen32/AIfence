@@ -284,13 +284,43 @@ func staleWindow(newest, other string) bool {
 }
 
 // summaryRows keeps the panel's separation without hiding a synthetic owner.
+// Real rows win while they carry an alert as fresh as any other. When the only
+// real alerts are old leftovers and a labelled demo series holds the current
+// alert, the director sees what the panel shows, never the leftover.
 func summaryRows(rows []monitorObservation) []monitorObservation {
+	allSynthetic := true
 	for _, row := range rows {
 		if !educationalObservation(row.Row, row.details) {
-			return separateMonitorRows(rows, false)
+			allSynthetic = false
+			break
 		}
 	}
-	return rows
+	if allSynthetic {
+		return rows
+	}
+	real := separateMonitorRows(rows, false)
+	all, mine := newestActiveWindow(rows), newestActiveWindow(real)
+	if mine != "" && !staleWindow(all, mine) {
+		return real
+	}
+	if demo := separateMonitorRows(rows, true); newestActiveWindow(demo) != "" {
+		return demo
+	}
+	return real
+}
+
+// newestActiveWindow is the closing date of the newest open alert, or "".
+func newestActiveWindow(rows []monitorObservation) string {
+	sorted := slices.Clone(rows)
+	slices.SortStableFunc(sorted, func(a, b monitorObservation) int { return strings.Compare(b.Period.To, a.Period.To) })
+	_, active := watchdogState(sorted)
+	newest := ""
+	for _, r := range active {
+		if w := evidence.WatchdogWindow(r.Row); w != nil && w.Current.To > newest {
+			newest = w.Current.To
+		}
+	}
+	return newest
 }
 
 // briefDataState counts what the owner actually has, before any alert filter.
