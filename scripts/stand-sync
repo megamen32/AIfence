@@ -125,6 +125,11 @@ smoke_phase() {
   done
   IFS=$oldifs
   if [ -n "${STAND_SYNC_SCREENSHOT_CMD:-}" ]; then (cd "$smoke_dir" && eval "$STAND_SYNC_SCREENSHOT_CMD"); fi
+  status=PASS
+  grep -q $'\tFAIL\t' "$RUN_DIR/smoke.tsv" && status=FAIL || true
+  tmp=$RUN_DIR/manifest.tmp
+  awk -F '\t' -v OFS='\t' -v s="$status" 'NR==1{print;next}{$6=s;print}' "$MANIFEST" > "$tmp"
+  mv "$tmp" "$MANIFEST"
   chmod -R go-rwx "$smoke_dir" "$RUN_DIR/smoke.tsv"
 }
 if [ "$MODE" = state ]; then
