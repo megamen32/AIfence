@@ -5,6 +5,7 @@ REMOTE_ROOT=$1
 BUNDLE=$2
 APPS_CSV=$3
 IMAGE_REFS=${4:-$BUNDLE/app-image-refs.tsv}
+OUTPUT=${5:-$REMOTE_ROOT/.stand-sync/built-image-refs.tsv}
 BUILDER=${STAND_SYNC_BUILDER:-default}
 oldifs=$IFS
 IFS=,
@@ -22,5 +23,5 @@ for app in $APPS_CSV; do
   BUILDX_BUILDER="$BUILDER" docker build --pull=false -f "$dockerfile" -t "$image_ref" "$appdir" < /dev/null 1>&2
   rm -f "$dockerfile"
   printf '%s\t%s\n' "$app" "$image_ref"
-done > "$REMOTE_ROOT/.stand-sync/built-image-refs.tsv"
+done > "$OUTPUT"
 IFS=$oldifs
