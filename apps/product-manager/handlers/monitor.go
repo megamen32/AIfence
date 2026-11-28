@@ -28,18 +28,21 @@ type monitorObservation struct {
 }
 
 type monitorDetails struct {
-	Origin        string `json:"origin"`
-	Synthetic     bool   `json:"synthetic"`
-	Detected      string `json:"detected_at"`
-	FirstDetected string `json:"first_detected_at"`
-	Metric        string `json:"metric_key"`
-	Scenario      string `json:"scenario_id"`
-	Control       string `json:"control_product_key"`
-	Stage         string `json:"stage"`
-	Reason        string `json:"reason"`
-	Screenshot    string `json:"screenshot_path"`
-	Vendor        string `json:"vendor"`
-	ControlVendor string `json:"control_vendor"`
+	Origin        string   `json:"origin"`
+	Synthetic     bool     `json:"synthetic"`
+	Detected      string   `json:"detected_at"`
+	FirstDetected string   `json:"first_detected_at"`
+	Metric        string   `json:"metric_key"`
+	Scenario      string   `json:"scenario_id"`
+	Control       string   `json:"control_product_key"`
+	Stage         string   `json:"stage"`
+	Reason        string   `json:"reason"`
+	Screenshot    string   `json:"screenshot_path"`
+	Vendor        string   `json:"vendor"`
+	ControlVendor string   `json:"control_vendor"`
+	ReleaseID     string   `json:"release_id"`
+	ReleaseDate   string   `json:"release_date"`
+	Adjusted      *float64 `json:"control_adjusted_change_pct"`
 }
 
 // preparedOrigin labels a prepared synthetic snapshot so the panel does not

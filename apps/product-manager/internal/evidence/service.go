@@ -327,9 +327,10 @@ func (s *Service) Read(ctx context.Context, q Query) (Result, error) {
 // snapshot ids, so the filters run over every visible snapshot, newest first.
 // A repeated import of the same observation is returned once.
 func (s *Service) readAcross(ctx context.Context, q Query) (Result, error) {
-	if q.Offset < 0 || q.Limit < 0 || q.Limit > 100 {
+	if q.Offset < 0 || q.Limit < 0 {
 		return Result{}, errors.New("limit 1..100, offset >= 0")
 	}
+	q.Limit = min(q.Limit, 100)
 	if q.Limit == 0 {
 		q.Limit = 24
 	}
@@ -371,9 +372,11 @@ func (s *Service) readAcross(ctx context.Context, q Query) (Result, error) {
 }
 
 func selectRows(d Document, q Query) (Result, error) {
-	if q.Offset < 0 || q.Limit < 0 || q.Limit > 100 {
+	if q.Offset < 0 || q.Limit < 0 {
 		return Result{}, errors.New("limit 1..100, offset >= 0")
 	}
+	// A model often asks for more than a page; serve the page it can have.
+	q.Limit = min(q.Limit, 100)
 	if q.Limit == 0 {
 		q.Limit = 24
 	}

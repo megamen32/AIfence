@@ -131,3 +131,15 @@ func TestBriefPrefersCurrentDemoAlertOverOldRealLeftover(t *testing.T) {
 		t.Fatalf("a current real alert must win: %+v", result.Readings)
 	}
 }
+
+func TestSignalDetailNamesFunnelStepReleaseAndWeek(t *testing.T) {
+	adjusted := -30.9
+	row := monitorObservation{details: monitorDetails{Metric: "add_to_cart", ReleaseID: "R-09", ReleaseDate: "2026-10-05", Adjusted: &adjusted}}
+	w := &evidence.WindowContrast{Current: evidence.Period{From: "2026-10-05", To: "2026-11-01"}}
+	got := signalDetail(row, w)
+	for _, want := range []string{"добавление в корзину", "05.10.2026", "R-09", "30,9"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+}

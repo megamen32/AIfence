@@ -31,7 +31,10 @@ func TestRowsKeepIdentityMissingAndFilters(t *testing.T) {
 
 func TestReadAcrossRejectsBadPaging(t *testing.T) {
 	var s Service
-	if _, err := s.readAcross(nil, Query{Limit: 101}); err == nil {
-		t.Fatal("limit above 100 must be rejected before any lookup")
+	if _, err := s.readAcross(nil, Query{Offset: -1}); err == nil {
+		t.Fatal("a negative offset must be rejected before any lookup")
+	}
+	if _, err := selectRows(Document{}, Query{Limit: 500}); err != nil {
+		t.Fatal("a limit above one page is clamped, not an error:", err)
 	}
 }
