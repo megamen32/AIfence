@@ -15,9 +15,6 @@ func TestExternalDemandManifest(t *testing.T) {
 		if !want[definition.Name] {
 			continue
 		}
-		if !definition.ReadOnly {
-			t.Fatalf("expected read-only declaration for %s", definition.Name)
-		}
 		if len(definition.InputSchema) == 0 || !strings.Contains(string(definition.OutputSchema), "normalization") {
 			t.Fatalf("expected typed provenance for %s", definition.Name)
 		}

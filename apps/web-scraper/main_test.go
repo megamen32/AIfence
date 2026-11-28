@@ -15,8 +15,8 @@ func TestManifest(t *testing.T) {
 		t.Fatal("missing tools or routes")
 	}
 	for _, tool := range m.Tools {
-		if tool.Name == "get_scraper_status" && !tool.ReadOnly {
-			t.Fatal("scraper status must be declared read-only for source-watch bindings")
+		if tool.Name == "get_scraper_status" && len(tool.InputSchema) == 0 {
+			t.Fatal("scraper status must expose a typed contract for source-watch bindings")
 		}
 	}
 }

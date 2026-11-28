@@ -160,10 +160,9 @@ func state(row db.PmSourceWatch) (WatchState, error) {
 	return out, err
 }
 
-// This build uses the matching personal SDK. ReadAppTool requires the active
-// job delivery context and the owner's exact binding; no alternate credential
-// or manual read path is used.
-const HostSupportsAppRead = true
+// HostSupportsAppRead and jobReader live in the build-tagged host_read files:
+// the private platform SDK can read a bound app tool from a job delivery, the
+// published SDK cannot.
 
 func (s *Service) List(ctx context.Context, _ struct{}) (WatchList, error) {
 	owner, err := human(ctx)
@@ -330,7 +329,7 @@ func (s *Service) run(ctx context.Context, job agentsdk.JobContext, in JobInput)
 		var policy string
 		policy, err = s.policy.Get(ctx)
 		if err == nil {
-			outcome, err = checkOrResume(ctx, w.Config, policy == "approved", job.ReadAppTool, s.launcher(owner, in), pinned)
+			outcome, err = checkOrResume(ctx, w.Config, policy == "approved", jobReader(job), s.launcher(owner, in), pinned)
 		}
 	}
 	label := outcome.Status
