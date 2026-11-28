@@ -66,7 +66,7 @@ if [[ -z "$slug" ]]; then
   if [[ "$dry" == 1 ]]; then flags+=(--dry-run); fi
   if [[ "$build" == 1 ]]; then flags+=(--build); fi
   if [[ "$public" == 1 ]]; then flags+=(--public); fi
-  for app in market-watch metrika-analyst product-manager competitor-research web-scraper google-trends wordstat; do
+  for app in market-watch metrika-analyst product-manager web-scraper google-trends wordstat; do
     if [[ "$dry" == 1 || "$build" == 1 ]]; then
       "$0" "${flags[@]}" "$app"
     else
