@@ -17,8 +17,8 @@ AS_OF = "2026-11-27T18:00:00Z"
 BASELINE_FROM = "2026-09-07"
 BASELINE_TO = "2026-10-04"
 RELEASED_ON = "2026-10-05"
-CURRENT_FROM = "2026-10-12"
-CURRENT_TO = "2026-11-08"
+CURRENT_FROM = "2026-10-05"
+CURRENT_TO = "2026-11-01"
 KES = "kaspersky_endpoint_security"
 ASTRA = "astra_linux_special_edition"
 DRWEB = "dr_web_desktop_security_suite"
@@ -84,8 +84,8 @@ def make_sales() -> list[dict]:
     }
     details = {
         "control_product_key": ASTRA, "metric_key": "add_to_cart", "origin": "synthetic_fixture",
-        "reason": "target_drop_with_stable_control", "detected_at": "2026-10-12T06:00:00Z",
-        "first_detected_at": "2026-10-12T06:00:00Z", "baseline_period": {"from": BASELINE_FROM, "to": BASELINE_TO},
+        "reason": "target_drop_with_stable_control", "detected_at": "2026-10-26T06:00:00Z",
+        "first_detected_at": "2026-10-26T06:00:00Z", "baseline_period": {"from": BASELINE_FROM, "to": BASELINE_TO},
         "current_period": {"from": CURRENT_FROM, "to": CURRENT_TO}, "window_weeks": 4,
         "baseline_mean": baseline_mean, "current_mean": current_mean,
         "control_baseline_mean": control_baseline, "control_current_mean": control_current,
@@ -97,8 +97,8 @@ def make_sales() -> list[dict]:
         "source_refs": [{"id": "demo-r09-kes-baseline", "source_ref": ref("metrika-demo", "ДЕМО:R-09/add_to_cart/KES/baseline")},
                         {"id": "demo-r09-kes-current", "source_ref": ref("metrika-demo", "ДЕМО:R-09/add_to_cart/KES/current")}],
     }
-    row = obs("sales", KES, "watchdog.alert", True, "boolean", "2026-11-02", "2026-11-08",
-              "ДЕМО:R-09/watchdog/2026-11-08", kind="metric", details=details, source_id="aifence-watchdog")
+    row = obs("sales", KES, "watchdog.alert", True, "boolean", "2026-10-26", "2026-11-01",
+              "ДЕМО:R-09/watchdog/2026-11-01", kind="metric", details=details, source_id="aifence-watchdog")
     def weekly_contrast(product: str, baseline: float, current: float, change: float, label: str) -> dict:
         return obs(
             "sales", product, "family_orders_idx.relative_change_pct", round(change, 3), "percent",
