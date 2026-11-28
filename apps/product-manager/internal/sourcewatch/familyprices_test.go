@@ -139,7 +139,7 @@ func TestReviewAcceptsOnlyIDsTheFamilySignalCarries(t *testing.T) {
 			t.Fatalf("incomparable series ID %q became citable", id)
 		}
 	}
-	review := ReviewOutput{Hypothesis: "Проверить смену цены у двух артикулов", EvidenceIDs: []string{"a-base", "a-cur", "c-cur"}, Missing: []string{"нет данных softmagazin"}, Test: ReviewTest{Metric: "displayed_price_week_delta", ThresholdPct: 5, Days: 14}}
+	review := ReviewOutput{Hypothesis: "Проверить смену цены у двух артикулов", EvidenceIDs: []string{"a-base", "a-cur", "c-cur"}, Missing: []string{"наблюдение ожидается softmagazin"}, Test: ReviewTest{Metric: "displayed_price_week_delta", ThresholdPct: 5, Days: 14}}
 	if _, err = ValidateReview(review, allowed); err != nil {
 		t.Fatalf("valid family review rejected: %v", err)
 	}

@@ -67,6 +67,33 @@ func TestSignalDeltaFallsBackWhenControlAdjustedDeltaIsUnavailable(t *testing.T)
 	}
 }
 
+func TestMonitorMergesActiveAlertsByProductAndKeepsOnset(t *testing.T) {
+	row := func(id, scenario, detected string, after float64) monitorObservation {
+		return monitorObservation{Row: evidence.Row{ID: id, Product: "kaspersky_endpoint_security", Source: "sales", Metric: watchdogMetric, Status: "observed", Value: "true", Period: evidence.Period{From: "2025-12-22", To: "2026-01-18"}, Details: strings.TrimSuffix(windowJSON(100, after, 100, 100), "}") + `,"scenario_id":"` + scenario + `"}`}, snapshot: "demo", details: monitorDetails{Origin: "synthetic_fixture", Control: "astra_linux_special_edition", Scenario: scenario, FirstDetected: detected}}
+	}
+	rows := []monitorObservation{
+		row("alert-old", "old", "2026-10-12T06:00:00Z", 99),
+		row("alert-mid", "mid", "2026-10-26T06:00:00Z", 98),
+		row("alert-strong", "strong", "2026-11-02T06:00:00Z", 67.3),
+	}
+	view := monitorView(rows, nil, "", "", "", false)
+	if len(view.Pulse) != 1 || view.Pulse[0].ProductKey != "kaspersky_endpoint_security" {
+		t.Fatalf("pulse = %+v", view.Pulse)
+	}
+	if view.Pulse[0].FirstDetected != "Впервые обнаружено 12.10.2026, 06:00 UTC" {
+		t.Fatalf("onset = %q", view.Pulse[0].FirstDetected)
+	}
+}
+
+func TestDemoWeeklyLossUsesMarketPriceAndGap(t *testing.T) {
+	signal := monitorObservation{Row: evidence.Row{Product: "kaspersky_endpoint_security"}, snapshot: "demo", details: monitorDetails{Control: "astra_linux_special_edition"}}
+	market := monitorObservation{Row: evidence.Row{Product: demoKESSKU, Source: "market", Kind: "offer", Metric: "displayed_price", Status: "observed", Unit: "RUB", Value: "3500000", Period: evidence.Period{To: "2026-11-16"}}, snapshot: "demo"}
+	weekly, formula := demoWeeklyLoss([]monitorObservation{signal, market}, signal, &evidence.WindowContrast{RelativeChangePct: -32.7})
+	if weekly != "Потеря ≈ 1 144 500,00 ₽ в неделю" || !strings.Contains(formula, "ДЕМО") || !strings.Contains(formula, "3 500 000,00 ₽") {
+		t.Fatalf("loss=%q formula=%q", weekly, formula)
+	}
+}
+
 func TestDemandComparisonKeepsKESAndAstraTogether(t *testing.T) {
 	row := func(product, source, metric, from, to, value string) monitorObservation {
 		return monitorObservation{Row: evidence.Row{Product: product, Source: "research", Metric: metric, Value: value, Unit: "count", Status: "observed", Period: evidence.Period{From: from, To: to}, Ref: evidence.SourceRef{SourceID: source}}}

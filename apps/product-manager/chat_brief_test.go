@@ -17,7 +17,7 @@ func TestStandaloneReviewAttachmentKeepsControlAndSource(t *testing.T) {
 		OfferExample: []handlers.BriefFact{{SKU: "KL4210RAKDE", Fact: "Allsoft, цена за лицензию", Locator: "https://allsoft.ru/"}}}
 	data, _ := json.Marshal(handlers.SalesBrief{Readings: []handlers.ProductReading{r}})
 	doc := reviewAttachment(string(data))
-	for _, want := range []string{"Astra Linux Special Edition 1.2%", "Kaspersky Endpoint Security -12.3%", "2025-11-03", r.Source, r.Weekly, "сопоставимая пара не подтверждена (0 из 4 артикулов)"} {
+	for _, want := range []string{"Astra Linux Special Edition 1.2%", "Kaspersky Endpoint Security -12.3%", "2025-11-03", r.Source, r.Weekly, "сопоставимая пара отсутствует (0 из 4 артикулов)"} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("missing %q from attachment", want)
 		}

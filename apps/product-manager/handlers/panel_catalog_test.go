@@ -75,7 +75,7 @@ func TestCatalogSignalColorAndLabelUseVisibleChange(t *testing.T) {
 		t.Fatalf("signal tone = %q", groups[0].tone)
 	}
 	tiles := catalogTiles(groups, false, "", "", "demo")
-	if len(tiles) != 1 || !tiles[0].ShowLabel || tiles[0].DisplayName != "KES −32,7 %" {
+	if len(tiles) != 1 || !tiles[0].ShowLabel || tiles[0].DisplayName != "KES −32,7 %" || tiles[0].LabelLine1 != "KES" || tiles[0].LabelLine2 != "−32,7 %" {
 		t.Fatalf("focus tile = %+v", tiles)
 	}
 }

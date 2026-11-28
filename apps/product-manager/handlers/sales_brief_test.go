@@ -48,7 +48,7 @@ func TestBriefUsesPanelWindowAndOnlyObservedMarketTerms(t *testing.T) {
 	}
 	separate := ProductReading{Product: "Kaspersky Small Office Security"}
 	addPriceContext(&separate, map[string]PriceComparison{"KL4210RAKDS": result.Comparisons[0]}, result.Facts)
-	if len(separate.OfferExample) != 0 || !strings.Contains(separate.Price, "нет данных") {
+	if len(separate.OfferExample) != 0 || !strings.Contains(separate.Price, "предложения отсутствуют") {
 		t.Fatal(separate)
 	}
 	eligible := PriceComparison{Product: "Kaspersky Endpoint Security", SKU: "KL4210RAKDS", ComparableGroups: 1}

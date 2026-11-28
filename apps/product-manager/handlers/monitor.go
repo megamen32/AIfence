@@ -441,7 +441,9 @@ func demoKESPrice(rows []monitorObservation, snapshot string) float64 {
 		if row.Source != "market" || row.Kind != "offer" || row.Metric != "displayed_price" || row.Status != "observed" || row.Unit != "RUB" {
 			continue
 		}
-		var details struct{ SKU string `json:"sku"` }
+		var details struct {
+			SKU string `json:"sku"`
+		}
 		_ = json.Unmarshal([]byte(row.Details), &details)
 		if !strings.EqualFold(row.Product, demoKESSKU) && !strings.EqualFold(details.SKU, demoKESSKU) {
 			continue
