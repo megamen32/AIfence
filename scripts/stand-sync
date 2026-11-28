@@ -148,9 +148,9 @@ build_code() {
         for mod in agentsdk sol goai; do
           if [ -d "$appdir/.personal-modules/$mod" ]; then
             case "$mod" in
-              agentsdk) (cd "$appdir" && go mod edit -replace github.com/airlockrun/agentsdk=./.personal-modules/agentsdk);;
-              sol) (cd "$appdir" && go mod edit -replace github.com/airlockrun/sol=./.personal-modules/sol);;
-              goai) (cd "$appdir" && go mod edit -replace github.com/airlockrun/goai=./.personal-modules/goai);;
+              agentsdk) (cd "$appdir" && "$GO_BIN" mod edit -replace github.com/airlockrun/agentsdk=./.personal-modules/agentsdk);;
+              sol) (cd "$appdir" && "$GO_BIN" mod edit -replace github.com/airlockrun/sol=./.personal-modules/sol);;
+              goai) (cd "$appdir" && "$GO_BIN" mod edit -replace github.com/airlockrun/goai=./.personal-modules/goai);;
             esac
           fi
         done
