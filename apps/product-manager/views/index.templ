@@ -157,6 +157,24 @@ templ sourceBoard(v HomeView) {
 							</button>
 						</form>
 					}
+					<div class="dashboard-card-actions" aria-label="Действия доставки">
+						if v.Detail.RedmineID != "" {
+							<a class="text-link" href={ v.Detail.RedmineURL } target="_blank" rel="noopener noreferrer">Уже в Redmine #{ v.Detail.RedmineID }</a>
+						} else {
+							<form method="post" action="./delivery/redmine">
+								<input type="hidden" name="id" value={ v.Detail.ID }/>
+								<button type="submit" class="btn btn-sm btn-primary">Добавить в Redmine</button>
+							</form>
+						}
+						if v.Detail.DionStatus == "sent" {
+							<span class="tag">Отправлено в Dion</span>
+						} else {
+							<form method="post" action="./delivery/dion/card">
+								<input type="hidden" name="id" value={ v.Detail.ID }/>
+								<button type="submit" class="btn btn-sm">Отправить в Dion</button>
+							</form>
+						}
+					</div>
 					<a class="text-link" href={ v.Detail.SnapshotURL }>
 						<span>Открыть исходный снимок</span>
 						@lucide.Icon("arrow-up-right", "size-4")
