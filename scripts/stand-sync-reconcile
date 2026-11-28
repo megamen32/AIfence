@@ -33,6 +33,7 @@ for app in $APPS_CSV; do
   manifest_file="$MANIFEST_DIR/$app.json"
   if [ -s "$manifest_file" ]; then
     docker cp "$manifest_file" "$PGID:/tmp/stand-sync-$app-manifest.json" >/dev/null
+    docker exec "$PGID" chmod 644 "/tmp/stand-sync-$app-manifest.json"
     docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock -c "update agent_runtime_manifests set manifest=pg_read_file('/tmp/stand-sync-$app-manifest.json')::json, token_version=token_version+1, synced_at=now() where agent_id='$target_id';" >/dev/null
   fi
   docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock \
