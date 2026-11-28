@@ -109,51 +109,47 @@ build_full() {
 }
 build_code() {
   sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
-  target_sha=$(ssh -o BatchMode=yes -o ConnectTimeout=${STAND_SYNC_SSH_TIMEOUT:-12} "$TARGET_HOST" bash -s -- "$REMOTE_ROOT" "$sha" "$APPS_CSV" <<'REMOTE_BUILD' | tail -n 1
-set -Eeuo pipefail
-root=$1
-sha=$2
-apps=$3
-repo=$root/repo
-mkdir -p "$root/.stand-sync/worktrees"
-if [ ! -d "$repo/.git" ]; then
-  git_url=${STAND_SYNC_GIT_URL:-}
-  [ -n "$git_url" ] || git_url=git@github.com:megamen32/AIfence.git
-  git clone --filter=blob:none --no-checkout "$git_url" "$repo"
-fi
-git -C "$repo" fetch --quiet origin "$sha"
-wt=$root/.stand-sync/worktrees/$sha
-if [ ! -e "$wt/.git" ]; then git -C "$repo" worktree add --detach "$wt" "$sha"; fi
-cd "$wt"
-if [ -n "${STAND_SYNC_BUILD_CMD:-}" ]; then
-  eval "$STAND_SYNC_BUILD_CMD"
-else
+  bundle=$RUN_DIR/source-bundle
+  worktree=$RUN_DIR/source-worktree
+  rm -rf "$bundle" "$worktree"
+  mkdir -p "$bundle/apps"
+  git worktree add --detach "$worktree" "$sha" >/dev/null
+  printf 'app\timage_ref\n' > "$bundle/app-image-refs.tsv"
   oldifs=$IFS
   IFS=,
-  for app in $apps; do
-    svc=$(docker compose config --services 2>/dev/null | grep -E "(^|-)${app}$" | head -1 || true)
-    if [ -n "$svc" ]; then
-      BUILDX_BUILDER="${STAND_SYNC_BUILDER:-default}" docker compose build "$svc" < /dev/null
-      docker compose up -d --no-deps "$svc" < /dev/null
-    elif [ -f "apps/$app/Dockerfile" ]; then
-      prefix=${STAND_SYNC_APP_IMAGE_PREFIX:-}
-      [ -n "$prefix" ] || prefix=aifence
-      image="$prefix-$app:stand-sync-$sha"
-      BUILDX_BUILDER="${STAND_SYNC_BUILDER:-default}" docker build -f "apps/$app/Dockerfile" -t "$image" "apps/$app" < /dev/null
-      echo "built $app $image" >&2
-    else
-      echo "No Compose service or apps/$app/Dockerfile; set STAND_SYNC_BUILD_CMD on server-100" >&2
-      exit 42
+  for app in $APPS_CSV; do
+    [ -n "$app" ] || continue
+    appdir=$worktree/apps/$app
+    [ -d "$appdir" ] || { echo "Pinned source is missing apps/$app" >&2; IFS=$oldifs; return 46; }
+    if [ -f "$appdir/go.mod" ]; then
+      vendor_env=(GOPROXY=off GOFLAGS=-mod=mod)
+      [ -n "${GOPRIVATE+x}" ] && vendor_env+=(GOPRIVATE="$GOPRIVATE")
+      [ -n "${GONOSUMDB+x}" ] && vendor_env+=(GONOSUMDB="$GONOSUMDB")
+      [ -n "${AIFENCE_PERSONAL_CACHE+x}" ] && vendor_env+=(AIFENCE_PERSONAL_CACHE="$AIFENCE_PERSONAL_CACHE")
+      (cd "$appdir" && env "${vendor_env[@]}" go mod vendor)
     fi
+    rsync -a --delete --exclude .git "$appdir/" "$bundle/apps/$app/"
+    image_ref=$(awk -F '\t' -v a="$app" 'NR>1 && (tolower($1) ~ tolower(a) || tolower($2) ~ tolower(a)) {print $2; exit}' "$RUN_DIR/source-agent-shas.tsv" 2>/dev/null || true)
+    printf '%s\t%s\n' "$app" "$image_ref" >> "$bundle/app-image-refs.tsv"
   done
   IFS=$oldifs
-fi
-git rev-parse HEAD
-REMOTE_BUILD
-)
-  tmp=$RUN_DIR/manifest.tmp
-  awk -F '\t' -v OFS='\t' -v s="$target_sha" 'NR==1{print;next}{$4=s;print}' "$MANIFEST" > "$tmp"
-  mv "$tmp" "$MANIFEST"
+  tar -C "$bundle" -cf "$RUN_DIR/source-bundle.tar" .
+  remote_dir="$REMOTE_ROOT/.stand-sync/$SYNC_KEY"
+  bundle_remote="$remote_dir/bundle"
+  tar_remote="$remote_dir/source-bundle.tar"
+  helper_remote="$remote_dir/stand-sync-build"
+  refs_remote="$remote_dir/built-image-refs.tsv"
+  ssh_target "mkdir -p $(printf '%q' "$remote_dir")"
+  rsync --partial --append-verify "$RUN_DIR/source-bundle.tar" "$TARGET_HOST:$tar_remote"
+  rsync --partial --append-verify "$SOURCE_ROOT/scripts/stand-sync-build" "$TARGET_HOST:$helper_remote"
+  ssh_target "set -Eeuo pipefail; rm -rf $(printf '%q' "$bundle_remote"); mkdir -p $(printf '%q' "$bundle_remote"); tar -xf $(printf '%q' "$tar_remote") -C $(printf '%q' "$bundle_remote"); chmod 700 $(printf '%q' "$helper_remote"); $(printf '%q' "$helper_remote") $(printf '%q' "$REMOTE_ROOT") $(printf '%q' "$bundle_remote") $(printf '%q' "$APPS_CSV") $(printf '%q' "$bundle_remote/app-image-refs.tsv") $(printf '%q' "$refs_remote")"
+  rsync --partial --append-verify "$TARGET_HOST:$refs_remote" "$RUN_DIR/built-image-refs.tsv"
+  target_sha=$sha
+  if [ -s "$RUN_DIR/built-image-refs.tsv" ]; then
+    tmp=$RUN_DIR/manifest.tmp
+    awk -F '\t' -v OFS='\t' -v target="$target_sha" 'NR==FNR{img[$1]=$2;next} NR==1{print;next}{$4=target;$5=img[$1];print}' "$RUN_DIR/built-image-refs.tsv" "$MANIFEST" > "$tmp"
+    mv "$tmp" "$MANIFEST"
+  fi
 }
 state_phase() { [ "$MODE" = state ] || printf 'state skipped (code-only)\n' > "$RUN_DIR/state-skipped"; }
 restore_phase() { [ "$MODE" = state ] || printf 'restore skipped (code-only)\n' > "$RUN_DIR/restore-skipped"; }
