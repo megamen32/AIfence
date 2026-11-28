@@ -37,6 +37,8 @@ if [ -z "$MODE" ]; then
   [ -n "$APPS_CSV" ] && MODE=no-state || MODE=state
 fi
 [ -n "$APPS_CSV" ] || APPS_CSV=$FULL_APPS
+PIN_KEY=$(git -C "$SOURCE_ROOT" rev-parse --short=12 HEAD)
+SYNC_KEY=$(printf "%s|%s|%s" "$PIN_KEY" "$MODE" "$APPS_CSV" | sha256sum | cut -c1-16)
 retry_cmd="$0 --to server-100"
 [ -n "$APPS_CSV" ] && retry_cmd="$retry_cmd --apps $APPS_CSV"
 [ "$MODE" = state ] && retry_cmd="$retry_cmd --state"
@@ -47,14 +49,14 @@ chmod 700 "$RUN_DIR"
 printf 'phase\tstarted\tfinished\tstatus\n' > "$TIMINGS"
 printf 'app\tsource_sha\tsource_contract\ttarget_sha\ttarget_image\tsmoke\n' > "$MANIFEST"
 ssh_target() { ssh -o BatchMode=yes -o ConnectTimeout=${STAND_SYNC_SSH_TIMEOUT:-12} "$TARGET_HOST" "$@"; }
-mark_path() { printf '%s/.stand-sync/%s.done' "$REMOTE_ROOT" "$1"; }
+mark_path() { printf '%s/.stand-sync/%s-%s.done' "$REMOTE_ROOT" "$SYNC_KEY" "$1"; }
 phase_done() { ssh_target "test -f $(printf '%q' "$(mark_path "$1")")"; }
 begin_phase() { PHASE=$1; START_EPOCH=$(date +%s); printf '%s\t%s\t\tstart\n' "$PHASE" "$(date -u +%FT%TZ)" >> "$TIMINGS"; }
 end_phase() { printf '%s\t%s\t%s\t%s\n' "$PHASE" "$START_EPOCH" "$(date -u +%FT%TZ)" "$1" >> "$TIMINGS"; }
 remote_mark() { ssh_target "mkdir -p $(printf '%q' "$REMOTE_ROOT/.stand-sync") && : > $(printf '%q' "$(mark_path "$1")")"; }
 run_phase() {
   p=$1; shift
-  if phase_done "$p"; then echo "stand-sync: phase $p already complete"; return; fi
+  if [ "$p" != pin ] && phase_done "$p"; then echo "stand-sync: phase $p already complete"; return; fi
   begin_phase "$p"; "$@"; remote_mark "$p"; end_phase ok
 }
 pin_phase() {
