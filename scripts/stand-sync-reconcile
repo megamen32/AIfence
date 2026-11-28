@@ -29,6 +29,16 @@ for app in $APPS_CSV; do
     -c "update agents set source_ref = :'sref', image_ref = :'iref' where id = :'aid';" >/dev/null
 done
 IFS=$oldifs
+if [ -s "$SRC_GRANTS" ]; then
+  while IFS='|' read -r source_agent grantee role; do
+    [ -n "$source_agent" ] || continue
+    app=$(awk -F '|' -v id="$source_agent" '$1==id {print $2; exit}' "$SRC_APPS")
+    [ -n "$app" ] || continue
+    target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")
+    [ -n "$target_id" ] || continue
+    docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock       -v aid="$target_id" -v gid="$grantee" -v role="$role"       -c "insert into agent_grants (agent_id,grantee_id,role) values (:'aid',:'gid',:'role') on conflict do nothing;" >/dev/null
+  done < "$SRC_GRANTS"
+fi
 if compose config --services 2>/dev/null | grep -qx airlock; then
   compose restart airlock >/dev/null
 fi
