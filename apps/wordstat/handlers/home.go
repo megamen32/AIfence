@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,7 +36,73 @@ func presets() []string {
 }
 func (h *Handler) Home(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	return views.Index(views.HomeView{Form: defaults(), Presets: presets()}).Render(r.Context(), w)
+	form, ok := deepLinkForm(r.URL.Query())
+	if !ok {
+		return views.Index(views.HomeView{Form: defaults(), Presets: presets()}).Render(r.Context(), w)
+	}
+
+	var out demand.Result
+	var err error
+	if form.Kind == "regions" {
+		out, err = h.service.Regions(r.Context(), demand.RegionsInput{Phrase: form.Phrase, RegionMode: form.RegionMode})
+	} else {
+		id, _ := strconv.Atoi(form.RegionIDs)
+		devices := []string{"all"}
+		if form.Kind == "top" {
+			out, err = h.service.Top(r.Context(), demand.TopInput{Phrase: form.Phrase, RegionIDs: []int{id}, Devices: devices, Limit: 20})
+		} else {
+			out, err = h.service.Dynamics(r.Context(), demand.DynamicsInput{Phrase: form.Phrase, FromMonth: form.FromMonth, ToMonth: form.ToMonth, RegionIDs: []int{id}, Devices: devices})
+		}
+	}
+	if err != nil {
+		out = demand.Result{Status: "connection_error", Kind: form.Kind, Phrase: form.Phrase, Message: "Не удалось получить статистику. Повторите запрос позже."}
+	}
+	v := resultView(out)
+	return views.Index(views.HomeView{Form: form, Presets: presets(), Result: &v}).Render(r.Context(), w)
+}
+
+func deepLinkForm(values url.Values) (views.Form, bool) {
+	form := defaults()
+	phrase := strings.TrimSpace(values.Get("q"))
+	if phrase == "" || len([]rune(phrase)) > 400 {
+		return form, false
+	}
+	form.Phrase = phrase
+	form.Kind = values.Get("view")
+	if form.Kind == "" {
+		form.Kind = "top"
+	}
+	if form.Kind != "top" && form.Kind != "dynamics" && form.Kind != "regions" {
+		return defaults(), false
+	}
+	if raw, present := values["region"]; present {
+		if len(raw) != 1 {
+			return defaults(), false
+		}
+		id, err := strconv.Atoi(strings.TrimSpace(raw[0]))
+		if err != nil || id < 1 {
+			return defaults(), false
+		}
+		form.RegionIDs = strconv.Itoa(id)
+		form.RegionLabel = views.RegionName(form.RegionIDs)
+	}
+	from, hasFrom := values["from"]
+	to, hasTo := values["to"]
+	if hasFrom != hasTo || (hasFrom && (len(from) != 1 || len(to) != 1)) {
+		return defaults(), false
+	}
+	if hasFrom {
+		form.FromMonth, form.ToMonth = from[0], to[0]
+		start, startErr := time.Parse("2006-01", form.FromMonth)
+		end, endErr := time.Parse("2006-01", form.ToMonth)
+		if startErr != nil || endErr != nil || start.After(end) {
+			return defaults(), false
+		}
+		form.PeriodPreset = "custom"
+	} else if form.Kind == "dynamics" {
+		return defaults(), false
+	}
+	return form, true
 }
 func (h *Handler) Query(w http.ResponseWriter, r *http.Request) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)

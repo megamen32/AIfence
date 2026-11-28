@@ -5,6 +5,7 @@ import (
 	"agent/views"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,7 +26,85 @@ func defaultForm(now time.Time) views.Form {
 }
 func (p *Pages) Home(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	return views.Page(defaultForm(time.Now().UTC()), nil).Render(r.Context(), w)
+	now := time.Now().UTC()
+	form, ok := deepLinkForm(r.URL.Query(), now)
+	if !ok {
+		return views.Page(defaultForm(now), nil).Render(r.Context(), w)
+	}
+	query := trends.Query{Terms: form.Terms, Geo: form.Geo, From: form.From, To: form.To, Property: form.Property, Category: form.Category, Region: form.Region}
+	var result trends.Result
+	var err error
+	switch form.Mode {
+	case "compare":
+		result, err = p.service.Compare(r.Context(), query)
+	case "regions":
+		result, err = p.service.Regional(r.Context(), query)
+	case "related":
+		result, err = p.service.Related(r.Context(), query)
+	}
+	if err != nil {
+		result = trends.Result{Status: trends.UpstreamError, Mode: form.Mode, Request: trends.Request{Terms: form.Terms, Geo: form.Geo, From: form.From, To: form.To, Property: form.Property, Category: form.Category, Region: form.Region}, Message: "Источник не ответил. Статистика не получена."}
+	}
+	vm := resultModel(result)
+	return views.Page(form, &vm).Render(r.Context(), w)
+}
+
+func deepLinkForm(values url.Values, now time.Time) (views.Form, bool) {
+	form := defaultForm(now)
+	rawQuery := strings.TrimSpace(values.Get("q"))
+	if rawQuery == "" {
+		return form, false
+	}
+	terms := strings.Split(rawQuery, ",")
+	for i, term := range terms {
+		terms[i] = strings.TrimSpace(term)
+		if terms[i] == "" || strings.ContainsAny(terms[i], "\r\n\x00") {
+			return defaultForm(now), false
+		}
+	}
+	form.Mode = values.Get("view")
+	if form.Mode == "" {
+		form.Mode = "compare"
+	}
+	if form.Mode != "compare" && form.Mode != "regions" && form.Mode != "related" {
+		return defaultForm(now), false
+	}
+	minTerms := 1
+	if form.Mode == "compare" {
+		minTerms = 2
+	}
+	if form.Mode == "related" {
+		minTerms = 1
+	}
+	if len(terms) < minTerms || len(terms) > 5 {
+		return defaultForm(now), false
+	}
+	form.Terms = terms
+	if rawGeo, present := values["geo"]; present {
+		if len(rawGeo) != 1 || !regexp.MustCompile(`^[A-Z]{2}(?:-[A-Za-z0-9-]{1,12})?$`).MatchString(rawGeo[0]) {
+			return defaultForm(now), false
+		}
+		form.Geo = rawGeo[0]
+	}
+	form.GeoLabel = views.GeoName(form.Geo)
+	from, hasFrom := values["from"]
+	to, hasTo := values["to"]
+	if hasFrom != hasTo || (hasFrom && (len(from) != 1 || len(to) != 1)) {
+		return defaultForm(now), false
+	}
+	if hasFrom {
+		form.From, form.To = from[0], to[0]
+		start, startErr := time.Parse(time.DateOnly, form.From)
+		end, endErr := time.Parse(time.DateOnly, form.To)
+		if startErr != nil || endErr != nil || start.After(end) {
+			return defaultForm(now), false
+		}
+		form.PeriodPreset = "custom"
+	}
+	if form.Mode == "related" && len(form.Terms) != 1 {
+		return defaultForm(now), false
+	}
+	return form, true
 }
 func (p *Pages) Query(w http.ResponseWriter, r *http.Request) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
@@ -191,7 +270,7 @@ func scoreCell(s trends.Score) views.Cell {
 		}
 		detail := ""
 		if s.HasData == nil {
-		detail = "Статус показателя: источник не сообщил значение"
+			detail = "Статус показателя: источник не сообщил значение"
 		}
 		return views.Cell{Label: label, Detail: detail, Index: s.Index}
 	}

@@ -5,8 +5,10 @@ import (
 	"agent/views"
 	"bytes"
 	"context"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestViewKeepsMissingZeroAndUnknownDistinct(t *testing.T) {
@@ -41,5 +43,21 @@ func TestResultTemplateEscapesProviderText(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "<script>") || !strings.Contains(buf.String(), "&lt;script&gt;") {
 		t.Fatal("provider text was not escaped")
+	}
+}
+
+func TestDeepLinkFormParsesComparison(t *testing.T) {
+	now := time.Date(2026, 11, 28, 8, 0, 0, 0, time.UTC)
+	form, ok := deepLinkForm(url.Values{"q": {"Kaspersky Endpoint Security,Astra Linux"}, "geo": {"RU"}, "from": {"2026-08-01"}, "to": {"2026-10-31"}, "view": {"compare"}}, now)
+	if !ok || form.Mode != "compare" || len(form.Terms) != 2 || form.Geo != "RU" || form.From != "2026-08-01" || form.To != "2026-10-31" || form.PeriodPreset != "custom" {
+		t.Fatalf("unexpected deep-link form: %+v, ok=%v", form, ok)
+	}
+}
+
+func TestInvalidDeepLinkFallsBackToNormalForm(t *testing.T) {
+	now := time.Date(2026, 11, 28, 8, 0, 0, 0, time.UTC)
+	form, ok := deepLinkForm(url.Values{"q": {"Kaspersky Endpoint Security,Astra Linux"}, "geo": {"bad"}, "view": {"compare"}}, now)
+	if ok || form.Mode != "compare" || len(form.Terms) != 2 {
+		t.Fatalf("invalid deep link was accepted: %+v, ok=%v", form, ok)
 	}
 }
