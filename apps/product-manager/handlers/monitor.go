@@ -429,7 +429,8 @@ func demoWeeklyLoss(rows []monitorObservation, signal monitorObservation, window
 	if price <= 0 || orders <= 0 || missing <= 0 {
 		return "", ""
 	}
-	return "Потеря ≈ " + rub(price*missing) + " в неделю", "ДЕМО · " + rub(price) + " × " + num(missing) + " недобор заказов"
+	gap := strings.ReplaceAll(strconv.FormatFloat(missing, 'f', 3, 64), ".", ",")
+	return "Потеря ≈ " + rub(price*missing) + " в неделю", "ДЕМО · " + rub(price) + " × " + gap + " недобор заказов"
 }
 
 func isKESSignal(signal monitorObservation) bool {
