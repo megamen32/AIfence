@@ -100,36 +100,48 @@ build_full() {
 }
 build_code() {
   sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
-  apps_q=$(printf "%q" "$APPS_CSV")
-  target_sha=$(ssh_target "set -Eeuo pipefail
-apps=$apps_q
-root=$(printf '%q' "$REMOTE_ROOT")
-repo=\$root/repo
-mkdir -p \$root/.stand-sync/worktrees
-if [ ! -d \$repo/.git ]; then git clone --filter=blob:none --no-checkout \${STAND_SYNC_GIT_URL:-git@github.com:megamen32/AIfence.git} \$repo; fi
-git -C \$repo fetch --quiet origin $sha
-wt=\$root/.stand-sync/worktrees/$sha
-if [ ! -e \$wt/.git ]; then git -C \$repo worktree add --detach \$wt $sha; fi
-cd \$wt
-if [ -n \${STAND_SYNC_BUILD_CMD:-} ]; then eval \"\$STAND_SYNC_BUILD_CMD\"
+  target_sha=$(ssh -o BatchMode=yes -o ConnectTimeout=${STAND_SYNC_SSH_TIMEOUT:-12} "$TARGET_HOST" bash -s -- "$REMOTE_ROOT" "$sha" "$APPS_CSV" <<'REMOTE_BUILD'
+set -Eeuo pipefail
+root=$1
+sha=$2
+apps=$3
+repo=$root/repo
+mkdir -p "$root/.stand-sync/worktrees"
+if [ ! -d "$repo/.git" ]; then
+  git_url=${STAND_SYNC_GIT_URL:-}
+  [ -n "$git_url" ] || git_url=git@github.com:megamen32/AIfence.git
+  git clone --filter=blob:none --no-checkout "$git_url" "$repo"
+fi
+git -C "$repo" fetch --quiet origin "$sha"
+wt=$root/.stand-sync/worktrees/$sha
+if [ ! -e "$wt/.git" ]; then git -C "$repo" worktree add --detach "$wt" "$sha"; fi
+cd "$wt"
+if [ -n "${STAND_SYNC_BUILD_CMD:-}" ]; then
+  eval "$STAND_SYNC_BUILD_CMD"
 else
- oldifs=\$IFS; IFS=,
- for app in \$apps; do
-  svc=\$(docker compose config --services 2>/dev/null | grep -E "(^|-)\$app$" | head -1 || true)
-  if [ -n "\$svc" ]; then
-   docker compose build "\$svc" && docker compose up -d --no-deps "\$svc"
-  elif [ -f "apps/\$app/Dockerfile" ]; then
-   prefix=\${STAND_SYNC_APP_IMAGE_PREFIX:-aifence}
-   image="\$prefix-\$app:stand-sync-$sha"
-   docker build -f "apps/\$app/Dockerfile" -t "\$image" "apps/\$app"
-   echo "built \$app \$image" >&2
-  else
-   echo "No Compose service or apps/\$app/Dockerfile; set STAND_SYNC_BUILD_CMD on server-100" >&2
-   exit 42
-  fi
- done
- IFS=\$oldifs
-git rev-parse HEAD")
+  oldifs=$IFS
+  IFS=,
+  for app in $apps; do
+    svc=$(docker compose config --services 2>/dev/null | grep -E "(^|-)${app}$" | head -1 || true)
+    if [ -n "$svc" ]; then
+      docker compose build "$svc"
+      docker compose up -d --no-deps "$svc"
+    elif [ -f "apps/$app/Dockerfile" ]; then
+      prefix=${STAND_SYNC_APP_IMAGE_PREFIX:-}
+      [ -n "$prefix" ] || prefix=aifence
+      image="$prefix-$app:stand-sync-$sha"
+      docker build -f "apps/$app/Dockerfile" -t "$image" "apps/$app"
+      echo "built $app $image" >&2
+    else
+      echo "No Compose service or apps/$app/Dockerfile; set STAND_SYNC_BUILD_CMD on server-100" >&2
+      exit 42
+    fi
+  done
+  IFS=$oldifs
+fi
+git rev-parse HEAD
+REMOTE_BUILD
+)
   tmp=$RUN_DIR/manifest.tmp
   awk -F '\t' -v OFS='\t' -v s="$target_sha" 'NR==1{print;next}{$4=s;print}' "$MANIFEST" > "$tmp"
   mv "$tmp" "$MANIFEST"
