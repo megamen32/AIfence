@@ -7,12 +7,13 @@ python_bin="${AIFENCE_PYTHON:-/opt/homebrew/bin/python3}"
 if [[ ! -x "$python_bin" ]]; then python_bin="$(command -v python3)"; fi
 export GOMAXPROCS="${GOMAXPROCS:-2}" GOFLAGS="${GOFLAGS:--p=1}"
 verify_main_release() {
+  git -C "$ROOT" fetch origin main
   "$python_bin" - "$ROOT" "$commit" "${1:-}" <<'VERIFY_MAIN'
 import json, pathlib, subprocess, sys
 root, commit = pathlib.Path(sys.argv[1]), sys.argv[2]
-main = subprocess.check_output(["git", "-C", str(root), "rev-parse", "refs/heads/main"], text=True).strip()
-if commit != main:
-    sys.exit("Live deployment requires the current main commit; build integration candidates with personal-build-apps.py --commit")
+origin_main = subprocess.check_output(["git", "-C", str(root), "rev-parse", "refs/remotes/origin/main"], text=True).strip()
+if commit != origin_main:
+    sys.exit("Live deployment requires the target commit to equal origin/main after fetch; build integration candidates with personal-build-apps.py --commit")
 for name in ("scripts/deploy-apps", "scripts/personal-build-apps.py", "scripts/personal-source-bundle.go", "platform/personal-release.lock.json"):
     data = subprocess.check_output(["git", "-C", str(root), "show", commit + ":" + name])
     path = root / name
@@ -60,7 +61,7 @@ if [[ -z "$slug" ]]; then
   exit 0
 fi
 commit="$(git -C "$ROOT" rev-parse --verify --end-of-options "${AIFENCE_DEPLOY_COMMIT:-HEAD}^{commit}")"
-if [[ "$dry" == 0 ]]; then verify_main_release; fi
+verify_main_release
 url="${AIRLOCK_URL:-http://localhost:42080}"
 origin_key="$("$python_bin" - "$url" <<'ORIGIN'
 import hashlib, sys, urllib.parse
