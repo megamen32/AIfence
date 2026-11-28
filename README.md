@@ -7,6 +7,52 @@ reference, separates a signal from a proven cause, and proposes the next
 check. The contest build uses synthetic metrics and public catalog products;
 private customer files stay outside the repository.
 
+## Запуск из чистого клона
+
+Единственная точка входа — `scripts/bootstrap`. Клонируйте репозиторий и
+запустите одну команду: она проверяет окружение, генерирует sqlc/templ/tailwind
+исходники и собирает и тестирует все шесть приложений опубликованным SDK
+(`github.com/airlockrun/agentsdk v0.11.0`). Ни приватный SDK, ни персональный
+кэш, ни worktree не нужны.
+
+```sh
+git clone https://github.com/megamen32/AIfence.git
+cd AIfence
+./scripts/bootstrap
+```
+
+Требуются Go 1.26+ (`GOTOOLCHAIN=auto` подтянет нужную версию), Git и доступ в
+интернет: модули Go идут через `proxy.golang.org`, а закреплённые sqlc,
+tailwindcss и daisyUI скачиваются с релизов GitHub в локальный кэш toolchain.
+Проверить окружение без сборки: `./scripts/bootstrap --check-only`. Собрать одно
+приложение: `./scripts/bootstrap --app market-watch`.
+
+Сгенерированные файлы (`*_templ.go`, `views/static/app.css`, `internal/db/*`)
+не коммитятся: их каждый раз создаёт `go tool air build`. Исходники (`.templ`,
+`styles/app.css`, `db/queries/*.sql`) лежат в Git.
+
+Проверка сборки без выкладки и без загрузки на сервер:
+
+```sh
+./scripts/deploy-apps --build --public   # все шесть приложений
+./scripts/deploy-apps --build --public product-manager   # одно приложение
+```
+
+`--build` собирает застейженные исходники тем же опубликованным SDK и
+останавливается: ни логина, ни загрузки, ни изменения на стенде. `--dry-run`
+делает только стейджинг. Реальная выкладка с приватным профилем и закреплённым
+SDK описана в разделе [Native M1 build and deployment](#native-m1-build-and-deployment).
+
+Переменные окружения: `.env.example` содержит только необязательные
+несекретные настройки. Секреты в репозиторий не попадают.
+
+Ограничения публичной сборки: опубликованный SDK не умеет помечать инструмент
+read-only в манифесте и не умеет читать привязанный инструмент другого
+приложения из задачи. Поэтому приватные файлы `sdk_readonly_private.go` и
+`host_read_private.go` включаются тегом сборки `airlock_private` (его ставит
+`scripts/personal-build-apps.py`), а публичная сборка честно отвечает отказом
+вместо того, чтобы сообщить о непрочитанном источнике.
+
 ## Jury links and delivery status
 
 - **Jury stand:** owner's Mac Airlock at `http://localhost:42080`. The jury
