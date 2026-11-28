@@ -15,13 +15,13 @@ type EvidenceGroup struct {
 	Rows  []EvidenceRow
 }
 type Decision struct {
-	EvidenceLevel, Forecast, TaskURL, TaskTag, TaskSystem                                                                  string
-	CompetingExplanations                                                                                                 []string
-	MeasuredEvidence                                                                                                      []Link
-	Threshold, Operator, RuleLabel                                                                                        string
+	EvidenceLevel, Forecast, TaskURL, TaskTag, TaskSystem                                                                             string
+	CompetingExplanations                                                                                                             []string
+	MeasuredEvidence                                                                                                                  []Link
+	Threshold, Operator, RuleLabel                                                                                                    string
 	ID, Title, Product, Status, Action, Metric, Baseline, Rule, Control, Window, TaskID, Assessment, Version, SnapshotURL, BaserowURL string
-	Groups                                                                                                                []EvidenceGroup
-	Unknowns                                                                                                              []string
+	Groups                                                                                                                            []EvidenceGroup
+	Unknowns                                                                                                                          []string
 }
 type HomeView struct {
 	Monitor                                           *Monitor
@@ -137,9 +137,9 @@ type CatalogGroup struct {
 }
 
 type CatalogTile struct {
-	Name, Label, Value, Tone, URL string
-	X, Y, W, H, LX, LY            string
-	ShowLabel                     bool
+	Name, DisplayName, Label, Value, Tone, URL string
+	X, Y, W, H, LX, LY                         string
+	ShowLabel                                  bool
 }
 
 type ReleaseHistory struct {

@@ -64,3 +64,15 @@ func TestCatalogSearchUsesAirlockSiblingOrigin(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestCatalogSignalColorAndLabelUseVisibleChange(t *testing.T) {
+	groups := []mapGroup{{name: "Kaspersky", count: 2985}}
+	markVendors(groups, []views.PulseItem{{Product: "Kaspersky Endpoint Security", Change: "−32,7 %", URL: "./?alert=kes"}})
+	if !strings.Contains(groups[0].tone, "delta-down-high") {
+		t.Fatalf("signal tone = %q", groups[0].tone)
+	}
+	tiles := catalogTiles(groups, false, "", "", "demo")
+	if len(tiles) != 1 || !tiles[0].ShowLabel || tiles[0].DisplayName != "KES −32,7 %" {
+		t.Fatalf("focus tile = %+v", tiles)
+	}
+}

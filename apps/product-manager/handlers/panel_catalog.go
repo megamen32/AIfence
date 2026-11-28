@@ -134,18 +134,49 @@ func markVendors(groups []mapGroup, alerts []views.PulseItem) {
 				p.signalTitle += " · " + alert.Change + " " + alert.Comparison
 			}
 			p.tone = "signal-associated"
-			if alert.Delta != nil {
+			if delta := catalogSignalDelta(alert); delta != nil {
 				switch {
-				case *alert.Delta <= -30:
+				case *delta <= -30:
 					p.tone += " delta-down-high"
-				case *alert.Delta < 0:
+				case *delta < 0:
 					p.tone += " delta-down"
-				case *alert.Delta > 0:
+				case *delta > 0:
 					p.tone += " delta-up"
 				}
 			}
 		}
 	}
+}
+
+func catalogSignalDelta(alert views.PulseItem) *float64 {
+	if alert.Delta != nil {
+		return alert.Delta
+	}
+	value := strings.TrimSpace(strings.TrimSuffix(alert.Change, "%"))
+	value = strings.ReplaceAll(value, "−", "-")
+	value = strings.ReplaceAll(value, ",", ".")
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return nil
+	}
+	return &parsed
+}
+
+func catalogFocusLabel(g mapGroup) string {
+	if strings.Contains(g.tone, "control-context") {
+		return "Astra · контроль"
+	}
+	if strings.Contains(g.tone, "signal-associated") {
+		name := g.name
+		if strings.Contains(strings.ToLower(name), "kaspersky") {
+			name = "KES"
+		}
+		if g.signal != "" {
+			return name + " " + g.signal
+		}
+		return name + " · сигнал"
+	}
+	return g.name
 }
 
 func matchVendor(groups []mapGroup, vendor, product string) int {
@@ -357,14 +388,19 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 			if g.signal != "" {
 				value += " · " + g.signal
 			}
+			focus := strings.Contains(g.tone, "signal-associated") || strings.Contains(g.tone, "control-context")
+			displayName := g.name
+			if focus {
+				displayName = catalogFocusLabel(g)
+			}
 			aria := g.name + " · " + value
 			if g.signalTitle != "" {
 				aria += " · " + g.signalTitle
 			}
 			tiles = append(tiles, views.CatalogTile{
-				Name: g.name, Label: aria, Value: value, Tone: g.tone, URL: link,
+				Name: g.name, DisplayName: displayName, Label: aria, Value: value, Tone: g.tone, URL: link,
 				X: f(tile.x), Y: f(tile.y), W: f(tile.w), H: f(tile.h), LX: f(tile.x + 8), LY: f(tile.y + 17),
-				ShowLabel: tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26,
+				ShowLabel: focus || tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26,
 			})
 			at += length
 		}

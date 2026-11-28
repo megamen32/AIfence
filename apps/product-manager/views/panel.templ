@@ -282,7 +282,7 @@ templ catalogRectangle(tile CatalogTile) {
 	<rect class={ "catalog-tile", tile.Tone } x={ tile.X } y={ tile.Y } width={ tile.W } height={ tile.H }><title>{ tile.Label }</title></rect>
 	if tile.ShowLabel {
 		<text class={ "catalog-name", catalogTileLabelClass(tile) } x={ tile.LX } y={ tile.LY } aria-hidden="true">
-			{ tile.Name }
+			{ tile.DisplayName }
 			<tspan class="catalog-value" x={ tile.LX } dy="17">{ tile.Value }</tspan>
 		if meaning := catalogToneLabel(tile.Tone); meaning != "" {
 			<tspan class="catalog-meaning" x={ tile.LX } dy="15">{ meaning }</tspan>
