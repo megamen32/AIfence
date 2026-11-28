@@ -13,7 +13,7 @@ SRC_APPS=$BUNDLE/source-apps.tsv
 SRC_GRANTS=$BUNDLE/source-grants.tsv
 TARGET_AGENTS=$(mktemp)
 trap 'rm -f "$TARGET_AGENTS"' EXIT
-docker exec "$PGID" psql -At -F '|' -U airlock -d airlock -c "select id,slug from agents where status in ('active','building')" > "$TARGET_AGENTS"
+docker exec "$PGID" psql -At -F '|' -U airlock -d airlock -c "select id,slug from agents where status <> 'deleted' and slug not like 'deleted-%'" > "$TARGET_AGENTS"
 oldifs=$IFS
 IFS=,
 tmp_refs=$(mktemp)
