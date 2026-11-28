@@ -430,7 +430,15 @@ func demoWeeklyLoss(rows []monitorObservation, signal monitorObservation, window
 		return "", ""
 	}
 	gap := strings.ReplaceAll(strconv.FormatFloat(missing, 'f', 3, 64), ".", ",")
-	return "Потеря ≈ " + rub(price*missing) + " в неделю", "ДЕМО · " + rub(price) + " × " + gap + " недобор заказов"
+	return roundedWeeklyLoss(price * missing), "ДЕМО · " + rub(price) + " × " + gap + " недобор заказов"
+}
+
+func roundedWeeklyLoss(value float64) string {
+	if value >= 1000000 {
+		millions := math.Ceil(value/10000) / 100
+		return "≈ " + strings.ReplaceAll(strconv.FormatFloat(millions, 'f', 2, 64), ".", ",") + " млн ₽ в неделю"
+	}
+	return "≈ " + rub(value) + " в неделю"
 }
 
 func isKESSignal(signal monitorObservation) bool {

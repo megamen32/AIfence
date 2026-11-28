@@ -39,6 +39,7 @@ type HomeView struct {
 
 type Monitor struct {
 	Catalog                                 *CatalogMap
+	VendorDetail                            *VendorDetail
 	Search, Group, Updated, Mode, MarketURL string
 	Matches, Records, Diagnostics           []Link
 	ReviewCount                             int
@@ -124,7 +125,7 @@ type CoverageItem struct {
 }
 
 type CatalogMap struct {
-	Count, Date, Group, Weight, Filter string
+	Count, Date, Group, Weight, Filter, Vendor, BackURL string
 	Partial                            bool
 	VendorURL, CategoryURL             string
 	OtherRemainder                     string
@@ -140,6 +141,25 @@ type CatalogTile struct {
 	Name, DisplayName, Label, Value, Tone, URL, LabelLine1, LabelLine2 string
 	X, Y, W, H, LX, LY                                                 string
 	ShowLabel, Focus                                                   bool
+}
+
+type VendorDetail struct {
+	Name, Count, Origin, HypothesisURL string
+	Top                                 []VendorProduct
+	Alerts                              []VendorAlert
+	Sparkline                           []SparkPoint
+}
+
+type VendorProduct struct {
+	Name, Change, Value, URL string
+}
+
+type VendorAlert struct {
+	Name, Change, Loss, URL string
+}
+
+type SparkPoint struct {
+	X, Y, Label string
 }
 
 type ReleaseHistory struct {

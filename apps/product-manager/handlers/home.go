@@ -416,7 +416,7 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 				setupPanel(&v, panelQuery, false, selected != "")
 			}
 		}
-		h.loadOverview(ctx, v.Monitor, q, v.Tab, v.Mode)
+		h.loadOverview(ctx, v.Monitor, q, v.Tab, v.Mode, index.Snapshots)
 		if v.Monitor.Selected != nil {
 			v.Monitor.Selected.Mode = panelMode(demo)
 			v.Monitor.Selected.BackURL = href("tab", "overview", "mode", panelMode(demo))
@@ -460,7 +460,7 @@ func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 			if err != nil {
 				return v, err
 			}
-			h.loadOverview(ctx, v.Monitor, q, v.Tab, v.Mode)
+			h.loadOverview(ctx, v.Monitor, q, v.Tab, v.Mode, index.Snapshots)
 		}
 		snap = rec.EvidenceSnapshotID
 		for _, s := range index.Snapshots {

@@ -54,6 +54,14 @@ func catalogTileLabelClass(tile CatalogTile) string {
 	return "catalog-label-secondary"
 }
 
+func sparklinePath(points []SparkPoint) string {
+	parts := make([]string, 0, len(points))
+	for _, point := range points {
+		parts = append(parts, point.X+","+point.Y)
+	}
+	return strings.Join(parts, " ")
+}
+
 templ Panel(v HomeView) {
 	<section class={ "pm-frame", "pm-mode-" + v.Mode } aria-label="Панель Product Manager">
 		<header class="dashboard-top">
@@ -202,6 +210,9 @@ templ catalogPanel(m *Monitor) {
 			}
 		} else {
 			<div class="dashboard-legend"><small>Площадь: { m.Catalog.Weight }</small><small>Цвет: отклонение товара от контроля. Серый — неизвестно.</small></div>
+			if m.Catalog.Vendor != "" {
+				<a class="catalog-back" href={ m.Catalog.BackURL }>← Все вендоры</a>
+			}
 			<svg viewBox="0 0 640 280" class="catalog-treemap" role="group" aria-label="Карта групп каталога">
 				for _, tile := range m.Catalog.Tiles {
 						if tile.Name == "Другие" {
@@ -213,6 +224,9 @@ templ catalogPanel(m *Monitor) {
 					}
 				}
 			</svg>
+			if m.VendorDetail != nil {
+				@vendorDetail(m.VendorDetail)
+			}
 				@catalogOtherDetails(m)
 			@catalogLegend(m)
 		}
@@ -223,6 +237,43 @@ templ catalogPanel(m *Monitor) {
 					<a href={ result.URL } class="text-link">{ result.Label }</a>
 				}
 			</details>
+		}
+	</section>
+}
+
+templ vendorDetail(v *VendorDetail) {
+	<section class="vendor-detail" aria-label={ "Сводка вендора " + v.Name }>
+		<div class="vendor-detail-heading">
+			<div><span class="vendor-detail-eyebrow">Вендор</span><h3>{ v.Name }</h3></div>
+			<strong>{ v.Count } товаров</strong>
+		</div>
+		<div class="vendor-detail-grid">
+			<div>
+				<h4>Топ отклонений</h4>
+				<ul class="vendor-products">
+					for _, product := range v.Top {
+						<li><span>{ product.Name }</span><strong>{ product.Change }</strong><small>{ product.Value }</small></li>
+					}
+				</ul>
+			</div>
+			<div class="vendor-sparkline">
+				<h4>Динамика за 8 недель</h4>
+				<svg viewBox="0 0 280 54" role="img" aria-label="Динамика вендора за 8 недель">
+					<path class="vendor-sparkline-grid" d="M0 42H280M0 24H280M0 6H280"></path>
+					<polyline class="vendor-sparkline-line" points={ sparklinePath(v.Sparkline) }></polyline>
+				</svg>
+				<small>ДЕМО · последняя точка — текущая неделя</small>
+			</div>
+		</div>
+		if len(v.Alerts) > 0 {
+			<div class="vendor-alerts"><h4>Активные тревоги</h4>
+				for _, alert := range v.Alerts {
+					<a href={ alert.URL }><span>{ alert.Name } · { alert.Change }</span><strong>{ alert.Loss }</strong></a>
+				}
+			</div>
+		}
+		if v.HypothesisURL != "" {
+			<a class="text-link vendor-hypothesis" href={ v.HypothesisURL }>Открыть гипотезу</a>
 		}
 	</section>
 }

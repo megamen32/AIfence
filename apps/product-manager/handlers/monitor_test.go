@@ -89,7 +89,7 @@ func TestDemoWeeklyLossUsesMarketPriceAndGap(t *testing.T) {
 	signal := monitorObservation{Row: evidence.Row{Product: "kaspersky_endpoint_security"}, snapshot: "demo", details: monitorDetails{Control: "astra_linux_special_edition"}}
 	market := monitorObservation{Row: evidence.Row{Product: demoKESSKU, Source: "market", Kind: "offer", Metric: "displayed_price", Status: "observed", Unit: "RUB", Value: "3500000", Period: evidence.Period{To: "2026-11-16"}}, snapshot: "demo"}
 	weekly, formula := demoWeeklyLoss([]monitorObservation{signal, market}, signal, &evidence.WindowContrast{RelativeChangePct: -32.7})
-	if weekly != "Потеря ≈ 1 144 500,00 ₽ в неделю" || !strings.Contains(formula, "ДЕМО") || !strings.Contains(formula, "3 500 000,00 ₽") {
+	if weekly != "≈ 1,15 млн ₽ в неделю" || !strings.Contains(formula, "ДЕМО") || !strings.Contains(formula, "3 500 000,00 ₽") {
 		t.Fatalf("loss=%q formula=%q", weekly, formula)
 	}
 }

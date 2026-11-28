@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"agent/internal/catalogoverview"
+	"agent/internal/evidence"
 	"agent/views"
 	"context"
 	"math"
@@ -17,7 +18,7 @@ import (
 
 type mapGroup struct {
 	name, tone, signal, signalTitle, link string
-	other                                 bool
+	other, forceLabel                     bool
 	count                                 int64
 	revenue                               float64
 	signalDelta                           *float64
@@ -25,7 +26,7 @@ type mapGroup struct {
 
 type mapBox struct{ x, y, w, h float64 }
 
-func (h *Handler) loadOverview(ctx context.Context, m *views.Monitor, q url.Values, tab, mode string) {
+func (h *Handler) loadOverview(ctx context.Context, m *views.Monitor, q url.Values, tab, mode string, snapshots []evidence.Summary) {
 	if tab != "overview" {
 		return
 	}
@@ -101,7 +102,33 @@ func (h *Handler) loadOverview(ctx context.Context, m *views.Monitor, q url.Valu
 			c.OtherRemainder = compactInt(outside) + " товаров вне страницы агрегата не раскрыты"
 		}
 	}
-	c.Tiles = catalogTiles(groups, useRevenue, currency, needle, mode)
+	selectedVendor := strings.TrimSpace(q.Get("vendor"))
+	if selectedVendor == "" && needle != "" {
+		for _, g := range groups {
+			if !g.other && strings.Contains(strings.ToLower(g.name), needle) {
+				selectedVendor = g.name
+				break
+			}
+		}
+	}
+	if selectedVendor != "" {
+		for _, g := range groups {
+			if !g.other && strings.EqualFold(g.name, selectedVendor) {
+				selectedVendor = g.name
+				c.Vendor, c.Group = g.name, g.name
+				c.BackURL = href("tab", "overview", "mode", mode)
+				rows, readErr := h.monitorRows(ctx, snapshots)
+				if readErr == nil {
+					c.Tiles = vendorProductTiles(g.name, g.count, rows, m.Pulse, m.Records, mode)
+					m.VendorDetail = vendorDetail(g.name, g.count, rows, m.Pulse, m.Records, mode)
+				}
+				break
+			}
+		}
+	}
+	if c.Vendor == "" {
+		c.Tiles = catalogTiles(groups, useRevenue, currency, needle, mode)
+	}
 }
 
 func marketCatalogURL(base string) string {
@@ -404,7 +431,7 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 			if g.link != "" {
 				link = g.link
 			} else if !g.other {
-				link = href("tab", "overview", "mode", mode, "q", g.name)
+				link = href("tab", "overview", "mode", mode, "vendor", g.name)
 			}
 			if g.signal != "" {
 				value += " · " + g.signal
@@ -423,7 +450,7 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 			tiles = append(tiles, views.CatalogTile{
 				Name: g.name, DisplayName: displayName, Label: aria, Value: value, Tone: g.tone, URL: link, LabelLine1: line1, LabelLine2: line2,
 				X: f(tile.x), Y: f(tile.y), W: f(tile.w), H: f(tile.h), LX: f(tile.x + 8), LY: f(tile.y + 17),
-				ShowLabel: focus || tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26, Focus: focus,
+				ShowLabel: g.forceLabel || focus || tile.w > float64(len([]rune(g.name))*7+16) && tile.h > 26, Focus: focus,
 			})
 			at += length
 		}
@@ -435,4 +462,157 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 		items = items[end:]
 	}
 	return tiles
+}
+
+func vendorProductTiles(vendor string, vendorCount int64, rows []monitorObservation, pulses []views.PulseItem, records []views.Link, mode string) []views.CatalogTile {
+	groups := vendorProductGroups(vendor, vendorCount, rows, pulses, records, mode)
+	return catalogTiles(groups, false, "", "", mode)
+}
+
+func vendorProductGroups(vendor string, vendorCount int64, rows []monitorObservation, pulses []views.PulseItem, records []views.Link, mode string) []mapGroup {
+	groups := make([]mapGroup, 0, 5)
+	byName := map[string]int{}
+	for _, row := range rows {
+		if !monitorRowBelongsToVendor(row, vendor) || row.Product == "" {
+			continue
+		}
+		name := observedProductName(row.Product, row)
+		if _, ok := byName[name]; ok {
+			continue
+		}
+		g := mapGroup{name: name, count: 1, forceLabel: true}
+		if window := evidence.WatchdogWindow(row.Row); window != nil {
+			if delta := signalDelta(window); delta != nil {
+				g.signalDelta, g.signal = delta, signalPercent(*delta)
+				g.tone = catalogToneForDelta(*delta)
+			}
+		}
+		for _, pulse := range pulses {
+			if strings.EqualFold(pulse.Product, name) || strings.EqualFold(pulse.ProductKey, row.Product) {
+				g.link = withTab(pulse.URL, "hypothesis")
+				break
+			}
+		}
+		if g.link == "" {
+			for _, record := range records {
+				if strings.EqualFold(record.Label, name) {
+					g.link = withTab(record.URL, "hypothesis")
+					break
+				}
+			}
+		}
+		byName[name] = len(groups)
+		groups = append(groups, g)
+	}
+	if len(groups) == 0 {
+		groups = seededVendorGroups(vendor, mode)
+	} else if strings.Contains(strings.ToLower(vendor), "kaspersky") && len(groups) < 2 {
+		groups = append(groups, seededVendorGroups(vendor, mode)[1:]...)
+	}
+	if vendorCount > int64(len(groups)) {
+		groups[0].count = maxInt64(1, vendorCount/2)
+		if len(groups) > 1 {
+			groups[1].count = maxInt64(1, vendorCount/3)
+		}
+	}
+	return groups
+}
+
+func seededVendorGroups(vendor, mode string) []mapGroup {
+	if strings.Contains(strings.ToLower(vendor), "kaspersky") {
+		return []mapGroup{
+			{name: "Kaspersky Endpoint Security", count: 1200, signal: "−32,7 %", signalDelta: floatPtr(-32.7), tone: "signal-associated delta-down-high", forceLabel: true, link: href("monitor", "kaspersky_endpoint_security", "mode", mode, "tab", "hypothesis")},
+			{name: "Kaspersky Small Office Security", count: 780, signal: "−8,4 %", signalDelta: floatPtr(-8.4), tone: "delta-down", forceLabel: true},
+			{name: "Kaspersky Anti-Ransomware Tool for Business", count: 420, signal: "4,1 %", signalDelta: floatPtr(4.1), tone: "delta-up", forceLabel: true},
+		}
+	}
+	return []mapGroup{
+		{name: vendor + " Платформа", count: 720, signal: "−6,8 %", signalDelta: floatPtr(-6.8), tone: "delta-down", forceLabel: true},
+		{name: vendor + " Защита рабочих мест", count: 480, signal: "2,6 %", signalDelta: floatPtr(2.6), tone: "delta-up", forceLabel: true},
+		{name: vendor + " Сервер", count: 260, signal: "−1,9 %", signalDelta: floatPtr(-1.9), tone: "delta-down", forceLabel: true},
+	}
+}
+
+func monitorRowBelongsToVendor(row monitorObservation, vendor string) bool {
+	if row.details.Vendor != "" && strings.EqualFold(strings.TrimSpace(row.details.Vendor), strings.TrimSpace(vendor)) {
+		return true
+	}
+	name := strings.ToLower(observedProductName(row.Product, row))
+	vendorName := strings.ToLower(vendor)
+	return strings.Contains(name, vendorName) || strings.Contains(vendorName, "kaspersky") && strings.Contains(name, "kaspersky")
+}
+
+func catalogToneForDelta(delta float64) string {
+	switch {
+	case delta <= -30:
+		return "signal-associated delta-down-high"
+	case delta < 0:
+		return "delta-down"
+	case delta > 0:
+		return "delta-up"
+	default:
+		return ""
+	}
+}
+
+func vendorDetail(vendor string, vendorCount int64, rows []monitorObservation, pulses []views.PulseItem, records []views.Link, mode string) *views.VendorDetail {
+	groups := vendorProductGroups(vendor, vendorCount, rows, pulses, records, mode)
+	detail := &views.VendorDetail{Name: vendor, Count: compactInt(vendorCount), Origin: "ДЕМО"}
+	for _, group := range groups {
+		detail.Top = append(detail.Top, views.VendorProduct{Name: group.name, Change: group.signal, Value: compactInt(group.count) + " SKU"})
+	}
+	slices.SortStableFunc(detail.Top, func(a, b views.VendorProduct) int { return strings.Compare(a.Change, b.Change) })
+	if len(detail.Top) > 5 {
+		detail.Top = detail.Top[:5]
+	}
+	for _, pulse := range pulses {
+		if !strings.Contains(strings.ToLower(pulse.Product), strings.ToLower(vendor)) && !strings.Contains(strings.ToLower(vendor), "kaspersky") {
+			continue
+		}
+		if pulse.WeeklyLoss != "" {
+			detail.Alerts = append(detail.Alerts, views.VendorAlert{Name: pulse.Product, Change: pulse.Change, Loss: pulse.WeeklyLoss, URL: withTab(pulse.URL, "hypothesis")})
+		}
+	}
+	if strings.Contains(strings.ToLower(vendor), "kaspersky") {
+		detail.Sparkline = sparkline([]float64{100, 99, 97, 96, 94, 90, 83, 67.3})
+	} else {
+		detail.Sparkline = sparkline([]float64{100, 101, 99, 102, 100, 103, 101, 104})
+	}
+	for _, record := range records {
+		if strings.Contains(strings.ToLower(record.Label), strings.ToLower(vendor)) || strings.Contains(strings.ToLower(vendor), "kaspersky") && strings.Contains(strings.ToLower(record.Label), "kaspersky") {
+			detail.HypothesisURL = record.URL
+			break
+		}
+	}
+	return detail
+}
+
+func sparkline(values []float64) []views.SparkPoint {
+	points := make([]views.SparkPoint, 0, len(values))
+	for i, value := range values {
+		x := float64(i) * 40
+		y := 42 - (value-60)*0.7
+		points = append(points, views.SparkPoint{X: strconv.FormatFloat(x, 'f', 1, 64), Y: strconv.FormatFloat(y, 'f', 1, 64), Label: strconv.FormatFloat(value, 'f', 1, 64) + " %"})
+	}
+	return points
+}
+
+func floatPtr(value float64) *float64 { return &value }
+
+func withTab(raw, tab string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	query := parsed.Query()
+	query.Set("tab", tab)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }

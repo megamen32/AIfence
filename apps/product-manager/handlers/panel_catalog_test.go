@@ -30,7 +30,7 @@ func TestCatalogTailPreservesFullCountAndSignalVendors(t *testing.T) {
 	m := &views.Monitor{Pulse: []views.PulseItem{
 		{ProductKey: ksosFamily, Product: productName(ksosFamily), ControlKey: "astra_linux", URL: "./?alert=target", Change: "−31,2 %", Comparison: "К предыдущему окну из 4 нед.", Delta: float64Ptr(-28)},
 	}}
-	h.loadOverview(t.Context(), m, url.Values{}, "overview", "real")
+	h.loadOverview(t.Context(), m, url.Values{}, "overview", "real", nil)
 	found := map[string]bool{}
 	sum := int64(0)
 	for _, tile := range m.Catalog.Tiles {
@@ -77,5 +77,22 @@ func TestCatalogSignalColorAndLabelUseVisibleChange(t *testing.T) {
 	tiles := catalogTiles(groups, false, "", "", "demo")
 	if len(tiles) != 1 || !tiles[0].ShowLabel || tiles[0].DisplayName != "KES −32,7 %" || tiles[0].LabelLine1 != "KES" || tiles[0].LabelLine2 != "−32,7 %" {
 		t.Fatalf("focus tile = %+v", tiles)
+	}
+}
+
+func TestVendorDrilldownSeedsProductsAndKeepsKESHypothesisLink(t *testing.T) {
+	panorama := vendorProductGroups("КБ Панорама", 1460, nil, nil, nil, "demo")
+	if len(panorama) != 3 || panorama[0].count == 0 || !panorama[0].forceLabel {
+		t.Fatalf("vendor products = %+v", panorama)
+	}
+	kaspersky := vendorProductGroups("Kaspersky", 2985, nil, nil, nil, "demo")
+	var kes mapGroup
+	for _, group := range kaspersky {
+		if group.name == "Kaspersky Endpoint Security" {
+			kes = group
+		}
+	}
+	if kes.link == "" || !strings.Contains(kes.link, "tab=hypothesis") {
+		t.Fatalf("KES drilldown link = %q", kes.link)
 	}
 }
