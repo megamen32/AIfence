@@ -20,6 +20,7 @@ type mapGroup struct {
 	other                                 bool
 	count                                 int64
 	revenue                               float64
+	signalDelta                           *float64
 }
 
 type mapBox struct{ x, y, w, h float64 }
@@ -125,10 +126,15 @@ func markVendors(groups []mapGroup, alerts []views.PulseItem) {
 			groups[i].tone = "control-context"
 			groups[i].signalTitle = "Контроль для " + alert.Product
 		}
-		if i := matchVendor(groups, alert.Vendor, alert.Product); i >= 0 && groups[i].link == "" {
+		if i := matchVendor(groups, alert.Vendor, alert.Product); i >= 0 {
 			p := &groups[i]
+			delta := catalogSignalDelta(alert)
+			if p.link != "" && !preferCatalogSignal(delta, p.signalDelta) {
+				continue
+			}
 			p.link = alert.URL
 			p.signal = alert.Change
+			p.signalDelta = delta
 			p.signalTitle = "Сигнал у товара вендора: " + alert.Product
 			if alert.Change != "" && alert.Comparison != "" {
 				p.signalTitle += " · " + alert.Change + " " + alert.Comparison
@@ -146,6 +152,16 @@ func markVendors(groups []mapGroup, alerts []views.PulseItem) {
 			}
 		}
 	}
+}
+
+func preferCatalogSignal(candidate, current *float64) bool {
+	if current == nil {
+		return candidate != nil
+	}
+	if candidate == nil {
+		return false
+	}
+	return *candidate < *current
 }
 
 func catalogSignalDelta(alert views.PulseItem) *float64 {
