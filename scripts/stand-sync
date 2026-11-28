@@ -128,13 +128,13 @@ else
   for app in $apps; do
     svc=$(docker compose config --services 2>/dev/null | grep -E "(^|-)${app}$" | head -1 || true)
     if [ -n "$svc" ]; then
-      docker compose build "$svc"
-      docker compose up -d --no-deps "$svc"
+      docker compose build "$svc" < /dev/null
+      docker compose up -d --no-deps "$svc" < /dev/null
     elif [ -f "apps/$app/Dockerfile" ]; then
       prefix=${STAND_SYNC_APP_IMAGE_PREFIX:-}
       [ -n "$prefix" ] || prefix=aifence
       image="$prefix-$app:stand-sync-$sha"
-      docker build -f "apps/$app/Dockerfile" -t "$image" "apps/$app"
+      docker build -f "apps/$app/Dockerfile" -t "$image" "apps/$app" < /dev/null
       echo "built $app $image" >&2
     else
       echo "No Compose service or apps/$app/Dockerfile; set STAND_SYNC_BUILD_CMD on server-100" >&2
