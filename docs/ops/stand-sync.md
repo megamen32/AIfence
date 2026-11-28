@@ -20,7 +20,7 @@ The target root is \`/home/roomhacker/aifence-move\`. Successful phases leave \`
 | Phase | Behavior |
 | --- | --- |
 | pin | Reads the source Git SHA and contract fingerprint, plus non-secret source image/container IDs and OCI revision/version labels from the Mac Docker context when available; rows are written to source-agent-shas.tsv. |
-| build | Full mode delegates the native, resumable \`scripts/stand/move-to-server100.sh\`; code-only fetches that SHA into a target worktree and runs the target compose build; if no matching service exists, it builds apps/<slug>/Dockerfile directly and tags a stand-sync image. |
+| build | Full mode delegates the native, resumable \`scripts/stand/move-to-server100.sh\`; code-only creates a clean worktree at the pinned SHA, vendors each selected Go app with GOPROXY=off and the existing private-cache/GOPRIVATE settings, tars source+vendor, rsyncs the bundle with resume, then runs the shipped scripts/stand-sync-build helper on server-100. The helper builds a temporary vendor-aware Dockerfile with -mod=vendor and tags the exact pinned image_ref. |
 | state | Full mode uses the existing \`pg_dump -Fc\` and resumable rsync transfer; code-only records a skip. |
 | restore | Restores dumps before app startup in full mode; code-only records a skip. |
 | reconcile | Runs \`STAND_SYNC_RECONCILE_CMD\` on the target to re-register apps, re-apply grants bound to app version and restart source watches. A missing hook is a hard failure with the retry command. |
@@ -28,6 +28,10 @@ The target root is \`/home/roomhacker/aifence-move\`. Successful phases leave \`
 | smoke | Checks comma-separated URLs and optionally runs \`STAND_SYNC_SCREENSHOT_CMD\` in the receipt directory. |
 
 Code-only pinning uses \`refs/heads/main\` by default; set \`STAND_SYNC_SOURCE_REF\` for a controlled ref. Full mode pins HEAD/running source. Useful target overrides are \`STAND_SYNC_TARGET_HOST\`, \`STAND_SYNC_REMOTE_ROOT\`, \`STAND_SYNC_GIT_URL\`, \`STAND_SYNC_BUILD_CMD\`, \`STAND_SYNC_RECONCILE_CMD\`, \`STAND_SYNC_BUILDER\` (default \`default\` native Docker builder), \`STAND_SYNC_PUBLIC_HOST\`, \`STAND_SYNC_HEALTH_URL\`, \`STAND_SYNC_SMOKE_URLS\`, and \`STAND_SYNC_SCREENSHOT_CMD\`. Hooks read existing env files and never accept credentials as CLI arguments.
+
+## Private SDK bundle
+
+The source-side vendor step is intentionally isolated from the target. It preserves the current shell values of `AIFENCE_PERSONAL_CACHE`, `GOPRIVATE`, and `GONOSUMDB`, but forces `GOPROXY=off GOFLAGS=-mod=mod` while running `go mod vendor`. The target receives only the clean app source and `vendor/` tree in a resumable tar bundle; no private cache or credential file is copied. `scripts/stand-sync-build` creates a temporary Dockerfile, skips network-dependent `go mod tidy`, and invokes `go build -mod=vendor` with `GOPROXY=off`; the tracked product Dockerfiles are unchanged.
 
 ## Traps encoded
 
