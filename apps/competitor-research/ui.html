@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Конкуренты</title>
+  <link rel="stylesheet" href="/__air/assets/web-ui-v1.css">
+  <script src="/__air/assets/web-ui-v1.js" data-airlock-disable-navigation="false"></script>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #0f172a; color: #e2e8f0; }
+    main { max-width: 940px; margin: 0 auto; padding: 28px 20px 56px; }
+    header { display: flex; gap: 14px; align-items: center; margin-bottom: 28px; }
+    .mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; background: #22c55e; color: #052e16; font-size: 22px; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(24px, 4vw, 36px); letter-spacing: -.03em; }
+    header p, .hint, .source { color: #94a3b8; }
+    header p { margin-top: 4px; }
+    .card { background: #172033; border: 1px solid #334155; border-radius: 18px; padding: 22px; box-shadow: 0 18px 45px #02061766; }
+    .intro { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 22px; }
+    h2 { font-size: 20px; }
+    .intro .hint { max-width: 430px; text-align: right; line-height: 1.45; }
+    form { display: grid; gap: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    label { display: grid; gap: 7px; font-size: 13px; color: #cbd5e1; }
+    input, textarea { width: 100%; box-sizing: border-box; border: 1px solid #475569; border-radius: 10px; padding: 11px 12px; background: #0f172a; color: #f8fafc; font: inherit; }
+    textarea { min-height: 88px; resize: vertical; }
+    input:focus, textarea:focus { outline: 2px solid #4ade80; outline-offset: 1px; border-color: transparent; }
+    .actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 4px; }
+    button { border: 0; border-radius: 10px; padding: 11px 16px; background: #4ade80; color: #052e16; font: inherit; font-weight: 700; cursor: pointer; }
+    button:hover { background: #86efac; }
+    .notice { border: 1px solid #166534; background: #052e16; color: #bbf7d0; border-radius: 10px; padding: 11px 13px; line-height: 1.4; }
+    .source { margin-top: 18px; font-size: 12px; }
+    @media (max-width: 680px) { main { padding: 20px 14px 40px; } .grid { grid-template-columns: 1fr; } .intro, .actions { display: grid; align-items: start; } .intro .hint { text-align: left; } }
+  </style>
+</head>
+<body>
+<main>
+  <header data-airlock-standalone-only>
+    <div class="mark" aria-hidden="true">⌕</div>
+    <div><h1>Конкуренты</h1><p>Проверяемые наблюдения по сайтам и предложениям</p></div>
+  </header>
+  <section class="card" aria-labelledby="title">
+    <div class="intro">
+      <h2 id="title">Новое исследование</h2>
+      <p class="hint">Заполните известные данные. Неизвестные конкуренты можно найти через чат приложения.</p>
+    </div>
+    {{if .Submitted}}<p class="notice" role="status">Параметры сохранены в форме. Запустите исследование в чате «Конкуренты», чтобы получить проверяемые наблюдения и CSV.</p>{{end}}
+    <form method="get" action="/">
+      <input type="hidden" name="submitted" value="1">
+      <div class="grid">
+        <label>Компания<input name="company" value="{{.Company}}" placeholder="Например, Softline" required></label>
+        <label>Сайт компании<input name="site" value="{{.Site}}" placeholder="https://example.ru"></label>
+        <label>Рынок<input name="market" value="{{.Market}}" placeholder="Программное обеспечение для бизнеса"></label>
+        <label>Предложение<input name="offer" value="{{.Offer}}" placeholder="Защита рабочих мест"></label>
+      </div>
+      <label>Цель исследования<textarea name="goal" placeholder="Что нужно понять о конкурентах и предложении">{{.Goal}}</textarea></label>
+      <label>Известные конкуренты<textarea name="competitors" placeholder="По одному домену на строку">{{.Competitors}}</textarea></label>
+      <div class="actions"><span class="hint">Источники и даты сохраняются в результате исследования.</span><button type="submit">Составить план</button></div>
+    </form>
+    <p class="source">Веб-проверки выполняются только по публичным HTTPS-страницам. Формы сайтов не отправляются.</p>
+  </section>
+</main>
+</body>
+</html>
