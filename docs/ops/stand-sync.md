@@ -23,7 +23,7 @@ The target root is \`/home/roomhacker/aifence-move\`. Successful phases leave \`
 | build | Full mode delegates the native, resumable \`scripts/stand/move-to-server100.sh\`; code-only creates a clean worktree at the pinned SHA, vendors each selected Go app with GOPROXY=off and the existing private-cache/GOPRIVATE settings, tars source+vendor, rsyncs the bundle with resume, then runs the shipped scripts/stand-sync-build helper on server-100. The helper builds a temporary vendor-aware Dockerfile with -mod=vendor and tags the exact pinned image_ref. |
 | state | Full mode uses the existing \`pg_dump -Fc\` and resumable rsync transfer; code-only records a skip. |
 | restore | Restores dumps before app startup in full mode; code-only records a skip. |
-| reconcile | Runs \`STAND_SYNC_RECONCILE_CMD\` on the target to re-register apps, re-apply grants bound to app version and restart source watches. A missing hook is a hard failure with the retry command. |
+| reconcile | Runs the shipped \`scripts/stand-sync-reconcile\` helper by default to update target app refs, re-apply version-bound grants idempotently, and restart Airlock/source watches. \`STAND_SYNC_RECONCILE_CMD\` is an explicit override; its failure is reported with the retry command. |
 | health | Checks the HTTPS health endpoint. |
 | smoke | Checks comma-separated URLs and optionally runs \`STAND_SYNC_SCREENSHOT_CMD\` in the receipt directory. |
 
