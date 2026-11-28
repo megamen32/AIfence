@@ -322,6 +322,7 @@ func (s *Service) Read(ctx context.Context, q Query) (Result, error) {
 	result.ImportedAt = &stored.ImportedAt
 	return result, nil
 }
+
 // readAcross serves a query that names no snapshot: a chat model rarely knows
 // snapshot ids, so the filters run over every visible snapshot, newest first.
 // A repeated import of the same observation is returned once.
