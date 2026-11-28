@@ -13,7 +13,7 @@ import (
 	"github.com/airlockrun/goai/tool"
 )
 
-const chatBriefDirectory = "tmp/sales-review"
+const chatBriefDirectory = "sales-review"
 
 func salesReviewTool(a *agentsdk.Agent, h *handlers.Handler, strictReply *agentsdk.EnvVarHandle) tool.Tool {
 	a.RegisterDirectory(chatBriefDirectory, agentsdk.DirectoryOpts{
