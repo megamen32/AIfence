@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+REMOTE_ROOT=$1
+APPS_CSV=$2
+SOURCE_SHA=$3
+BUNDLE=$4
+REFS=$5
+compose() { docker compose --env-file "$REMOTE_ROOT/airlock/.env" -f "$REMOTE_ROOT/airlock/docker-compose.yml" "$@"; }
+PGID=$(compose ps -q postgres)
+[ -n "$PGID" ] || { echo "reconcile: postgres service is not running" >&2; exit 51; }
+SRC_APPS=$BUNDLE/source-apps.tsv
+SRC_GRANTS=$BUNDLE/source-grants.tsv
+TARGET_AGENTS=$(mktemp)
+trap 'rm -f "$TARGET_AGENTS"' EXIT
+docker exec "$PGID" psql -At -F '|' -U airlock -d airlock -c "select id,slug from agents where status in ('active','building')" > "$TARGET_AGENTS"
+oldifs=$IFS
+IFS=,
+for app in $APPS_CSV; do
+  [ -n "$app" ] || continue
+  target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")
+  source_ref=$(awk -F '|' -v a="$app" '$2==a {print $3; exit}' "$SRC_APPS" 2>/dev/null || true)
+  image_ref=$(awk -F '\t' -v a="$app" '$1==a {print $2; exit}' "$REFS")
+  [ -n "$target_id" ] || { echo "reconcile: target agent slug not found: $app" >&2; exit 52; }
+  [ -n "$image_ref" ] || { echo "reconcile: exact built image_ref missing: $app" >&2; exit 53; }
+  [ -n "$source_ref" ] || source_ref=$SOURCE_SHA
+  docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock \
+    -v aid="$target_id" -v sref="$source_ref" -v iref="$image_ref" \
+    -c "update agents set source_ref = :'sref', image_ref = :'iref' where id = :'aid';" >/dev/null
+done
+IFS=$oldifs
+if compose config --services 2>/dev/null | grep -qx airlock; then
+  compose restart airlock >/dev/null
+fi
