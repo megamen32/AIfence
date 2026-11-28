@@ -56,7 +56,7 @@ func TestComparisonPanelShowsDeltasAndOnlyMeasuredHistory(t *testing.T) {
 	}
 	doc := check("/?tab=compare&q=TEST&from=2026-11-20&to=2026-11-26")
 	rows := doc.Find(".price-matrix .cmp-row")
-	if rows.Length() != 3 || !strings.Contains(rows.Eq(0).Text(), "Минимум") || !strings.Contains(rows.Eq(1).Text(), "+0,20 ₽") || !strings.Contains(rows.Eq(2).Text(), "Количество не указано") {
+	if rows.Length() != 3 || !strings.Contains(rows.Eq(0).Text(), "Минимум") || !strings.Contains(rows.Eq(1).Text(), "+0,20 ₽") || !strings.Contains(rows.Eq(2).Text(), "Количество отсутствует") {
 		t.Fatal(rows.Text())
 	}
 	primary := doc.Find(".cmp-chart market-price-history")
