@@ -10,6 +10,11 @@ MODE=
 FULL_APPS=market-watch,metrika-analyst,product-manager,competitor-research,google-trends,wordstat,web-scraper,baserow,redmine,userio
 REMOTE_ROOT=${STAND_SYNC_REMOTE_ROOT:-/home/roomhacker/aifence-move}
 TARGET_HOST=${STAND_SYNC_TARGET_HOST:-server100}
+DOCKER_BIN=${STAND_SYNC_DOCKER_BIN:-}
+if [ -z "$DOCKER_BIN" ]; then
+  DOCKER_BIN=$(command -v docker 2>/dev/null || true)
+  [ -n "$DOCKER_BIN" ] || [ ! -x /opt/homebrew/bin/docker ] || DOCKER_BIN=/opt/homebrew/bin/docker
+fi
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 RUN_DIR=$SOURCE_ROOT/.runtime/stand-sync/$RUN_ID
 MANIFEST=$RUN_DIR/manifest.tsv
@@ -80,17 +85,17 @@ pin_phase() {
     printf '%s\t%s\t%s\t\t\tPENDING\n' "$app" "$sha" "${contract:-unknown}" >> "$MANIFEST"
   done
   IFS=$oldifs
-  if command -v docker >/dev/null 2>&1 && docker context inspect colima-aifence >/dev/null 2>&1; then
-    DOCKER_CONTEXT=colima-aifence docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' > "$RUN_DIR/source-images.tsv" || true
+  if [ -n "$DOCKER_BIN" ] && "$DOCKER_BIN" --context colima-aifence context inspect >/dev/null 2>&1; then
+    "$DOCKER_BIN" --context colima-aifence image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' > "$RUN_DIR/source-images.tsv" || true
     chmod 600 "$RUN_DIR/source-images.tsv"
-    DOCKER_CONTEXT=colima-aifence docker ps --format '{{.Names}}\t{{.Image}}' > "$RUN_DIR/source-agents.tsv" || true
+    "$DOCKER_BIN" --context colima-aifence ps --format '{{.Names}}\t{{.Image}}' > "$RUN_DIR/source-agents.tsv" || true
     {
       printf 'name\timage\tid\trevision\tversion\n' 
       while IFS=$'\t' read -r name image; do
         [ -n "$name" ] || continue
-        id=$(DOCKER_CONTEXT=colima-aifence docker inspect --format '{{.Id}}' "$name" 2>/dev/null || true)
-        rev=$(DOCKER_CONTEXT=colima-aifence docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$name" 2>/dev/null || true)
-        ver=$(DOCKER_CONTEXT=colima-aifence docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$name" 2>/dev/null || true)
+        id=$("$DOCKER_BIN" --context colima-aifence inspect --format '{{.Id}}' "$name" 2>/dev/null || true)
+        rev=$("$DOCKER_BIN" --context colima-aifence inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$name" 2>/dev/null || true)
+        ver=$("$DOCKER_BIN" --context colima-aifence inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$name" 2>/dev/null || true)
         printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$image" "$id" "$rev" "$ver"
       done < "$RUN_DIR/source-agents.tsv"
     } > "$RUN_DIR/source-agent-shas.tsv"
