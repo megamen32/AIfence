@@ -6,6 +6,9 @@ BUNDLE=$2
 APPS_CSV=$3
 IMAGE_REFS=${4:-$BUNDLE/app-image-refs.tsv}
 OUTPUT=${5:-$REMOTE_ROOT/.stand-sync/built-image-refs.tsv}
+REMOTE_DIR=$(dirname "$BUNDLE")
+MANIFEST_DIR="$REMOTE_DIR/manifests"
+mkdir -p "$MANIFEST_DIR"
 BUILDER=${STAND_SYNC_BUILDER:-default}
 oldifs=$IFS
 IFS=,

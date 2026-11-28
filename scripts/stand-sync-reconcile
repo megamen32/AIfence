@@ -1,1 +1,55 @@
-#!/usr/bin/env bash\nset -Eeuo pipefail\nIFS=$'\n\t'\nREMOTE_ROOT=$1\nAPPS_CSV=$2\nSOURCE_SHA=$3\nBUNDLE=$4\nREFS=$5\nREMOTE_DIR=$(dirname "$BUNDLE")\nMANIFEST_DIR="$REMOTE_DIR/manifests"\ncompose() { docker compose --env-file "$REMOTE_ROOT/airlock/.env" -f "$REMOTE_ROOT/airlock/docker-compose.yml" "$@"; }\nPGID=$(compose ps -q postgres)\n[ -n "$PGID" ] || { echo "reconcile: postgres service is not running" >&2; exit 51; }\nSRC_APPS=$BUNDLE/source-apps.tsv\nSRC_GRANTS=$BUNDLE/source-grants.tsv\nTARGET_AGENTS=$(mktemp)\ntrap 'rm -f "$TARGET_AGENTS"' EXIT\ndocker exec "$PGID" psql -At -F '|' -U airlock -d airlock -c "select id,slug from agents where status <> 'deleted' and slug not like 'deleted-%'" > "$TARGET_AGENTS"\noldifs=$IFS\nIFS=,\ntmp_refs=$(mktemp)\ntrap 'rm -f "$TARGET_AGENTS" "$tmp_refs"' EXIT\nfor app in $APPS_CSV; do\n  [ -n "$app" ] || continue\n  target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")\n  source_ref=$SOURCE_SHA\n  source_image=$(awk -F '\t' -v a="$app" '$1==a {print $2; exit}' "$REFS")\n  [ -n "$target_id" ] || { echo "reconcile: target agent slug not found: $app" >&2; exit 52; }\n  [ -n "$source_image" ] || { echo "reconcile: exact built image_ref missing: $app" >&2; exit 53; }\n  target_image="$target_id:${SOURCE_SHA:0:12}"\n  docker tag "$source_image" "$target_image"\n  printf '%s\t%s\n' "$app" "$target_image" >> "$tmp_refs"\n  manifest_file="$MANIFEST_DIR/$app.json"\n  if [ -s "$manifest_file" ]; then\n    docker cp "$manifest_file" "$PGID:/tmp/stand-sync-$app-manifest.json" >/dev/null\n    docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock -c "update agent_runtime_manifests set manifest=pg_read_file('/tmp/stand-sync-$app-manifest.json')::json, token_version=token_version+1, synced_at=now() where agent_id='$target_id';" >/dev/null\n  fi\n  docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock \\n    -c "update agents set source_ref = '$source_ref', image_ref = '$target_image' where id = '$target_id';" >/dev/null\ndone\nmv "$tmp_refs" "$REFS"\nIFS=$oldifs\nif [ -s "$SRC_GRANTS" ]; then\n  while IFS='|' read -r source_agent grantee role; do\n    [ -n "$source_agent" ] || continue\n    app=$(awk -F '|' -v id="$source_agent" '$1==id {print $2; exit}' "$SRC_APPS")\n    [ -n "$app" ] || continue\n    target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")\n    [ -n "$target_id" ] || continue\n    docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock       -c "insert into agent_grants (agent_id,grantee_id,role) values ('$target_id','$grantee','$role') on conflict do nothing;" >/dev/null\n  done < "$SRC_GRANTS"\nfi\nif compose config --services 2>/dev/null | grep -qx airlock; then\n  compose restart airlock >/dev/null\nfi\n
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+REMOTE_ROOT=$1
+APPS_CSV=$2
+SOURCE_SHA=$3
+BUNDLE=$4
+REFS=$5
+REMOTE_DIR=$(dirname "$BUNDLE")
+MANIFEST_DIR="$REMOTE_DIR/manifests"
+compose() { docker compose --env-file "$REMOTE_ROOT/airlock/.env" -f "$REMOTE_ROOT/airlock/docker-compose.yml" "$@"; }
+PGID=$(compose ps -q postgres)
+[ -n "$PGID" ] || { echo "reconcile: postgres service is not running" >&2; exit 51; }
+SRC_APPS=$BUNDLE/source-apps.tsv
+SRC_GRANTS=$BUNDLE/source-grants.tsv
+TARGET_AGENTS=$(mktemp)
+trap 'rm -f "$TARGET_AGENTS"' EXIT
+docker exec "$PGID" psql -At -F '|' -U airlock -d airlock -c "select id,slug from agents where status <> 'deleted' and slug not like 'deleted-%'" > "$TARGET_AGENTS"
+oldifs=$IFS
+IFS=,
+tmp_refs=$(mktemp)
+trap 'rm -f "$TARGET_AGENTS" "$tmp_refs"' EXIT
+for app in $APPS_CSV; do
+  [ -n "$app" ] || continue
+  target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")
+  source_ref=$SOURCE_SHA
+  source_image=$(awk -F '\t' -v a="$app" '$1==a {print $2; exit}' "$REFS")
+  [ -n "$target_id" ] || { echo "reconcile: target agent slug not found: $app" >&2; exit 52; }
+  [ -n "$source_image" ] || { echo "reconcile: exact built image_ref missing: $app" >&2; exit 53; }
+  target_image="$target_id:${SOURCE_SHA:0:12}"
+  docker tag "$source_image" "$target_image"
+  printf '%s\t%s\n' "$app" "$target_image" >> "$tmp_refs"
+  manifest_file="$MANIFEST_DIR/$app.json"
+  if [ -s "$manifest_file" ]; then
+    docker cp "$manifest_file" "$PGID:/tmp/stand-sync-$app-manifest.json" >/dev/null
+    docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock -c "update agent_runtime_manifests set manifest=pg_read_file('/tmp/stand-sync-$app-manifest.json')::json, token_version=token_version+1, synced_at=now() where agent_id='$target_id';" >/dev/null
+  fi
+  docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock \
+    -c "update agents set source_ref = '$source_ref', image_ref = '$target_image' where id = '$target_id';" >/dev/null
+done
+mv "$tmp_refs" "$REFS"
+IFS=$oldifs
+if [ -s "$SRC_GRANTS" ]; then
+  while IFS='|' read -r source_agent grantee role; do
+    [ -n "$source_agent" ] || continue
+    app=$(awk -F '|' -v id="$source_agent" '$1==id {print $2; exit}' "$SRC_APPS")
+    [ -n "$app" ] || continue
+    target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")
+    [ -n "$target_id" ] || continue
+    docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock       -c "insert into agent_grants (agent_id,grantee_id,role) values ('$target_id','$grantee','$role') on conflict do nothing;" >/dev/null
+  done < "$SRC_GRANTS"
+fi
+if compose config --services 2>/dev/null | grep -qx airlock; then
+  compose restart airlock >/dev/null
+fi
