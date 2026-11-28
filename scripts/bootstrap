@@ -8,7 +8,7 @@ export PATH="$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin"
 export GOWORK="${GOWORK:-off}"
 export GOFLAGS="${GOFLAGS:--p=1}"
 export GOMAXPROCS="${GOMAXPROCS:-2}"
-APPS=(product-manager metrika-analyst market-watch web-scraper google-trends wordstat)
+APPS=(product-manager metrika-analyst market-watch competitor-research web-scraper google-trends wordstat)
 selected=()
 check_only=0
 

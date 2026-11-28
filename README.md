@@ -11,7 +11,7 @@ private customer files stay outside the repository.
 
 Единственная точка входа — `scripts/bootstrap`. Клонируйте репозиторий и
 запустите одну команду: она проверяет окружение, генерирует sqlc/templ/tailwind
-исходники и собирает и тестирует все шесть приложений опубликованным SDK
+исходники и собирает и тестирует все приложения опубликованным SDK
 (`github.com/airlockrun/agentsdk v0.11.0`). Ни приватный SDK, ни персональный
 кэш, ни worktree не нужны.
 
@@ -34,7 +34,7 @@ tailwindcss и daisyUI скачиваются с релизов GitHub в лок
 Проверка сборки без выкладки и без загрузки на сервер:
 
 ```sh
-./scripts/deploy-apps --build --public   # все шесть приложений
+./scripts/deploy-apps --build --public   # все приложения
 ./scripts/deploy-apps --build --public product-manager   # одно приложение
 ```
 

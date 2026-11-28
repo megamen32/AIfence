@@ -8,17 +8,23 @@ if [[ ! -x "$python_bin" ]]; then python_bin="$(command -v python3)"; fi
 export GOMAXPROCS="${GOMAXPROCS:-2}" GOFLAGS="${GOFLAGS:--p=1}"
 verify_main_release() {
   git -C "$ROOT" fetch origin main
-  "$python_bin" - "$ROOT" "$commit" "${1:-}" <<'VERIFY_MAIN'
+  "$python_bin" - "$ROOT" "$commit" "${1:-}" "$public" "$build" <<'VERIFY_MAIN'
 import json, pathlib, subprocess, sys
 root, commit = pathlib.Path(sys.argv[1]), sys.argv[2]
+public = sys.argv[4] == "1"
+build_only = sys.argv[5] == "1"
 origin_main = subprocess.check_output(["git", "-C", str(root), "rev-parse", "refs/remotes/origin/main"], text=True).strip()
-if commit != origin_main:
+if commit != origin_main and not build_only:
     sys.exit("Live deployment requires the target commit to equal origin/main after fetch; build integration candidates with personal-build-apps.py --commit")
 for name in ("scripts/deploy-apps", "scripts/personal-build-apps.py", "scripts/personal-source-bundle.go", "platform/personal-release.lock.json"):
     data = subprocess.check_output(["git", "-C", str(root), "show", commit + ":" + name])
     path = root / name
     if path.is_symlink() or not path.is_file() or path.read_bytes() != data:
         sys.exit(name + " differs from the selected main commit; commit the deployment inputs first")
+if public:
+    # The published-SDK path carries no private platform pins, so the frozen
+    # personal release policy does not apply to it.
+    sys.exit(0)
 # Load trusted policy code from the selected commit, not an editable worktree helper.
 policy_path = "scripts/personal-mac-rollout.py"
 policy_source = subprocess.check_output(["git", "-C", str(root), "show", commit + ":" + policy_path])
@@ -43,11 +49,12 @@ if sys.argv[3]:
         sys.exit("App bundle platform dependencies or source commit differ from the committed release lock")
 VERIFY_MAIN
 }
-usage() { echo "Usage: $0 [--dry-run] [--create] market-watch|metrika-analyst|product-manager|competitor-research|web-scraper|google-trends|wordstat" >&2; exit 2; }
-dry=0 create=0 auto=0 slug=""
+usage() { echo "Usage: $0 [--dry-run] [--build] [--public] [--create] market-watch|metrika-analyst|product-manager|competitor-research|web-scraper|google-trends|wordstat" >&2; exit 2; }
+dry=0 create=0 auto=0 build=0 public=0 slug=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) dry=1;; --create) create=1;; --auto) auto=1;;
+    --build) build=1;; --public) public=1;;
     market-watch|metrika-analyst|product-manager|competitor-research|web-scraper|google-trends|wordstat) [[ -z "$slug" ]] || usage; slug="$arg";;
     *) usage;;
   esac
@@ -55,8 +62,16 @@ done
 if [[ -z "$slug" ]]; then
   [[ "$create" == 0 && "$auto" == 0 ]] || usage
   export AIFENCE_DEPLOY_COMMIT="$(git -C "$ROOT" rev-parse --verify --end-of-options "${AIFENCE_DEPLOY_COMMIT:-HEAD}^{commit}")"
-  for app in market-watch metrika-analyst product-manager; do
-    if [[ "$dry" == 1 ]]; then "$0" --dry-run "$app"; else "$0" --auto "$app"; fi
+  flags=()
+  if [[ "$dry" == 1 ]]; then flags+=(--dry-run); fi
+  if [[ "$build" == 1 ]]; then flags+=(--build); fi
+  if [[ "$public" == 1 ]]; then flags+=(--public); fi
+  for app in market-watch metrika-analyst product-manager competitor-research web-scraper google-trends wordstat; do
+    if [[ "$dry" == 1 || "$build" == 1 ]]; then
+      "$0" "${flags[@]}" "$app"
+    else
+      "$0" --auto "$app"
+    fi
   done
   exit 0
 fi
@@ -146,17 +161,19 @@ if slug == 'product-manager' and config.exists():
         sys.exit(f'Invalid airlock.toml: {exc}')
     if not isinstance(runtime_files, list) or any(not isinstance(x, str) for x in runtime_files):
         sys.exit('Invalid build.runtime_files in airlock.toml')
-    if 'pathcheck/check_purchase_path.py' in runtime_files:
-        source = 'apps/product-manager/pathcheck/check_purchase_path.py'
+    for runtime_file in runtime_files:
+        dest = stage / runtime_file
+        if dest.exists() and not dest.is_symlink():
+            continue
+        source = 'apps/path-check/' + runtime_file.rsplit('/', 1)[-1]
         entry = subprocess.check_output(['git', '-C', str(root), 'ls-tree', '-z', commit, '--', source]).split(b'\0')
         entry = [x for x in entry if x]
         if len(entry) != 1:
-            sys.exit(f'Required runtime file must be committed: {source}')
+            sys.exit(f'Required runtime file must be committed: {runtime_file}')
         meta, indexed_path = entry[0].split(b'\t', 1)
         mode, kind, oid = meta.decode().split()
         if os.fsdecode(indexed_path) != source or kind != 'blob' or mode not in ('100644', '100755'):
             sys.exit(f'Required runtime file is not a regular Git blob: {source}')
-        dest = stage / 'pathcheck' / 'check_purchase_path.py'
         if dest.exists() or dest.is_symlink():
             sys.exit(f'Refusing to overwrite staged runtime file: {dest}')
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +192,13 @@ if b'github.com/a-h/templ/cmd/templ' not in (stage / 'go.mod').read_bytes():
 (stage / 'views' / 'static').mkdir(parents=True, exist_ok=True)
 print(f'Staged {slug} from committed source {commit}; private/data directories excluded.')
 PY
+if [[ "$build" == 1 ]]; then
+  # Build the staged sources with the published SDK. No login, no upload and
+  # no deployment: this is the reproducible build proof for a clean clone.
+  ( cd "$stage" && GOWORK=off go tool air build )
+  echo "Build only: staged sources compiled; no login, upload, or deployment."
+  exit 0
+fi
 if [[ "$dry" == 1 ]]; then
   echo "Dry run: no build, login, upload, or deployment."
   exit 0
