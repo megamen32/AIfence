@@ -126,7 +126,8 @@ if ! done_phase state; then
   dump aifence-personal-redmine-database-1 redmine secret redmine
   dump aifence-baserow-baserow-1 postgres peer baserow
   volume_archive(){
-    local n="$1" out="$TMP/vol-$n.tar.gz"
+    local n="$1"
+    local out="$TMP/vol-$n.tar.gz"
     if [ "$n" = aifence-baserow_data ]; then
       "$D" --context "$CTX" run --rm -v "$n:/from:ro" caddy:2-alpine sh -c 'tar -C /from --exclude=./postgres -czf - .' > "$out"
     else
