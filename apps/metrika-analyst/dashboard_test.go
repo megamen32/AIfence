@@ -55,6 +55,23 @@ func TestDashboardOpensOnRecentWeeks(t *testing.T) {
 	}
 }
 
+func TestSandboxDashboardUsesKESFixture(t *testing.T) {
+	s := Service{
+		config: func(context.Context) Settings { return Settings{EvidencePath: "fixtures/aifence-sandbox.json"} },
+		read:   readEmbeddedFixture,
+	}
+	view := s.dashboard(context.Background(), time.Date(2026, 11, 27, 9, 0, 0, 0, time.UTC))
+	if view.ProductKey != "kaspersky_endpoint_security" || view.Metrics != "orders_index" {
+		t.Fatalf("dashboard default = product %q metrics %q", view.ProductKey, view.Metrics)
+	}
+	if view.SourceChip != "Выгрузка Метрики · fixtures/aifence-original.json" {
+		t.Fatalf("dashboard source = %q", view.SourceChip)
+	}
+	if view.State != "ok" || view.Headline == "" || !strings.Contains(view.Headline, "Kaspersky Endpoint Security") {
+		t.Fatalf("dashboard KES view = state %q headline %q", view.State, view.Headline)
+	}
+}
+
 func TestDashboardExplainsMissingCounter(t *testing.T) {
 	html := renderDashboard(t, Service{config: func(context.Context) Settings { return Settings{} }})
 	if !strings.Contains(html, "Счётчик Метрики не подключён") || !strings.Contains(html, "counter_id") {

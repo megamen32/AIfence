@@ -15,6 +15,8 @@ import (
 
 const dashWeeks = 8
 
+const dashboardKESFixture = "fixtures/aifence-original.json"
+
 var metricTitles = map[string]string{
 	"visits": "Визиты", "users": "Посетители", "pageviews": "Просмотры",
 	"orders": "Заказы", "revenue": "Выручка", "purchase_conversion": "Конверсия в покупку",
@@ -126,17 +128,14 @@ func dashboardProduct(c Settings) string {
 
 func dashboardWeeks(c Settings, now time.Time) []dashWeek {
 	if dashboardSandbox(c) {
-		return []dashWeek{
-			{From: time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)},
-			{From: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)},
-		}
+		return lastWeeks(now, dashWeeks)
 	}
 	return lastWeeks(now, dashWeeks)
 }
 
 func dashMetrics(c Settings) []string {
 	if dashboardSandbox(c) {
-		return []string{"orders"}
+		return []string{"orders_index"}
 	}
 	if c.Ecommerce {
 		return []string{"visits", "users", "orders", "purchase_conversion"}
@@ -269,6 +268,10 @@ func niceTicks(lo, hi float64, n int) []float64 {
 
 func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 	c := s.config(ctx)
+	if dashboardSandbox(c) {
+		c.EvidencePath = dashboardKESFixture
+		c.Ecommerce = true
+	}
 	weeks := dashboardWeeks(c, now)
 	keys := dashMetrics(c)
 	productKey := dashboardProduct(c)
@@ -298,7 +301,11 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 		wg.Add(1)
 		go func(i int, w dashWeek) {
 			defer wg.Done()
-			batches[i], errs[i] = s.query(ctx, Query{ProductKey: productKey, MetricKeys: keys, From: w.From.Format(time.DateOnly), To: w.To.Format(time.DateOnly), Segment: "all"}, c)
+			segment := "all"
+			if len(keys) == 1 && keys[0] == "orders_index" {
+				segment = "self_service"
+			}
+			batches[i], errs[i] = s.query(ctx, Query{ProductKey: productKey, MetricKeys: keys, From: w.From.Format(time.DateOnly), To: w.To.Format(time.DateOnly), Segment: segment}, c)
 		}(i, w)
 	}
 	wg.Wait()
