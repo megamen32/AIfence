@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$SELF_DIR/.." && pwd)
+SOURCE_ROOT=${STAND_SYNC_SOURCE_ROOT:-$REPO_ROOT}
+TARGET_LABEL=
+APPS_CSV=
+MODE=
+FULL_APPS=market-watch,metrika-analyst,product-manager,competitor-research,google-trends,wordstat,web-scraper,baserow,redmine,userio
+REMOTE_ROOT=${STAND_SYNC_REMOTE_ROOT:-/home/roomhacker/aifence-move}
+TARGET_HOST=${STAND_SYNC_TARGET_HOST:-server100}
+RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
+RUN_DIR=$SOURCE_ROOT/.runtime/stand-sync/$RUN_ID
+MANIFEST=$RUN_DIR/manifest.tsv
+TIMINGS=$RUN_DIR/timings.tsv
+PHASE=
+usage() {
+  cat >&2 <<'EOF'
+Usage: scripts/stand-sync --to server-100 [--apps app,...] [--state|--no-state]
+No --apps performs a full stateful migration. With --apps, default is code-only.
+EOF
+  exit 2
+}
+while (($#)); do
+  case "$1" in
+    --to) (($# >= 2)) || usage; TARGET_LABEL=$2; shift 2;;
+    --apps) (($# >= 2)) || usage; APPS_CSV=$2; shift 2;;
+    --state) [ -z "$MODE" ] || { echo "--state and --no-state are mutually exclusive" >&2; exit 2; }; MODE=state; shift;;
+    --no-state) [ -z "$MODE" ] || { echo "--state and --no-state are mutually exclusive" >&2; exit 2; }; MODE=no-state; shift;;
+    -h|--help) usage;;
+    *) echo "Unknown argument: $1" >&2; usage;;
+  esac
+done
+[ "$TARGET_LABEL" = server-100 ] || { echo "Only --to server-100 is supported" >&2; exit 2; }
+if [ -z "$MODE" ]; then
+  [ -n "$APPS_CSV" ] && MODE=no-state || MODE=state
+fi
+[ -n "$APPS_CSV" ] || APPS_CSV=$FULL_APPS
+mkdir -p "$RUN_DIR"
+chmod 700 "$RUN_DIR"
+printf 'phase\tstarted\tfinished\tstatus\n' > "$TIMINGS"
+printf 'app\tsource_sha\tsource_contract\ttarget_sha\ttarget_image\tsmoke\n' > "$MANIFEST"
+ssh_target() { ssh -o BatchMode=yes -o ConnectTimeout=${STAND_SYNC_SSH_TIMEOUT:-12} "$TARGET_HOST" "$@"; }
+mark_path() { printf '%s/.stand-sync/%s.done' "$REMOTE_ROOT" "$1"; }
+phase_done() { ssh_target "test -f $(printf '%q' "$(mark_path "$1")")"; }
+begin_phase() { PHASE=$1; START_EPOCH=$(date +%s); printf '%s\t%s\t\tstart\n' "$PHASE" "$(date -u +%FT%TZ)" >> "$TIMINGS"; }
+end_phase() { printf '%s\t%s\t%s\t%s\n' "$PHASE" "$START_EPOCH" "$(date -u +%FT%TZ)" "$1" >> "$TIMINGS"; }
+remote_mark() { ssh_target "mkdir -p $(printf '%q' "$REMOTE_ROOT/.stand-sync") && : > $(printf '%q' "$(mark_path "$1")")"; }
+run_phase() {
+  p=$1; shift
+  if phase_done "$p"; then echo "stand-sync: phase $p already complete"; return; fi
+  begin_phase "$p"; "$@"; remote_mark "$p"; end_phase ok
+}
+pin_phase() {
+  sha=$(git -C "$SOURCE_ROOT" rev-parse --verify HEAD^{commit})
+  contract=$(git -C "$SOURCE_ROOT" grep -h -E 'check_source_watch|contract_version|manifest_version' "$sha" -- apps 2>/dev/null | sha256sum | awk '{print $1}' || true)
+  printf 'source_sha\t%s\nsource_contract\t%s\nmode\t%s\n' "$sha" "${contract:-unknown}" "$MODE" > "$RUN_DIR/pin.env"
+  while IFS=, read -r app; do
+    [ -n "$app" ] || continue
+    case "$app" in *[!a-z0-9_-]*) echo "Invalid app name: $app" >&2; return 2;; esac
+    printf '%s\t%s\t%s\t\t\tPENDING\n' "$app" "$sha" "${contract:-unknown}" >> "$MANIFEST"
+  done <<EOF
+$APPS_CSV
+EOF
+  if command -v docker >/dev/null 2>&1 && docker context inspect colima-aifence >/dev/null 2>&1; then
+    DOCKER_CONTEXT=colima-aifence docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' > "$RUN_DIR/source-images.tsv" || true
+    chmod 600 "$RUN_DIR/source-images.tsv"
+  fi
+  chmod 600 "$RUN_DIR/pin.env" "$MANIFEST"
+}
+build_full() {
+  [ -x "$SOURCE_ROOT/scripts/stand/move-to-server100.sh" ] || { echo "Missing scripts/stand/move-to-server100.sh" >&2; return 1; }
+  "$SOURCE_ROOT/scripts/stand/move-to-server100.sh"
+}
+build_code() {
+  sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
+  ssh_target "set -Eeuo pipefail
+root=$(printf '%q' "$REMOTE_ROOT")
+repo=\$root/repo
+mkdir -p \$root/.stand-sync/worktrees
+if [ ! -d \$repo/.git ]; then git clone --filter=blob:none --no-checkout \${STAND_SYNC_GIT_URL:-git@github.com:megamen32/AIfence.git} \$repo; fi
+git -C \$repo fetch --quiet origin $sha
+wt=\$root/.stand-sync/worktrees/$sha
+if [ ! -e \$wt/.git ]; then git -C \$repo worktree add --detach \$wt $sha; fi
+cd \$wt
+if [ -n \${STAND_SYNC_BUILD_CMD:-} ]; then eval \"\$STAND_SYNC_BUILD_CMD\"
+else
+ svc=\$(docker compose config --services 2>/dev/null | awk '/product-manager|product_manager|pm/{print; exit}')
+ [ -n \"\$svc\" ] || { echo 'No product-manager compose service; set STAND_SYNC_BUILD_CMD on server-100' >&2; exit 42; }
+ docker compose build \"\$svc\" && docker compose up -d --no-deps \"\$svc\"
+fi
+git rev-parse HEAD"
+}
+state_phase() { [ "$MODE" = state ] || printf 'state skipped (code-only)\n' > "$RUN_DIR/state-skipped"; }
+restore_phase() { [ "$MODE" = state ] || printf 'restore skipped (code-only)\n' > "$RUN_DIR/restore-skipped"; }
+reconcile_phase() {
+  if [ -n "${STAND_SYNC_RECONCILE_CMD:-}" ]; then
+    ssh_target "set -Eeuo pipefail; eval $(printf '%q' "$STAND_SYNC_RECONCILE_CMD")"
+  else
+    printf 'Set STAND_SYNC_RECONCILE_CMD to re-register app, re-apply version-bound grants, and restart source watches.\n' > "$RUN_DIR/reconcile-required"
+  fi
+}
+health_phase() {
+  url=${STAND_SYNC_HEALTH_URL:-https://${STAND_SYNC_PUBLIC_HOST:-move.aifence.bezrabotnyi.com}/health}
+  curl --fail --silent --show-error --max-time ${STAND_SYNC_CURL_TIMEOUT:-20} "$url" -o "$RUN_DIR/health.json"
+}
+smoke_phase() {
+  smoke_dir=$RUN_DIR/smoke; mkdir -p "$smoke_dir"; : > "$RUN_DIR/smoke.tsv"
+  urls=${STAND_SYNC_SMOKE_URLS:-https://${STAND_SYNC_PUBLIC_HOST:-move.aifence.bezrabotnyi.com}/}
+  oldifs=$IFS; IFS=,; for u in $urls; do
+    name=$(printf '%s' "$u" | sha256sum | cut -c1-12)
+    code=$(curl --connect-timeout 10 --max-time 30 -sS -o "$smoke_dir/$name.body" -w '%{http_code}' "$u" || true)
+    case "$code" in 2*|3*) echo -e "$u\tPASS\t$code" >> "$RUN_DIR/smoke.tsv";; *) echo -e "$u\tFAIL\t$code" >> "$RUN_DIR/smoke.tsv";; esac
+  done
+  IFS=$oldifs
+  if [ -n "${STAND_SYNC_SCREENSHOT_CMD:-}" ]; then (cd "$smoke_dir" && eval "$STAND_SYNC_SCREENSHOT_CMD"); fi
+  chmod -R go-rwx "$smoke_dir" "$RUN_DIR/smoke.tsv"
+}
+if [ "$MODE" = state ]; then
+  run_phase pin pin_phase; run_phase build build_full; run_phase state state_phase; run_phase restore restore_phase
+else
+  run_phase pin pin_phase; run_phase build build_code; run_phase state state_phase; run_phase restore restore_phase
+fi
+run_phase reconcile reconcile_phase
+run_phase health health_phase
+run_phase smoke smoke_phase
+printf '\napp\tsource_sha\ttarget_sha\tsmoke\n'
+awk -F '\t' 'NR>1 {print $1"\t"$2"\t"$4"\t"$6}' "$MANIFEST"
+echo "stand-sync complete; timings: $TIMINGS; smoke: $RUN_DIR/smoke.tsv"
