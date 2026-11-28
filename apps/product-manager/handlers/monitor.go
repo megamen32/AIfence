@@ -247,13 +247,7 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		}
 		window := evidence.WatchdogWindow(row.Row)
 		magnitude := signalMagnitude(window)
-		var delta *float64
-		if window != nil && window.BaselineMean > 0 && window.ControlCurrentMean > 0 {
-			value := (window.CurrentMean/window.BaselineMean*window.ControlBaselineMean/window.ControlCurrentMean - 1) * 100
-			if !math.IsNaN(value) && !math.IsInf(value, 0) {
-				delta = &value
-			}
-		}
+		delta := signalDelta(window)
 		change, comparison := "", ""
 		if magnitude != nil {
 			change, comparison = magnitude.Change, magnitude.Caption
@@ -315,6 +309,23 @@ func monitorView(rows []monitorObservation, records []decision.Record, selected,
 		m.Selected.Prices = currentPrices(selected, pinned, focusRows, records)
 	}
 	return m
+}
+
+func signalDelta(window *evidence.WindowContrast) *float64 {
+	if window == nil {
+		return nil
+	}
+	if window.BaselineMean > 0 && window.ControlCurrentMean > 0 {
+		value := (window.CurrentMean/window.BaselineMean*window.ControlBaselineMean/window.ControlCurrentMean - 1) * 100
+		if !math.IsNaN(value) && !math.IsInf(value, 0) {
+			return &value
+		}
+	}
+	if !math.IsNaN(window.RelativeChangePct) && !math.IsInf(window.RelativeChangePct, 0) {
+		value := window.RelativeChangePct
+		return &value
+	}
+	return nil
 }
 
 type watchdogSeries struct{ product, segment, metric, control, origin, scenario, source string }

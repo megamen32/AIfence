@@ -6,6 +6,7 @@ import (
 	"agent/internal/product"
 	"agent/views"
 	"encoding/json"
+	"math"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -52,6 +53,17 @@ func TestMonitorCostNeedsBothInputs(t *testing.T) {
 	monitorEconomics(&v, "2", "30,5")
 	if v.Cost != "61,00 ₽ / неделю" {
 		t.Fatal(v)
+	}
+}
+
+func TestSignalDeltaFallsBackWhenControlAdjustedDeltaIsUnavailable(t *testing.T) {
+	window := &evidence.WindowContrast{
+		BaselineMean: 100, CurrentMean: 67.3, ControlBaselineMean: math.NaN(), ControlCurrentMean: 100,
+		RelativeChangePct: -32.7,
+	}
+	got := signalDelta(window)
+	if got == nil || *got != -32.7 {
+		t.Fatalf("signal delta = %v, want observed drop", got)
 	}
 }
 
