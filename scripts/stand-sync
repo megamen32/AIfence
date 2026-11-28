@@ -65,7 +65,7 @@ pin_phase() {
   for app in $APPS_CSV; do
     [ -n "$app" ] || continue
     case "$app" in *[!a-z0-9_-]*) echo "Invalid app name: $app" >&2; IFS=$oldifs; return 2;; esac
-    printf '%s\\t%s\\t%s\\t\\t\\tPENDING\\n' "$app" "$sha" "@{contract:-unknown}" >> "$MANIFEST"
+    printf '%s\t%s\t%s\t\t\tPENDING\n' "$app" "$sha" "${contract:-unknown}" >> "$MANIFEST"
   done
   IFS=$oldifs
   if command -v docker >/dev/null 2>&1 && docker context inspect colima-aifence >/dev/null 2>&1; then
