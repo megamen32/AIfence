@@ -60,7 +60,12 @@ run_phase() {
   begin_phase "$p"; "$@"; remote_mark "$p"; end_phase ok
 }
 pin_phase() {
-  sha=$(git -C "$SOURCE_ROOT" rev-parse --verify HEAD^{commit})
+  if [ "$MODE" = no-state ]; then
+    source_ref=${STAND_SYNC_SOURCE_REF:-refs/heads/main}
+  else
+    source_ref=HEAD
+  fi
+  sha=$(git -C "$SOURCE_ROOT" rev-parse --verify "$source_ref^{commit}")
   contract=$(git -C "$SOURCE_ROOT" grep -h -E 'check_source_watch|contract_version|manifest_version' "$sha" -- apps 2>/dev/null | sha256sum | awk '{print $1}' || true)
   printf 'source_sha\t%s\nsource_contract\t%s\nmode\t%s\n' "$sha" "${contract:-unknown}" "$MODE" > "$RUN_DIR/pin.env"
   oldifs=$IFS; IFS=,
