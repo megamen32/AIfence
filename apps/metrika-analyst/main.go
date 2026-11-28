@@ -113,7 +113,7 @@ func chartLabel(o Observation) string {
 
 func main() { newAgent().Serve() }
 func newAgent() *agentsdk.Agent {
-	a := agentsdk.New(agentsdk.Config{Description: "Яндекс Метрика: посещения, конверсии, изменения по неделям и ссылки на источники.", Icon: "📊"})
+	a := agentsdk.New(agentsdk.Config{Description: "Яндекс Метрика: посещения, конверсии, изменения по неделям и ссылки на источники. В текущем чате можно открыть выбранный снимок: найти ряды и просканировать его целиком.", Icon: "📊"})
 	m := a.RegisterMCP(&agentsdk.MCP{Slug: "yandex_metrika", Name: "Yandex Metrika (BoxLab, read-only MCP)", URL: "http://127.0.0.1:8000/mcp", AuthMode: agentsdk.MCPAuthToken, BindingMode: agentsdk.BindingShared})
 	counter := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "counter_id", Description: "ID счётчика магазина", Pattern: "^[0-9]+$"})
 	ec := a.RegisterEnvVar(&agentsdk.EnvVar{Slug: "ecommerce_confirmed", Description: "Подтверждена непрерывная инструментация e-commerce за анализируемые периоды", Default: "false", Pattern: "^(true|false)$"})
