@@ -37,6 +37,11 @@ if [ -z "$MODE" ]; then
   [ -n "$APPS_CSV" ] && MODE=no-state || MODE=state
 fi
 [ -n "$APPS_CSV" ] || APPS_CSV=$FULL_APPS
+retry_cmd="$0 --to server-100"
+[ -n "$APPS_CSV" ] && retry_cmd="$retry_cmd --apps $APPS_CSV"
+[ "$MODE" = state ] && retry_cmd="$retry_cmd --state"
+[ "$MODE" = no-state ] && retry_cmd="$retry_cmd --no-state"
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "stand-sync failed in phase $PHASE. Next command: $retry_cmd" >&2; fi; exit "$rc"' EXIT
 mkdir -p "$RUN_DIR"
 chmod 700 "$RUN_DIR"
 printf 'phase\tstarted\tfinished\tstatus\n' > "$TIMINGS"
@@ -56,13 +61,13 @@ pin_phase() {
   sha=$(git -C "$SOURCE_ROOT" rev-parse --verify HEAD^{commit})
   contract=$(git -C "$SOURCE_ROOT" grep -h -E 'check_source_watch|contract_version|manifest_version' "$sha" -- apps 2>/dev/null | sha256sum | awk '{print $1}' || true)
   printf 'source_sha\t%s\nsource_contract\t%s\nmode\t%s\n' "$sha" "${contract:-unknown}" "$MODE" > "$RUN_DIR/pin.env"
-  while IFS=, read -r app; do
+  oldifs=$IFS; IFS=,
+  for app in $APPS_CSV; do
     [ -n "$app" ] || continue
-    case "$app" in *[!a-z0-9_-]*) echo "Invalid app name: $app" >&2; return 2;; esac
-    printf '%s\t%s\t%s\t\t\tPENDING\n' "$app" "$sha" "${contract:-unknown}" >> "$MANIFEST"
-  done <<EOF
-$APPS_CSV
-EOF
+    case "$app" in *[!a-z0-9_-]*) echo "Invalid app name: $app" >&2; IFS=$oldifs; return 2;; esac
+    printf '%s\\t%s\\t%s\\t\\t\\tPENDING\\n' "$app" "$sha" "@{contract:-unknown}" >> "$MANIFEST"
+  done
+  IFS=$oldifs
   if command -v docker >/dev/null 2>&1 && docker context inspect colima-aifence >/dev/null 2>&1; then
     DOCKER_CONTEXT=colima-aifence docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' > "$RUN_DIR/source-images.tsv" || true
     chmod 600 "$RUN_DIR/source-images.tsv"
