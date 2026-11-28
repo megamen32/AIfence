@@ -312,6 +312,60 @@ func (d *customerDelivery) TaskLink(ctx context.Context, r decision.Record) (str
 	return "Redmine #" + strconv.Itoa(got.IssueID), got.URL, true
 }
 
+// CardDeliveryState reads durable receipts for the current hypothesis card.
+// It never creates a task or sends a message.
+func (d *customerDelivery) CardDeliveryState(ctx context.Context, r decision.Record) (string, string, string) {
+	owner, err := caller(ctx)
+	if err != nil {
+		return "", "", ""
+	}
+	d.configure(ctx)
+	var redmineID, redmineURL string
+	if issue, lookupErr := d.redmine.Lookup(ctx, owner, delivery.SignalKey(r)); lookupErr == nil && issue != nil {
+		redmineID, redmineURL = strconv.Itoa(issue.IssueID), issue.URL
+	}
+	dionStatus := ""
+	if draft, latestErr := d.dion.Latest(ctx, owner); latestErr == nil && draft != nil && draft.Sent && draft.SignalID == delivery.SignalKey(r) {
+		dionStatus = "sent"
+	}
+	return redmineID, redmineURL, dionStatus
+}
+
+// DeliverCardRedmine reuses the autonomous idempotent Redmine path.
+func (d *customerDelivery) DeliverCardRedmine(ctx context.Context, r decision.Record) (string, string, error) {
+	owner, err := caller(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	d.configure(ctx)
+	issue, err := d.redmine.Deliver(ctx, owner, r)
+	if err != nil {
+		return "", "", err
+	}
+	return strconv.Itoa(issue.IssueID), issue.URL, nil
+}
+
+// DeliverCardDion prepares and sends the card through the durable Dion path.
+func (d *customerDelivery) DeliverCardDion(ctx context.Context, r decision.Record) (string, error) {
+	owner, err := caller(ctx)
+	if err != nil {
+		return "", err
+	}
+	d.configure(ctx)
+	now := time.Now()
+	draft, err := d.dion.Prepare(ctx, owner, now, []decision.Record{r})
+	if err != nil {
+		return "", err
+	}
+	if draft.Sent {
+		return "sent", nil
+	}
+	if _, err = d.dion.Send(ctx, owner, draft.Day, now); err != nil {
+		return "", err
+	}
+	return "sent", nil
+}
+
 func sameOrigin(next agentsdk.RouteHandlerFunc) agentsdk.RouteHandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		if origin := r.Header.Get("Origin"); origin != "" {

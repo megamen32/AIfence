@@ -20,6 +20,7 @@ type Decision struct {
 	MeasuredEvidence                                                                                                                  []Link
 	Threshold, Operator, RuleLabel                                                                                                    string
 	ID, Title, Product, Status, Action, Metric, Baseline, Rule, Control, Window, TaskID, Assessment, Version, SnapshotURL, BaserowURL string
+	RedmineID, RedmineURL, DionStatus                                                                                                 string
 	Groups                                                                                                                            []EvidenceGroup
 	Unknowns                                                                                                                          []string
 }
@@ -126,11 +127,11 @@ type CoverageItem struct {
 
 type CatalogMap struct {
 	Count, Date, Group, Weight, Filter, Vendor, BackURL string
-	Partial                            bool
-	VendorURL, CategoryURL             string
-	OtherRemainder                     string
-	OtherGroups                        []CatalogGroup
-	Tiles                              []CatalogTile
+	Partial                                             bool
+	VendorURL, CategoryURL                              string
+	OtherRemainder                                      string
+	OtherGroups                                         []CatalogGroup
+	Tiles                                               []CatalogTile
 }
 
 type CatalogGroup struct {
@@ -145,9 +146,9 @@ type CatalogTile struct {
 
 type VendorDetail struct {
 	Name, Count, Origin, HypothesisURL string
-	Top                                 []VendorProduct
-	Alerts                              []VendorAlert
-	Sparkline                           []SparkPoint
+	Top                                []VendorProduct
+	Alerts                             []VendorAlert
+	Sparkline                          []SparkPoint
 }
 
 type VendorProduct struct {

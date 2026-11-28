@@ -15,7 +15,7 @@ func TestCardsAndSnapshotsRenderActionsAndEvidence(t *testing.T) {
 		absent []string
 	}{
 		{"snapshot", HomeView{ShowSources: true, CanInvestigate: true, Rows: []EvidenceRow{row}, Warnings: []string{"fixture warning"}}, []string{"./investigate", "Sales!B2:B3", "10,0 %", "fixture warning"}, []string{"./approve"}},
-		{"proposed", HomeView{Detail: &Decision{Title: "Сверить изменение", ID: "test-hyp", Version: "3", Groups: []EvidenceGroup{{Title: "Сигнал", Rows: []EvidenceRow{row}}}}}, []string{"./approve", `name="confirmed" value="yes"`, "Создать эту задачу", "Sales!B2:B3", "Сверить изменение"}, []string{"./investigate"}},
+		{"proposed", HomeView{Detail: &Decision{Title: "Сверить изменение", ID: "test-hyp", Version: "3", Groups: []EvidenceGroup{{Title: "Сигнал", Rows: []EvidenceRow{row}}}}}, []string{"./approve", `name="confirmed" value="yes"`, "Создать эту задачу", "./delivery/redmine", "Добавить в Redmine", "./delivery/dion/card", "Отправить в Dion", "Sales!B2:B3", "Сверить изменение"}, []string{"./investigate"}},
 		{"created", HomeView{Detail: &Decision{Title: "Уже в бэклоге", TaskID: "PM-test", TaskURL: "./?id=test-hyp", TaskTag: "сгенерирована ИИ-помощником"}}, []string{"PM-test", "сгенерирована ИИ-помощником"}, []string{"./approve"}},
 	}
 	for _, c := range cases {

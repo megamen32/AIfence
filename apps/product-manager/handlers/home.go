@@ -42,6 +42,14 @@ type Delivery interface {
 	TaskLink(ctx context.Context, r decision.Record) (id, url string, ok bool)
 }
 
+// CardDelivery exposes idempotent owner actions for the current hypothesis
+// card. Autonomous delivery keeps using Delivery.AfterApprove and the jobs.
+type CardDelivery interface {
+	CardDeliveryState(ctx context.Context, r decision.Record) (redmineID, redmineURL, dionStatus string)
+	DeliverCardRedmine(ctx context.Context, r decision.Record) (redmineID, redmineURL string, err error)
+	DeliverCardDion(ctx context.Context, r decision.Record) (status string, err error)
+}
+
 func (h *Handler) WithDelivery(d Delivery) *Handler {
 	h.delivery = d
 	return h
@@ -311,6 +319,9 @@ func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decisio
 			}
 		}
 	}
+	if cd, ok := h.delivery.(CardDelivery); ok {
+		v.RedmineID, v.RedmineURL, v.DionStatus = cd.CardDeliveryState(ctx, r)
+	}
 	if r.Assessment != nil {
 		v.Assessment = r.Assessment.Reason
 		for _, ref := range append([]string{r.Assessment.ReleaseEvidenceRef}, r.Assessment.EvidenceRefs...) {
@@ -357,6 +368,58 @@ func (h *Handler) detail(ctx context.Context, r decision.Record) (*views.Decisio
 		}
 	}
 	return v, nil
+}
+
+func (h *Handler) DeliverCardRedmine(w http.ResponseWriter, r *http.Request) error {
+	cd, ok := h.delivery.(CardDelivery)
+	if !ok {
+		http.Error(w, "Доставка Redmine недоступна.", http.StatusServiceUnavailable)
+		return nil
+	}
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	id := strings.TrimSpace(r.PostForm.Get("id"))
+	if id == "" {
+		http.Error(w, "Укажите гипотезу.", http.StatusBadRequest)
+		return nil
+	}
+	rec, err := h.svc.Get(r.Context(), decision.GetInput{HypothesisID: id})
+	if err != nil {
+		return err
+	}
+	if _, _, err = cd.DeliverCardRedmine(r.Context(), rec); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return nil
+	}
+	http.Redirect(w, r, href("id", id), http.StatusSeeOther)
+	return nil
+}
+
+func (h *Handler) DeliverCardDion(w http.ResponseWriter, r *http.Request) error {
+	cd, ok := h.delivery.(CardDelivery)
+	if !ok {
+		http.Error(w, "Доставка в Dion недоступна.", http.StatusServiceUnavailable)
+		return nil
+	}
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	id := strings.TrimSpace(r.PostForm.Get("id"))
+	if id == "" {
+		http.Error(w, "Укажите гипотезу.", http.StatusBadRequest)
+		return nil
+	}
+	rec, err := h.svc.Get(r.Context(), decision.GetInput{HypothesisID: id})
+	if err != nil {
+		return err
+	}
+	if _, err = cd.DeliverCardDion(r.Context(), rec); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return nil
+	}
+	http.Redirect(w, r, href("id", id), http.StatusSeeOther)
+	return nil
 }
 func (h *Handler) model(r *http.Request) (views.HomeView, error) {
 	ctx := r.Context()

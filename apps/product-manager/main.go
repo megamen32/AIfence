@@ -60,6 +60,8 @@ func newAgent() *agentsdk.Agent {
 		{Method: "GET", Path: "/board", Handler: h.Board, Description: "Карточки продуктовых решений"},
 		{Method: "POST", Path: "/edit", Handler: h.Edit, Description: "Отредактировать гипотезу перед подтверждением"},
 		{Method: "POST", Path: "/approve", Handler: product.BacklogApprovalHTTP(h.Approve), Description: "Подтвердить задачу и создать черновик в Redmine"},
+		{Method: "POST", Path: "/delivery/redmine", Handler: h.DeliverCardRedmine, Description: "Добавить текущую гипотезу в Redmine"},
+		{Method: "POST", Path: "/delivery/dion/card", Handler: h.DeliverCardDion, Description: "Отправить текущую гипотезу в Dion"},
 		{Method: "POST", Path: "/import", Handler: h.Import, Description: "Импортировать проверяемые наблюдения"},
 	} {
 		r.Access = agentsdk.AccessUser
