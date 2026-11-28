@@ -10,7 +10,8 @@ Applies, skipping what is already in place:
   2. competitor-research slot competitor_search -> that provider
   3. MCP tokens: wordstat (service token), hasdata_google_trends (HasData key)
   4. --local-caddy: cookie-rewrite hosts for embedded app logins (local Caddy only;
-     on a real HTTPS domain app subdomains are same-site and need no rewrite)
+     on a real HTTPS domain app subdomains are same-site and need no rewrite) and the
+     localhost:42193 UserIO proxy sidecar (scripts/stand/userio-localhost-proxy)
 
 Auth: the saved air CLI session for --url (Library/Application Support/airlock/credentials.json)
 or AIRLOCK_TOKEN. Secrets are read from env or local files and never printed:
@@ -186,6 +187,8 @@ def main():
             print("app %s not deployed on this stand, mcp skipped" % app)
     if a.local_caddy:
         local_caddy(a.dry_run)
+        if not a.dry_run:
+            subprocess.run([str(Path(__file__).resolve().parent / "stand" / "userio-localhost-proxy")], check=False)
 
 
 if __name__ == "__main__":

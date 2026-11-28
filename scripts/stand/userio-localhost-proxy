@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Idempotent: make http://localhost:42193 inside the local Airlock container reach the
+# UserIO MCP/OAuth server on the Mac host. The UserIO resource stores localhost:42193 as
+# its OAuth token endpoint; without this, token refresh fails ("authorization server
+# unavailable"). The sidecar shares the airlock container's network namespace, so it must
+# be recreated whenever the airlock container is recreated (re-run this script, or
+# scripts/stand-config-sync --local-caddy, after scripts/up).
+set -euo pipefail
+export PATH=/opt/homebrew/bin:$PATH
+CTX=${AIFENCE_DOCKER_CONTEXT:-colima-aifence}
+AIRLOCK=${AIFENCE_AIRLOCK_CONTAINER:-aifence-airlock-1}
+NAME=aifence-userio-localhost-proxy
+PORT=${USERIO_MCP_PORT:-42193}
+d() { docker --context "$CTX" "$@"; }
+want=$(d inspect -f '{{.Id}}' "$AIRLOCK")
+have=$(d inspect -f '{{.HostConfig.NetworkMode}}' "$NAME" 2>/dev/null || true)
+if [[ "$have" == "container:$want" ]] && [[ "$(d inspect -f '{{.State.Running}}' "$NAME")" == true ]]; then
+  echo "userio proxy: ok"; exit 0
+fi
+d rm -f "$NAME" >/dev/null 2>&1 || true
+d run -d --name "$NAME" --restart unless-stopped --network "container:$AIRLOCK" alpine:latest sh -c \
+  "apk add --no-cache socat >/dev/null 2>&1 && exec socat TCP-LISTEN:$PORT,fork,reuseaddr,bind=127.0.0.1 TCP:host.docker.internal:$PORT" >/dev/null
+for _ in $(seq 1 20); do
+  if d exec "$AIRLOCK" wget -qO- -T3 "http://localhost:$PORT/.well-known/oauth-authorization-server" >/dev/null 2>&1; then
+    echo "userio proxy: started"; exit 0
+  fi
+  sleep 1
+done
+echo "userio proxy: started but localhost:$PORT not answering (is UserIO MCP running on the host?)" >&2
+exit 1
