@@ -21,11 +21,10 @@ trap 'rm -f "$TARGET_AGENTS" "$tmp_refs"' EXIT
 for app in $APPS_CSV; do
   [ -n "$app" ] || continue
   target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")
-  source_ref=$(awk -F '|' -v a="$app" '$2==a {print $3; exit}' "$SRC_APPS" 2>/dev/null || true)
+  source_ref=$SOURCE_SHA
   source_image=$(awk -F '\t' -v a="$app" '$1==a {print $2; exit}' "$REFS")
   [ -n "$target_id" ] || { echo "reconcile: target agent slug not found: $app" >&2; exit 52; }
   [ -n "$source_image" ] || { echo "reconcile: exact built image_ref missing: $app" >&2; exit 53; }
-  [ -n "$source_ref" ] || source_ref=$SOURCE_SHA
   target_image="$target_id:${SOURCE_SHA:0:12}"
   docker tag "$source_image" "$target_image"
   printf '%s\t%s\n' "$app" "$target_image" >> "$tmp_refs"
