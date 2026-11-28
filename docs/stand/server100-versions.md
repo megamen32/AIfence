@@ -78,3 +78,24 @@ The live 42080 stack also had five Airlock-managed app containers. Their image l
 | aifence-agent-cdd2224a-e2e8-4be8-a325-49fe7fa37be7 | cdd2224a-e2e8-4be8-a325-49fe7fa37be7:51cb9a874b1c | sha256:e2012085f3dbcd62cb2be8f58c574ced6fe2944320572b3917493a183384a027 |
 
 The exact full container inventory, including QA-only containers excluded from the personal move, is captured at pin time in `/home/roomhacker/aifence-move/pin/containers.tsv`.
+
+
+## Current source/target app refs (captured 2026-11-28)
+
+The source values below are read from the Mac Airlock database at pin time. Target values are from the restored server-100 Airlock database after the PM code-only reconcile. They are intentionally kept per app because the Mac stand was changing during the move.
+
+| App | Source source_ref | Target source_ref | Target image_ref | Result |
+| --- | --- | --- | --- | --- |
+| baserow | 92491bbac60df462f17c38b7319a424da881c977a | 42e14e662657c6cbf333030b401d2d1bdb794a6a | 37aa7358-942e-44c4-acd0-b971e83e0ce9:42e14e662657 | mismatch |
+| competitor-research | 4cdb527d90f00d06fd9242529059563df019075a | 38084395dc6add0c2634e560bb9258e965ce26fa | 03dc1bb2-869e-4783-897f-7c7fbc4b395d:38084395dc6a | mismatch |
+| google-trends | a05024ce816648cbc1ccd3afc0b9abf8389b5cb8 | a2b78e8e4644b1f99e34a1dfe1bf7e8e2d6c8bc6 | 865ff815-30fb-4a03-983e-300501230909:a2b78e8e4644 | mismatch |
+| market-watch | 14a80479963f263397ade51927486176484f701f | 194805802313b95f4e80c33b7a2e3a49e0344a86 | 8702e3ad-c528-45af-8172-00e3be59ae7f:194805802313 | mismatch |
+| metrika-analyst | 5428f7b516f8dad01d888d3007c96f99290604b1 | 299e53bb21da5c38cb7b20d55b7a290673526159 | 6e985f49-ae84-4f6d-b345-edb4ea0d95cf:299e53bb21da | mismatch |
+| openai-byok-local | dbeb5cfe66a88f571faaae5166b34d329b814c7c | dbeb5cfe66a88f571faaae5166b34d329b814c7c | 624d3617-da89-479f-954f-1c2f54f23fbe:dbeb5cfe66a8 | equal |
+| product-manager | 4e1b198a30dd866bb0b697246012e0ea334e06da | 5fa991dc2446d3341416be0379557c19d9cc2e87 | 01a5630d-261e-4c41-88a7-15fe5bd4fa2b:5fa991dc2446 | code-only target |
+| redmine | d38f9f8cc429cc0d55a62feefa10fa8b3df83fe6 | d38f9f8cc429cc0d55a62feefa10fa8b3df83fe6 | 358285c9-3347-436e-812d-55c6d3a61e73:d38f9f8cc429 | equal |
+| userio-dion-local | 96b19a2f9e6ea96e5f412c1dd65656da8a59e5e5 | 96b19a2f9e6ea96e5f412c1dd65656da8a59e5e5 | 870d47ee-6234-4109-a6b3-3e06f960a094:96b19a2f9e6e | equal |
+| web-scraper | ae5ddbe7b7b0fe3284d9b7792a8a02b9e775882e | 51cb9a874b1cf76e268ae37b3c92d440f0cd0437 | cdd2224a-e2e8-4be8-a325-49fe7fa37be7:51cb9a874b1c | mismatch |
+| wordstat | 4eb632f32c765510a86159168856d63ef0ac8b9c | d0414b604d648f62ecd6a33ec7b3248cfc172e87 | 31d1d3e9-2488-47ca-ab01-ddd50afe8882:d0414b604d64 | mismatch |
+
+The source refs drifted while the move was in progress. This table is a receipt, not an assertion that a stale target row equals the current Mac row. The repeatable path is to run a fresh pin/build/reconcile from the selected source SHA.
