@@ -22,6 +22,8 @@ for app in $APPS_CSV; do
       "$appdir/Dockerfile" > "$dockerfile"
   BUILDX_BUILDER="$BUILDER" docker build --pull=false -f "$dockerfile" -t "$image_ref" "$appdir" < /dev/null 1>&2
   rm -f "$dockerfile"
+  docker run --rm -e AIRLOCK_AGENT_MODE=manifest "$image_ref" > "$MANIFEST_DIR/$app.json"
+  chmod 600 "$MANIFEST_DIR/$app.json"
   printf '%s\t%s\n' "$app" "$image_ref"
 done > "$OUTPUT"
 IFS=$oldifs
