@@ -31,7 +31,7 @@ Code-only pinning uses \`refs/heads/main\` by default; set \`STAND_SYNC_SOURCE_R
 
 ## Private SDK bundle
 
-The source-side vendor step is intentionally isolated from the target. It preserves the current shell values of `AIFENCE_PERSONAL_CACHE`, `GOPRIVATE`, and `GONOSUMDB`, but forces `GOPROXY=off GOFLAGS=-mod=mod` while running `go mod vendor`. The target receives only the clean app source and `vendor/` tree in a resumable tar bundle; no private cache or credential file is copied. `scripts/stand-sync-build` creates a temporary Dockerfile, skips network-dependent `go mod tidy`, and invokes `go build -mod=vendor` with `GOPROXY=off`; the tracked product Dockerfiles are unchanged.
+The pin phase also queries the source Airlock Postgres `agents` rows (`id|slug|source_ref|image_ref`) and refuses a code-only build when an exact selected-app `image_ref` is missing. The source-side vendor step is intentionally isolated from the target. It preserves the current shell values of `AIFENCE_PERSONAL_CACHE`, `GOPRIVATE`, and `GONOSUMDB`, but forces `GOPROXY=off GOFLAGS=-mod=mod` while running `go mod vendor`. The target receives only the clean app source and `vendor/` tree in a resumable tar bundle; no private cache or credential file is copied. `scripts/stand-sync-build` creates a temporary Dockerfile, skips network-dependent `go mod tidy`, and invokes `go build -mod=vendor` with `GOPROXY=off`; the tracked product Dockerfiles are unchanged.
 
 ## Traps encoded
 
