@@ -1,3 +1,12 @@
 .airlock/
 .runtime/
 __pycache__/
+
+# Generated artifacts are recreated by `go tool air build` and Docker builds.
+# Source inputs (.templ, styles/app.css, and db/queries/*.sql) are committed.
+*_templ.go
+views/static/app.css
+internal/db/*
+!internal/db/doc.go
+/agent
+/agent.exe

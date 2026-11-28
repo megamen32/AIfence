@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Prepare a clean clone: check dependencies, generate sources and build every
+# app with the published Airlock SDK. No private SDK, no personal cache and no
+# deployment are involved.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="$PATH:/opt/homebrew/bin:/usr/local/go/bin:$HOME/go/bin"
+export GOWORK="${GOWORK:-off}"
+export GOFLAGS="${GOFLAGS:--p=1}"
+export GOMAXPROCS="${GOMAXPROCS:-2}"
+APPS=(product-manager metrika-analyst market-watch web-scraper google-trends wordstat)
+selected=()
+check_only=0
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: scripts/bootstrap [--check-only] [--app <slug> ...]
+
+Checks the toolchain, then generates and builds every app from the committed
+sources with the published SDK (github.com/airlockrun/agentsdk v0.11.0).
+
+  --check-only   Only verify the toolchain and network access.
+  --app <slug>   Build only this app (repeatable).
+USAGE
+  exit 2
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --check-only) check_only=1; shift;;
+    --app)
+      [[ $# -ge 2 ]] || usage
+      selected+=("$2"); shift 2;;
+    -h|--help) usage;;
+    *) usage;;
+  esac
+done
+
+if [[ ${#selected[@]} -eq 0 ]]; then
+  selected=("${APPS[@]}")
+fi
+
+fail=0
+note() { printf '%s\n' "$*"; }
+step() { printf '\n== %s\n' "$*"; }
+
+step "Toolchain"
+command -v go >/dev/null 2>&1 || { note "go is not installed: https://go.dev/dl/"; exit 1; }
+command -v git >/dev/null 2>&1 || { note "git is not installed"; exit 1; }
+go_version="$(go env GOVERSION)"
+note "go: $go_version"
+note "GOPROXY: $(go env GOPROXY)"
+if [[ "$(go env GOPROXY)" == "off" ]]; then
+  note "GOPROXY is off; the published SDK cannot be downloaded. Unset GOFLAGS/GOPROXY overrides."
+  exit 1
+fi
+note "checking the module proxy and the pinned build tools"
+if ! curl -fsS --max-time 20 -o /dev/null "https://proxy.golang.org/github.com/airlockrun/agentsdk/@v/list"; then
+  note "proxy.golang.org is not reachable; the public SDK cannot be fetched."
+  exit 1
+fi
+note "proxy.golang.org: reachable"
+if ! curl -fsS --max-time 20 -o /dev/null "https://api.github.com/repos/sqlc-dev/sqlc/releases/latest"; then
+  note "github.com is not reachable; the pinned sqlc/tailwind toolchain cannot be downloaded."
+  exit 1
+fi
+note "github.com: reachable"
+if [[ "$check_only" == 1 ]]; then
+  note "Toolchain check finished."
+  exit 0
+fi
+
+results=()
+for app in "${selected[@]}"; do
+  step "Build $app"
+  if [[ ! -d "$ROOT/apps/$app" ]]; then
+    note "unknown app: $app"
+    fail=1
+    results+=("FAIL $app (missing app directory)")
+    continue
+  fi
+  # `go tool air build` is the SDK's own pipeline: it regenerates sqlc, templ
+  # and tailwind output, runs the test suite and compiles the app.
+  if ( cd "$ROOT/apps/$app" && go tool air build ); then
+    note "$app: build ok"
+    results+=("PASS $app")
+  else
+    note "$app: build failed"
+    fail=1
+    results+=("FAIL $app")
+  fi
+done
+
+step "Test suites"
+for app in "${selected[@]}"; do
+  [[ -d "$ROOT/apps/$app" ]] || continue
+  if ( cd "$ROOT/apps/$app" && go test -count=1 ./... >/dev/null ); then
+    note "$app: go test ./... ok"
+  else
+    note "$app: go test ./... failed"
+    fail=1
+  fi
+done
+
+step "Summary"
+for line in "${results[@]}"; do
+  note "$line"
+done
+if [[ "$fail" != 0 ]]; then
+  note "bootstrap failed"
+  exit 1
+fi
+note "bootstrap finished: every selected app builds and tests green."
