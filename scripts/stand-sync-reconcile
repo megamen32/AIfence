@@ -29,8 +29,7 @@ for app in $APPS_CSV; do
   docker tag "$source_image" "$target_image"
   printf '%s\t%s\n' "$app" "$target_image" >> "$tmp_refs"
   docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock \
-    -v aid="$target_id" -v sref="$source_ref" -v iref="$target_image" \
-    -c "update agents set source_ref = :'sref', image_ref = :'iref' where id = :'aid';" >/dev/null
+    -c "update agents set source_ref = '$source_ref', image_ref = '$target_image' where id = '$target_id';" >/dev/null
 done
 mv "$tmp_refs" "$REFS"
 IFS=$oldifs
@@ -41,7 +40,7 @@ if [ -s "$SRC_GRANTS" ]; then
     [ -n "$app" ] || continue
     target_id=$(awk -F '|' -v a="$app" '$2==a {print $1; exit}' "$TARGET_AGENTS")
     [ -n "$target_id" ] || continue
-    docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock       -v aid="$target_id" -v gid="$grantee" -v role="$role"       -c "insert into agent_grants (agent_id,grantee_id,role) values (:'aid',:'gid',:'role') on conflict do nothing;" >/dev/null
+    docker exec "$PGID" psql -v ON_ERROR_STOP=1 -U airlock -d airlock       -c "insert into agent_grants (agent_id,grantee_id,role) values ('$target_id','$grantee','$role') on conflict do nothing;" >/dev/null
   done < "$SRC_GRANTS"
 fi
 if compose config --services 2>/dev/null | grep -qx airlock; then
