@@ -496,6 +496,12 @@ func vendorProductGroups(vendor string, vendorCount int64, rows []monitorObserva
 		}
 		for _, pulse := range pulses {
 			if strings.EqualFold(pulse.Product, name) || strings.EqualFold(pulse.ProductKey, row.Product) {
+				if pulse.Change != "" {
+					g.signal = pulse.Change
+					if delta := catalogSignalDelta(pulse); delta != nil {
+						g.signalDelta, g.tone = delta, catalogToneForDelta(*delta)
+					}
+				}
 				g.link = withTab(pulse.URL, "hypothesis")
 				break
 			}
