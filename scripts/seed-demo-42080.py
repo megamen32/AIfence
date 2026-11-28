@@ -206,7 +206,7 @@ def make_metrika() -> list[dict]:
 
 def build() -> dict:
     return {"schema_version": "aifence.case.v1", "as_of": AS_OF,
-            "source_policy": "local_project_only", "warnings": ["ДЕМО: R-09 synthetic owner-stand seed."],
+            "warnings": ["ДЕМО: R-09 synthetic owner-stand seed."],
             "batches": [batch("sales", make_sales()), batch("metrika", make_metrika()),
                         batch("research", make_research()), batch("release", make_release()),
                         batch("browser", make_browser())]}

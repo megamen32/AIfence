@@ -28,3 +28,10 @@ func TestRowsKeepIdentityMissingAndFilters(t *testing.T) {
 		t.Fatal("duplicate observation ID accepted")
 	}
 }
+
+func TestReadAcrossRejectsBadPaging(t *testing.T) {
+	var s Service
+	if _, err := s.readAcross(nil, Query{Limit: 101}); err == nil {
+		t.Fatal("limit above 100 must be rejected before any lookup")
+	}
+}

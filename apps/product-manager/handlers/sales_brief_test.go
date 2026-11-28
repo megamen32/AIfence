@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"agent/internal/evidence"
 )
@@ -74,5 +75,30 @@ func TestDirectorDecisionFollowsComparableGroups(t *testing.T) {
 	r.ComparableSKUs = 2
 	if got := directorReply(r); !strings.Contains(got.Decision, "2 из 3") || strings.Contains(got.Decision, "не стоит") {
 		t.Fatal(got)
+	}
+}
+
+func TestBriefDropsDuplicateAndStaleAlerts(t *testing.T) {
+	mk := func(snapshot, product, currentFrom string) monitorObservation {
+		start, _ := time.Parse(time.DateOnly, currentFrom)
+		end := start.AddDate(0, 0, 27)
+		d := evidence.WindowContrast{
+			Baseline:    evidence.Period{From: start.AddDate(0, 0, -28).Format(time.DateOnly), To: start.AddDate(0, 0, -1).Format(time.DateOnly)},
+			Current:     evidence.Period{From: currentFrom, To: end.Format(time.DateOnly)},
+			WindowWeeks: 4, BaselineMean: 110, CurrentMean: 74, ControlBaselineMean: 100, ControlCurrentMean: 97.4,
+			RelativeChangePct: (74.0/110 - 1) * 100,
+		}
+		raw, _ := json.Marshal(d)
+		return monitorObservation{snapshot: snapshot, details: monitorDetails{Origin: "synthetic_fixture", Metric: "orders_index", Control: "astra_linux_special_edition"},
+			Row: evidence.Row{Product: product, Segment: "self_service", Source: "sales", Metric: watchdogMetric, Status: "observed", Value: "true", Details: string(raw),
+				Ref:    evidence.SourceRef{SourceID: "sales", Locator: "orders#" + snapshot},
+				Period: evidence.Period{From: end.AddDate(0, 0, -6).Format(time.DateOnly), To: end.Format(time.DateOnly)}}}
+	}
+	current := mk("a", "kaspersky_endpoint_security", "2026-10-12")
+	again := mk("b", "kaspersky_endpoint_security", "2026-10-12")
+	old := mk("c", "kaspersky_small_office_security", "2023-01-30")
+	result := salesBrief([]monitorObservation{old, again, current}, nil, BriefQuery{Summary: true})
+	if len(result.Readings) != 1 || result.Readings[0].Product != "Kaspersky Endpoint Security" {
+		t.Fatalf("%+v", result.Readings)
 	}
 }
