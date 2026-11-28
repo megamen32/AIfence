@@ -204,6 +204,12 @@ reconcile_phase() {
     bundle_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/bundle"
     ssh_target "set -Eeuo pipefail; bash $(printf '%q' "$reconcile_remote") $(printf '%q' "$REMOTE_ROOT") $(printf '%q' "$APPS_CSV") $(printf '%q' "$source_sha") $(printf '%q' "$bundle_remote") $(printf '%q' "$refs_remote")"
   fi
+  rsync "${RSYNC_RESUME[@]}" "$TARGET_HOST:$refs_remote" "$RUN_DIR/built-image-refs.tsv"
+  if [ -s "$RUN_DIR/built-image-refs.tsv" ]; then
+    tmp=$RUN_DIR/manifest.tmp
+    awk -F '\t' -v OFS='\t' 'NR==FNR{img[$1]=$2;next} NR==1{print;next}{$5=img[$1];print}' "$RUN_DIR/built-image-refs.tsv" "$MANIFEST" > "$tmp"
+    mv "$tmp" "$MANIFEST"
+  fi
 }
 health_phase() {
   url=${STAND_SYNC_HEALTH_URL:-https://${STAND_SYNC_PUBLIC_HOST:-move.aifence.bezrabotnyi.com}/health}
