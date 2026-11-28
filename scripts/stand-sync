@@ -80,7 +80,7 @@ build_full() {
 }
 build_code() {
   sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
-  ssh_target "set -Eeuo pipefail
+  target_sha=$(ssh_target "set -Eeuo pipefail
 root=$(printf '%q' "$REMOTE_ROOT")
 repo=\$root/repo
 mkdir -p \$root/.stand-sync/worktrees
@@ -95,7 +95,10 @@ else
  [ -n \"\$svc\" ] || { echo 'No product-manager compose service; set STAND_SYNC_BUILD_CMD on server-100' >&2; exit 42; }
  docker compose build \"\$svc\" && docker compose up -d --no-deps \"\$svc\"
 fi
-git rev-parse HEAD"
+git rev-parse HEAD")
+  tmp=$RUN_DIR/manifest.tmp
+  awk -F '\t' -v OFS='\t' -v s="$target_sha" 'NR==1{print;next}{$4=s;print}' "$MANIFEST" > "$tmp"
+  mv "$tmp" "$MANIFEST"
 }
 state_phase() { [ "$MODE" = state ] || printf 'state skipped (code-only)\n' > "$RUN_DIR/state-skipped"; }
 restore_phase() { [ "$MODE" = state ] || printf 'restore skipped (code-only)\n' > "$RUN_DIR/restore-skipped"; }
