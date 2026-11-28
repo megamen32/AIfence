@@ -56,6 +56,7 @@ end_phase() { printf '%s\t%s\t%s\t%s\n' "$PHASE" "$START_EPOCH" "$(date -u +%FT%
 remote_mark() { ssh_target "mkdir -p $(printf '%q' "$REMOTE_ROOT/.stand-sync") && : > $(printf '%q' "$(mark_path "$1")")"; }
 run_phase() {
   p=$1; shift
+  PHASE=$p
   if [ "$p" != pin ] && phase_done "$p"; then echo "stand-sync: phase $p already complete"; return; fi
   begin_phase "$p"; "$@"; remote_mark "$p"; end_phase ok
 }
