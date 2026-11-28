@@ -89,6 +89,8 @@ pin_phase() {
     "$DOCKER_BIN" --context colima-aifence image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' > "$RUN_DIR/source-images.tsv" || true
     chmod 600 "$RUN_DIR/source-images.tsv"
     "$DOCKER_BIN" --context colima-aifence ps --format '{{.Names}}\t{{.Image}}' > "$RUN_DIR/source-agents.tsv" || true
+    "$DOCKER_BIN" --context colima-aifence exec aifence-postgres-1 psql -At -F '|' -U airlock -d airlock -c "select id,slug,source_ref,image_ref from agents where status in ('active','building') order by slug" > "$RUN_DIR/source-apps.tsv" || true
+    chmod 600 "$RUN_DIR/source-apps.tsv"
     {
       printf 'name\timage\tid\trevision\tversion\n' 
       while IFS=$'\t' read -r name image; do
@@ -122,14 +124,30 @@ build_code() {
     appdir=$worktree/apps/$app
     [ -d "$appdir" ] || { echo "Pinned source is missing apps/$app" >&2; IFS=$oldifs; return 46; }
     if [ -f "$appdir/go.mod" ]; then
+      cache=${AIFENCE_PERSONAL_CACHE:-$SOURCE_ROOT/.runtime/m1-native-sourcewatch-20261127/clones/$app/.personal-modules}
+      if [ -d "$cache/$app/.personal-modules" ]; then cache=$cache/$app/.personal-modules; fi
+      if [ -d "$cache" ]; then
+        mkdir -p "$appdir/.personal-modules"
+        rsync -a --delete --exclude .git "$cache/" "$appdir/.personal-modules/"
+        for mod in agentsdk sol goai; do
+          if [ -d "$appdir/.personal-modules/$mod" ]; then
+            case "$mod" in
+              agentsdk) (cd "$appdir" && go mod edit -replace github.com/airlockrun/agentsdk=./.personal-modules/agentsdk);;
+              sol) (cd "$appdir" && go mod edit -replace github.com/airlockrun/sol=./.personal-modules/sol);;
+              goai) (cd "$appdir" && go mod edit -replace github.com/airlockrun/goai=./.personal-modules/goai);;
+            esac
+          fi
+        done
+      fi
       vendor_env=(GOPROXY=off GOFLAGS=-mod=mod)
       [ -n "${GOPRIVATE+x}" ] && vendor_env+=(GOPRIVATE="$GOPRIVATE")
       [ -n "${GONOSUMDB+x}" ] && vendor_env+=(GONOSUMDB="$GONOSUMDB")
       [ -n "${AIFENCE_PERSONAL_CACHE+x}" ] && vendor_env+=(AIFENCE_PERSONAL_CACHE="$AIFENCE_PERSONAL_CACHE")
-      (cd "$appdir" && env "${vendor_env[@]}" go mod vendor)
+      (cd "$appdir" && env "${vendor_env[@]}" go tool templ generate && env "${vendor_env[@]}" go mod vendor)
     fi
     rsync -a --delete --partial --exclude .git --exclude .runtime --exclude private --exclude data --exclude materials --exclude ".airlock/local" "$appdir/" "$bundle/apps/$app/"
-    image_ref=$(awk -F '\t' -v a="$app" 'NR>1 && (tolower($1) ~ tolower(a) || tolower($2) ~ tolower(a)) {print $2; exit}' "$RUN_DIR/source-agent-shas.tsv" 2>/dev/null || true)
+    image_ref=$(awk -F '|' -v a="$app" '$2==a {print $4; exit}' "$RUN_DIR/source-apps.tsv" 2>/dev/null || true)
+    [ -n "$image_ref" ] || { echo "No exact Airlock image_ref for $app in source-apps.tsv" >&2; IFS=$oldifs; return 47; }
     printf '%s\t%s\n' "$app" "$image_ref" >> "$bundle/app-image-refs.tsv"
   done
   IFS=$oldifs
