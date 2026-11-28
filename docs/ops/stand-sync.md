@@ -15,7 +15,7 @@ No \`--apps\` means a full stateful migration. Supplying \`--apps\` defaults to 
 
 ## Resumption and phases
 
-The target root is \`/home/roomhacker/aifence-move\`. Successful phases leave \`.stand-sync/<phase>.done\` markers there. Local receipts are under \`.runtime/stand-sync/<UTC timestamp>/\`; they contain \`pin.env\`, a secret-free app/SHA manifest, timings, health output, smoke status and optional screenshots. A failure prints the phase name and the exact retry command.
+The target root is \`/home/roomhacker/aifence-move\`. Successful phases leave \`.stand-sync/<source-app-mode-key>-<phase>.done\` markers there. Local receipts are under \`.runtime/stand-sync/<UTC timestamp>/\`; they contain \`pin.env\`, a secret-free app/SHA manifest, timings, health output, smoke status and optional screenshots. A failure prints the phase name and the exact retry command.
 
 | Phase | Behavior |
 | --- | --- |
