@@ -128,7 +128,7 @@ build_code() {
       [ -n "${AIFENCE_PERSONAL_CACHE+x}" ] && vendor_env+=(AIFENCE_PERSONAL_CACHE="$AIFENCE_PERSONAL_CACHE")
       (cd "$appdir" && env "${vendor_env[@]}" go mod vendor)
     fi
-    rsync -a --delete --exclude .git "$appdir/" "$bundle/apps/$app/"
+    rsync -a --delete --partial --exclude .git --exclude .runtime --exclude private --exclude data --exclude materials --exclude ".airlock/local" "$appdir/" "$bundle/apps/$app/"
     image_ref=$(awk -F '\t' -v a="$app" 'NR>1 && (tolower($1) ~ tolower(a) || tolower($2) ~ tolower(a)) {print $2; exit}' "$RUN_DIR/source-agent-shas.tsv" 2>/dev/null || true)
     printf '%s\t%s\n' "$app" "$image_ref" >> "$bundle/app-image-refs.tsv"
   done
