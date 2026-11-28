@@ -64,6 +64,7 @@ type ProductReading struct {
 	PriceTiming         string      `json:"timing_of_price_evidence,omitempty"`
 	OfferExample        []BriefFact `json:"example_offers_for_one_sku,omitempty"`
 	Sales               string      `json:"measured_sales"`
+	Signal              string      `json:"signal_detail,omitempty"`
 	Weekly              string      `json:"weekly_financial_impact"`
 	Source              string      `json:"sales_source"`
 }
@@ -172,6 +173,7 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 			Target:   SeriesChange{reading.Product, math.RoundToEven(w.RelativeChangePct*10) / 10},
 			Baseline: w.Baseline, Current: w.Current, WeeksPerWindow: w.WindowWeeks,
 		}
+		reading.Signal = signalDetail(r, w)
 		weekly, basis, amount := signalPlanning(records, r)
 		reading.EstimatedWeeklyRUB = amount
 		if weekly != "" {
@@ -275,6 +277,32 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 		result.NextOffset = &end
 	}
 	return result
+}
+
+var funnelStepTitles = map[string]string{
+	"add_to_cart": "добавление в корзину", "checkout_started": "начало оформления", "order_placed": "оформление заказа",
+	"product_views": "просмотр карточки", "visits": "визиты",
+}
+
+// signalDetail restates what the producer measured about where and when the
+// drop began, so the answer does not depend on re-reading the raw series.
+func signalDetail(r monitorObservation, w *evidence.WindowContrast) string {
+	var parts []string
+	if m := r.details.Metric; m != "" && m != "orders_index" {
+		parts = append(parts, "Разрыв на шаге воронки: "+label(funnelStepTitles, m))
+	}
+	parts = append(parts, "окно падения с "+date(w.Current.From)+" по "+date(w.Current.To))
+	if r.details.ReleaseID != "" {
+		release := "совпадает по времени с релизом " + r.details.ReleaseID
+		if r.details.ReleaseDate != "" {
+			release += " от " + date(r.details.ReleaseDate)
+		}
+		parts = append(parts, release)
+	}
+	if a := r.details.Adjusted; a != nil && !math.IsNaN(*a) && !math.IsInf(*a, 0) {
+		parts = append(parts, "с поправкой на контроль "+signalPercent(*a))
+	}
+	return strings.Join(parts, "; ") + "."
 }
 
 func staleWindow(newest, other string) bool {
