@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+REMOTE_ROOT=$1
+BUNDLE=$2
+APPS_CSV=$3
+IMAGE_REFS=${4:-$BUNDLE/app-image-refs.tsv}
+BUILDER=${STAND_SYNC_BUILDER:-default}
+oldifs=$IFS
+IFS=,
+for app in $APPS_CSV; do
+  [ -n "$app" ] || continue
+  appdir=$BUNDLE/apps/$app
+  [ -d "$appdir" ] || { echo "bundle is missing apps/$app" >&2; exit 44; }
+  image_ref=$(awk -F '\t' -v a="$app" 'NR>1 && $1==a {print $2; exit}' "$IMAGE_REFS" 2>/dev/null || true)
+  [ -n "$image_ref" ] || image_ref="aifence-$app:stand-sync-$(date -u +%Y%m%dT%H%M%S)"
+  [ -f "$appdir/Dockerfile" ] || { echo "apps/$app/Dockerfile is required for native target build" >&2; exit 45; }
+  BUILDX_BUILDER="$BUILDER" docker build --pull=false -f "$appdir/Dockerfile" -t "$image_ref" "$appdir" < /dev/null
+  printf '%s\t%s\n' "$app" "$image_ref"
+done > "$REMOTE_ROOT/.stand-sync/built-image-refs.tsv"
+IFS=$oldifs
