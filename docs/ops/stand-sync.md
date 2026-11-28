@@ -27,7 +27,7 @@ The target root is \`/home/roomhacker/aifence-move\`. Successful phases leave \`
 | health | Checks the HTTPS health endpoint. |
 | smoke | Checks comma-separated URLs and optionally runs \`STAND_SYNC_SCREENSHOT_CMD\` in the receipt directory. |
 
-Code-only pinning uses \`refs/heads/main\` by default; set \`STAND_SYNC_SOURCE_REF\` for a controlled ref. Full mode pins HEAD/running source. Useful target overrides are \`STAND_SYNC_TARGET_HOST\`, \`STAND_SYNC_REMOTE_ROOT\`, \`STAND_SYNC_GIT_URL\`, \`STAND_SYNC_BUILD_CMD\`, \`STAND_SYNC_RECONCILE_CMD\`, \`STAND_SYNC_PUBLIC_HOST\`, \`STAND_SYNC_HEALTH_URL\`, \`STAND_SYNC_SMOKE_URLS\`, and \`STAND_SYNC_SCREENSHOT_CMD\`. Hooks read existing env files and never accept credentials as CLI arguments.
+Code-only pinning uses \`refs/heads/main\` by default; set \`STAND_SYNC_SOURCE_REF\` for a controlled ref. Full mode pins HEAD/running source. Useful target overrides are \`STAND_SYNC_TARGET_HOST\`, \`STAND_SYNC_REMOTE_ROOT\`, \`STAND_SYNC_GIT_URL\`, \`STAND_SYNC_BUILD_CMD\`, \`STAND_SYNC_RECONCILE_CMD\`, \`STAND_SYNC_BUILDER\` (default \`default\` native Docker builder), \`STAND_SYNC_PUBLIC_HOST\`, \`STAND_SYNC_HEALTH_URL\`, \`STAND_SYNC_SMOKE_URLS\`, and \`STAND_SYNC_SCREENSHOT_CMD\`. Hooks read existing env files and never accept credentials as CLI arguments.
 
 ## Traps encoded
 
