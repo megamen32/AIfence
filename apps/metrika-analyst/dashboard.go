@@ -17,8 +17,6 @@ const dashWeeks = 8
 
 const dashboardKESFixture = "fixtures/aifence-original.json"
 
-const dashboardKESFixture = "fixtures/aifence-original.json"
-
 var metricTitles = map[string]string{
 	"visits": "Визиты", "users": "Посетители", "pageviews": "Просмотры",
 	"orders": "Заказы", "revenue": "Выручка", "purchase_conversion": "Конверсия в покупку",
@@ -127,7 +125,7 @@ func dashboardKES(c Settings) bool {
 
 func dashboardProduct(c Settings) string {
 	if dashboardKES(c) {
-		return "kaspersky_small_office_security"
+		return "kaspersky_endpoint_security"
 	}
 	return "store"
 }
@@ -407,8 +405,8 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 	}
 
 	v.Eyebrow = "МАГАЗИН · НЕДЕЛЯ " + strings.ToUpper(weekLabel(last))
-	if dashboardSandbox(c) {
-		v.Eyebrow = "KASPERSKY SMALL OFFICE SECURITY · ПЕРИОД " + strings.ToUpper(weekLabel(last))
+	if dashboardKES(c) {
+		v.Eyebrow = "KASPERSKY ENDPOINT SECURITY · ПЕРИОД " + strings.ToUpper(weekLabel(last))
 	}
 	if a, b := vals[len(vals)-1], vals[len(vals)-2]; a != nil && b != nil && *b != 0 {
 		pct := (*a - *b) / math.Abs(*b) * 100
@@ -446,7 +444,7 @@ func (s Service) dashboard(ctx context.Context, now time.Time) dashView {
 		}
 		v.Sources = append(v.Sources, card)
 	}
-	if !c.Ecommerce && !dashboardSandbox(c) {
+	if !c.Ecommerce && !dashboardKES(c) {
 		v.Notes = append(v.Notes, "Заказы и конверсия скрыты: в счётчике выключена настройка ecommerce_confirmed.")
 	}
 	if estimated {
