@@ -15,7 +15,7 @@ func TestViewKeepsMissingZeroAndUnknownDistinct(t *testing.T) {
 	a := scoreCell(trends.Score{Raw: "0", Index: &zero, HasData: &yes, State: "observed"})
 	b := scoreCell(trends.Score{Raw: "0", HasData: &no, State: "missing"})
 	c := scoreCell(trends.Score{Raw: "0", Index: &zero, State: "reported"})
-	if a.Label != "0" || b.Label != "Нет данных" || c.Label != "0" || c.Detail == "" {
+	if a.Label != "0" || b.Label != "Источник не сообщил значение" || c.Label != "0" || c.Detail == "" {
 		t.Fatalf("%#v %#v %#v", a, b, c)
 	}
 }
