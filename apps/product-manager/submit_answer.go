@@ -90,7 +90,11 @@ func renderAnswer(_ context.Context, a answer.Input) (acceptedAnswer, error) {
 		if !answerField(e.Source) || !answerField(e.Ref) || !answerField(e.Fact) {
 			return acceptedAnswer{}, errors.New("свидетельство требует источник, локатор и однострочное наблюдение")
 		}
-		lines = append(lines, fmt.Sprintf("%s (%s, %s)", strings.TrimSpace(e.Fact), e.Source, e.Ref))
+		ref := strings.TrimSpace(e.Ref)
+		if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+			ref = "[источник](" + ref + ")"
+		}
+		lines = append(lines, fmt.Sprintf("%s (%s, %s)", strings.TrimSpace(e.Fact), e.Source, ref))
 	}
 	text := strings.Join(lines, "\n")
 	if utf8.RuneCountInString(text) > 800 || len(lines) > 8 {

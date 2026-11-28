@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -62,7 +63,55 @@ type SourceRef struct {
 	Locator  string `json:"locator"`
 	URL      string `json:"url,omitempty"`
 	Revision string `json:"revision,omitempty"`
+	DeepLink string `json:"deep_link,omitempty"`
 }
+
+// DeepLinkFor builds the owner-facing route for imported source observations.
+func DeepLinkFor(sourceID, product string, period Period, geo string, locator string) string {
+	slug, params := "", url.Values{}
+	switch {
+	case sourceID == "wordstat" || sourceID == "yandex-wordstat:search-api":
+		slug = "wordstat"
+		params.Set("q", product)
+		params.Set("from", datePrefix(period.From, 7))
+		params.Set("to", datePrefix(period.To, 7))
+		params.Set("region", geo)
+		params.Set("view", "dynamics")
+	case sourceID == "google_trends":
+		slug = "google-trends"
+		params.Set("q", product)
+		params.Set("geo", "RU")
+		params.Set("from", period.From)
+		params.Set("to", period.To)
+		params.Set("view", "compare")
+	case strings.HasPrefix(sourceID, "market-watch") || sourceID == "market":
+		slug = "market-watch"
+		params.Set("q", product)
+		params.Set("from", period.From)
+		params.Set("to", period.To)
+		params.Set("view", "prices")
+	case strings.HasPrefix(sourceID, "yandex-metrika:"):
+		slug = "metrika-analyst"
+		params.Set("q", product)
+		params.Set("from", period.From)
+		params.Set("to", period.To)
+		params.Set("view", "trend")
+	default:
+		return ""
+	}
+	if locator != "" {
+		params.Set("id", locator)
+	}
+	return "http://" + slug + ".localhost:42080/?" + params.Encode()
+}
+
+func datePrefix(value string, n int) string {
+	if len(value) < n {
+		return value
+	}
+	return value[:n]
+}
+
 type Observation struct {
 	ID         string          `json:"id"`
 	Kind       string          `json:"kind"`
@@ -420,6 +469,10 @@ func selectRows(d Document, q Query) (Result, error) {
 				Period: o.Period, Ref: o.Ref, Status: o.Status, Details: string(o.Details), Caveats: o.Caveats,
 				SampleSize: o.SampleSize,
 			}
+			var details map[string]any
+			_ = json.Unmarshal(o.Details, &details)
+			geo, _ := details["geo"].(string)
+			row.Ref.DeepLink = DeepLinkFor(row.Ref.SourceID, row.Product, row.Period, geo, row.ID)
 			row = projectWatchdogWindow(row)
 			out.Rows = append(out.Rows, row)
 		}

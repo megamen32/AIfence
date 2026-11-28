@@ -156,6 +156,11 @@
             "url": {
               "type": "string"
             },
+            "deep_link": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https?://[^/ ]+"
+            },
             "revision": {
               "type": "string"
             }

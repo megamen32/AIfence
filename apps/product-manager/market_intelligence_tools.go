@@ -203,6 +203,7 @@ func selectIntelligenceRows(rows []evidence.Row, spec intelligenceSpec) []market
 			ID: row.ID, ProductKey: row.Product, MetricKey: row.Metric, Kind: row.Kind, Value: value, Unit: row.Unit, Period: row.Period, SourceRef: row.Ref, Status: row.Status,
 			Origin: origin, Synthetic: detailBool(details, "synthetic") || origin == "synthetic_fixture", Normalization: detailString(details, "normalization"), Geo: detailString(details, "geo"),
 		}
+		item.SourceRef.DeepLink = evidence.DeepLinkFor(row.Ref.SourceID, row.Product, row.Period, item.Geo, row.ID)
 		if spec.market {
 			item.Name = detailString(details, "name")
 			item.Seller = detailString(details, "seller")

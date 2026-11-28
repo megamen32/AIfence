@@ -162,8 +162,11 @@ type saleDetail struct {
 }
 
 func rowView(id string, r evidence.Row) views.EvidenceRow {
+	r.Ref.DeepLink = evidence.DeepLinkFor(r.Ref.SourceID, r.Product, r.Period, detailString(decodeDetails(r.Details), "geo"), r.ID)
 	v := views.EvidenceRow{ID: r.ID, Metric: label(metricTitles, r.Metric), Product: evidenceProductName(r.Product, r), Source: label(sourceTitles, r.Source), Value: r.Value, Date: span(r.Period.From, r.Period.To), SourceName: evidenceSourceName(r.Ref.SourceID), Locator: evidenceLocator(r.Ref.Locator), OpenURL: href("snapshot", id, "obs", r.ID), Note: strings.Join(r.Caveats, " ")}
-	if u, err := url.Parse(r.Ref.URL); err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
+	if u, err := url.Parse(r.Ref.DeepLink); err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
+		v.SourceURL = u.String()
+	} else if u, err := url.Parse(r.Ref.URL); err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
 		v.SourceURL = u.String()
 	}
 	if r.Metric == watchdogMetric {
