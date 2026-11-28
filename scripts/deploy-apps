@@ -276,3 +276,6 @@ else
   go tool air deploy --target production --url "$url" --agent "$slug" -m "AIfence $slug $commit" --wait
 fi
 go tool air status --target production --url "$url" --agent "$slug" --wait
+if [[ "${AIFENCE_SKIP_OWNER_REGRANT:-0}" != 1 && -x "$ROOT/scripts/regrant-owner-ui.py" ]]; then
+  "$ROOT/scripts/regrant-owner-ui.py" --url "$url" || echo "warning: owner UI regrant failed; run scripts/regrant-owner-ui.py --url $url" >&2
+fi
