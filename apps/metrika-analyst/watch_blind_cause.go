@@ -27,10 +27,12 @@ import (
 // release of the same family around that week when the release log has one.
 
 const (
-	causeKind        = "cause_signal"
-	causeBaseWeeks   = 8
-	causeMinBase     = 5
-	causeSearchWeeks = 12
+	causeKind      = "cause_signal"
+	causeBaseWeeks = 8
+	causeMinBase   = 5
+	// The scan covers the whole extract; every rule is scored in noise units of its own baseline.
+	causeSearchWeeks = 40
+	causeMinMissing  = 2 // consecutive weeks of missing orders for a delivery fault
 	causeLateWeeks   = 3
 )
 
@@ -428,6 +430,26 @@ var causeRules = []causeRule{
 		used: []string{"visits", "orders", "bounce_rate", "avg_visit_duration"},
 	},
 	{
+		cause: "traffic_quality", reason: "visits_up_orders_flat_checkouts_flat_no_visit_quality_metrics",
+		needs: []string{"visits", "checkouts", "orders_per_visit"},
+		score: func(z map[string]float64, _ int) float64 {
+			if _, has := z["bounce_rate"]; has {
+				return 0 // visit-quality metrics exist: the rule above decides
+			}
+			if _, has := z["avg_visit_duration"]; has {
+				return 0
+			}
+			// Traffic that grows several-fold while checkouts and orders do not
+			// follow is not demand. Without quality metrics this is the weaker
+			// reading, so checkouts must stay level (a fall is the masked regression).
+			if math.Abs(z["checkouts"]) >= causeZ/2 {
+				return 0
+			}
+			return min(z["visits"], -z["orders_per_visit"])
+		},
+		used: []string{"visits", "card_views", "cart_additions", "checkouts", "orders"},
+	},
+	{
 		cause: "masked_multi_cause_regression", reason: "traffic_up_while_checkouts_fall",
 		needs: []string{"visits", "checkouts", "orders_per_visit"},
 		score: func(z map[string]float64, _ int) float64 {
@@ -551,6 +573,7 @@ func blindCauses(measures []*blindMeasure, cutoff string, releases []ContextFact
 		}
 	}
 	found = append(found, causeKeyMigrations(funnels, weeks)...)
+	found = append(found, causeMissingOrders(funnels, weeks)...)
 	out := make([]BlindCandidate, 0, len(found))
 	for _, c := range found {
 		start, _ := time.Parse(time.DateOnly, c.start)
@@ -656,4 +679,70 @@ func causeContinues(old, next *causeFunnel, weeks []string, k int) bool {
 	}
 	zj, okJ := causeSplitZ(joint, k, 0.02)
 	return okA && okJ && za <= -causeZ && math.Abs(zj) < causeZ/2
+}
+
+// causeMissingOrders finds orders that stop arriving while the funnel above
+// them keeps reporting: at least causeMinMissing consecutive weeks where
+// checkouts and visits are observed and orders are not. A single gap stays an
+// honest "cannot tell" and is not typed.
+func causeMissingOrders(funnels map[string]*causeFunnel, weeks []string) []causeFound {
+	var out []causeFound
+	products := make([]string, 0, len(funnels))
+	for p := range funnels {
+		products = append(products, p)
+	}
+	sort.Strings(products)
+	for _, p := range products {
+		f := funnels[p]
+		var best []int
+		for _, seg := range []string{"all", "desktop", "mobile"} {
+			orders, checkouts, visits := f.segments[seg]["orders"], f.segments[seg]["checkouts"], f.segments[seg]["visits"]
+			if orders == nil || checkouts == nil || visits == nil {
+				continue
+			}
+			var run []int
+			flush := func() {
+				if len(run) >= causeMinMissing && len(run) > len(best) {
+					best = append([]int(nil), run...)
+				}
+				run = run[:0]
+			}
+			for i, w := range weeks {
+				_, hasO := orders[w]
+				_, hasC := checkouts[w]
+				_, hasV := visits[w]
+				if !hasO && hasC && hasV && w >= f.first && w <= f.last {
+					run = append(run, i)
+				} else {
+					flush()
+				}
+			}
+			flush()
+		}
+		if len(best) == 0 || best[0] < causeMinBase {
+			continue
+		}
+		k := best[0]
+		var evidence []BlindCauseMetric
+		var refs []Ref
+		for _, seg := range []string{"all", "desktop", "mobile"} {
+			pre := weeks[max(0, k-causeBaseWeeks):k]
+			during := weeks[k : best[len(best)-1]+1]
+			a, okA := causeMean(f.segments[seg]["checkouts"], pre)
+			b, okB := causeMean(f.segments[seg]["checkouts"], during)
+			if okA && okB && a > 0 {
+				evidence = append(evidence, BlindCauseMetric{Segment: seg, MetricKey: "checkouts", Before: round2(a), After: round2(b), ChangePct: round2((b/a - 1) * 100)})
+			}
+			if a, ok := causeMean(f.segments[seg]["orders"], pre); ok {
+				evidence = append(evidence, BlindCauseMetric{Segment: seg, MetricKey: "orders", Before: round2(a), After: 0, ChangePct: -100})
+			}
+			for _, w := range []string{weeks[k-1], weeks[k]} {
+				if r, ok := f.refs[seg+"/checkouts/"+w]; ok {
+					refs = append(refs, r)
+				}
+			}
+		}
+		out = append(out, causeFound{p, "late_event_delivery", "orders_missing_while_checkouts_observed", weeks[k], 50, evidence, refs})
+	}
+	return out
 }
