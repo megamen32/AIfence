@@ -17,6 +17,8 @@ const dashWeeks = 8
 
 const dashboardKESFixture = "fixtures/aifence-original.json"
 
+const dashboardKESFixture = "fixtures/aifence-original.json"
+
 var metricTitles = map[string]string{
 	"visits": "Визиты", "users": "Посетители", "pageviews": "Просмотры",
 	"orders": "Заказы", "revenue": "Выручка", "purchase_conversion": "Конверсия в покупку",
@@ -119,22 +121,26 @@ func dashboardSandbox(c Settings) bool {
 	return strings.Contains(path, "aifence-sandbox.json")
 }
 
+func dashboardKES(c Settings) bool {
+	return dashboardSandbox(c) || c.EvidencePath == dashboardKESFixture
+}
+
 func dashboardProduct(c Settings) string {
-	if dashboardSandbox(c) {
+	if dashboardKES(c) {
 		return "kaspersky_small_office_security"
 	}
 	return "store"
 }
 
 func dashboardWeeks(c Settings, now time.Time) []dashWeek {
-	if dashboardSandbox(c) {
+	if dashboardKES(c) {
 		return lastWeeks(now, dashWeeks)
 	}
 	return lastWeeks(now, dashWeeks)
 }
 
 func dashMetrics(c Settings) []string {
-	if dashboardSandbox(c) {
+	if dashboardKES(c) {
 		return []string{"orders_index"}
 	}
 	if c.Ecommerce {
