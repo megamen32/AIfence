@@ -90,6 +90,7 @@ type Document struct {
 	Warnings     []string `json:"warnings,omitempty"`
 }
 type Row struct {
+	SnapshotID     string          `json:"snapshot_id,omitempty"`
 	WindowContrast *WindowContrast `json:"window_contrast,omitempty"`
 	BatchStatus    string          `json:"-"`
 	BatchAsOf      string          `json:"-"`
@@ -293,6 +294,9 @@ func (s *Service) MonitorSnapshotIDs(ctx context.Context, recent []Summary) ([]s
 }
 
 func (s *Service) Read(ctx context.Context, q Query) (Result, error) {
+	if q.SnapshotID == "" {
+		return s.readAcross(ctx, q)
+	}
 	u, err := human(ctx)
 	if err != nil {
 		return Result{}, err
@@ -318,6 +322,53 @@ func (s *Service) Read(ctx context.Context, q Query) (Result, error) {
 	result.ImportedAt = &stored.ImportedAt
 	return result, nil
 }
+// readAcross serves a query that names no snapshot: a chat model rarely knows
+// snapshot ids, so the filters run over every visible snapshot, newest first.
+// A repeated import of the same observation is returned once.
+func (s *Service) readAcross(ctx context.Context, q Query) (Result, error) {
+	if q.Offset < 0 || q.Limit < 0 || q.Limit > 100 {
+		return Result{}, errors.New("limit 1..100, offset >= 0")
+	}
+	if q.Limit == 0 {
+		q.Limit = 24
+	}
+	index, err := s.List(ctx, Empty{})
+	if err != nil {
+		return Result{}, err
+	}
+	out := Result{Rows: []Row{}, Warnings: []string{}}
+	seen := map[string]bool{}
+	for _, entry := range index.Snapshots {
+		page := q
+		page.SnapshotID, page.Offset, page.Limit = entry.SnapshotID, 0, 100
+		got, err := s.Read(ctx, page)
+		if err != nil {
+			continue
+		}
+		if out.AsOf == "" {
+			out.AsOf = entry.AsOf
+		}
+		for _, row := range got.Rows {
+			key := row.Ref.SourceID + "|" + row.Ref.Locator + "|" + row.ID
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out.Total++
+			if out.Total <= q.Offset || len(out.Rows) >= q.Limit {
+				continue
+			}
+			row.SnapshotID = entry.SnapshotID
+			out.Rows = append(out.Rows, row)
+		}
+		out.Count += got.Count
+	}
+	if out.Total == 0 {
+		out.Warnings = append(out.Warnings, "По этим фильтрам наблюдений нет ни в одном доступном снимке. Уточните product_key, metric_key или source; без фильтров вернутся последние строки всех снимков.")
+	}
+	return out, nil
+}
+
 func selectRows(d Document, q Query) (Result, error) {
 	if q.Offset < 0 || q.Limit < 0 || q.Limit > 100 {
 		return Result{}, errors.New("limit 1..100, offset >= 0")

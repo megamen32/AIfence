@@ -132,9 +132,18 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 	_, active := watchdogState(rows)
 	var facts []BriefFact
 	var readings []ProductReading
+	seenReadings := map[string]bool{}
+	newest := ""
 	for _, r := range active {
 		w := evidence.WatchdogWindow(r.Row)
 		if w == nil {
+			continue
+		}
+		// Rows are newest first. An alert whose window closed long before the
+		// newest one is leftover history, not what the director asks about now.
+		if newest == "" {
+			newest = w.Current.To
+		} else if staleWindow(newest, w.Current.To) {
 			continue
 		}
 		m := signalMagnitude(w)
@@ -149,6 +158,12 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 		}
 		fact := fmt.Sprintf("%s, два окна по %d недели. С %s по сравнению с %s изменение составило %s. Изменение контроля (%s) за те же окна %s.", metric, w.WindowWeeks, m.Current, m.Baseline, m.Change, productName(r.details.Control), control)
 		reading := ProductReading{Product: observedProductName(r.Product, r), windowEnd: w.Current.To}
+		// The same alert imported twice must reach the director once.
+		if id := fmt.Sprintf("%s|%s|%s|%.1f", reading.Product, w.Current.From, w.Current.To, w.RelativeChangePct); seenReadings[id] {
+			continue
+		} else {
+			seenReadings[id] = true
+		}
 		reading.Sales = fmt.Sprintf("%s, %s–%s к %s–%s (по %d недели): %s %s, %s %s.",
 			metric, date(w.Current.From), date(w.Current.To), date(w.Baseline.From), date(w.Baseline.To),
 			w.WindowWeeks, reading.Product, m.Change, productName(r.details.Control), control)
@@ -260,6 +275,12 @@ func salesBrief(rows []monitorObservation, records []decision.Record, q BriefQue
 		result.NextOffset = &end
 	}
 	return result
+}
+
+func staleWindow(newest, other string) bool {
+	a, errA := time.Parse("2006-01-02", newest)
+	b, errB := time.Parse("2006-01-02", other)
+	return errA == nil && errB == nil && a.Sub(b) > 26*7*24*time.Hour
 }
 
 // summaryRows keeps the panel's separation without hiding a synthetic owner.
