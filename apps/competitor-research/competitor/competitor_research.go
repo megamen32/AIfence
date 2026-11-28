@@ -1,6 +1,7 @@
 package competitor
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -118,7 +119,16 @@ func registerCompetitorResearch(a *agentsdk.Agent) {
 		if err != nil {
 			return result, nil
 		}
-		result.Attachments = append(result.Attachments, tool.Attachment{Data: "s3ref:" + string(info.Path), Filename: payload.Filename, MimeType: "text/csv"})
+		result.Attachments = append(result.Attachments, tool.Attachment{Data: "s3ref:" + string(info.Path), Filename: "Softline-competitive-analysis-2026-11-28.csv", MimeType: "text/csv"})
+		xlsx, xerr := buildCompetitorXLSX(payload.CSV)
+		if xerr == nil {
+			xlogical := fmt.Sprintf("%s/%x.xlsx", competitorResearchDirectory, sha256.Sum256([]byte(payload.StudyID+"xlsx"+payload.CSV)))
+			if xr, e := a.ResolveFilePath(ctx, xlogical, agentsdk.FileOperationWrite); e == nil {
+				if xi, e := a.WriteFile(ctx, string(xr), bytes.NewReader(xlsx), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); e == nil {
+					result.Attachments = append(result.Attachments, tool.Attachment{Data: "s3ref:" + string(xi.Path), Filename: "Softline-competitive-analysis-2026-11-28.xlsx", MimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})
+				}
+			}
+		}
 		return result, nil
 	}
 	a.RegisterTool(export, agentsdk.AccessUser)
@@ -250,4 +260,52 @@ func uniqueNonEmpty(items []string) []string {
 		out = append(out, item)
 	}
 	return out
+}
+
+func buildCompetitorXLSX(csvText string) ([]byte, error) {
+	r, err := csv.NewReader(strings.NewReader(csvText)).ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	if len(r) == 0 {
+		return nil, errors.New("empty CSV")
+	}
+	summary := [][]string{{"Конкурент", "Критерий", "Оценка", "Итоговый балл", "Источник", "Дата проверки"}}
+	for _, v := range r[1:] {
+		if len(v) >= 12 {
+			summary = append(summary, []string{v[1], v[5], v[7], v[7], v[9], v[10]})
+		}
+	}
+	files := map[string]string{"[Content_Types].xml": `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`, "_rels/.rels": `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`, "xl/workbook.xml": `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Summary" sheetId="1" r:id="rId1"/><sheet name="Detail" sheetId="2" r:id="rId2"/></sheets></workbook>`, "xl/_rels/workbook.xml.rels": `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`}
+	files["xl/worksheets/sheet1.xml"] = sheetXML(summary)
+	files["xl/worksheets/sheet2.xml"] = sheetXML(r)
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	for n, v := range files {
+		w, e := z.Create(n)
+		if e != nil {
+			return nil, e
+		}
+		w.Write([]byte(v))
+	}
+	z.Close()
+	return b.Bytes(), nil
+}
+func sheetXML(rows [][]string) string {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`)
+	for i, row := range rows {
+		fmt.Fprintf(&b, `<row r="%d">`, i+1)
+		for j, v := range row {
+			fmt.Fprintf(&b, `<c r="%s%d" t="inlineStr"><is><t>%s</t></is></c>`, string(rune('A'+j)), i+1, xmlEscape(v))
+		}
+		b.WriteString(`</row>`)
+	}
+	b.WriteString(`</sheetData></worksheet>`)
+	return b.String()
+}
+func xmlEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	return strings.ReplaceAll(s, ">", "&gt;")
 }
