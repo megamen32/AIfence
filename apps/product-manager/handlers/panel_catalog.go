@@ -127,7 +127,7 @@ func (h *Handler) loadOverview(ctx context.Context, m *views.Monitor, q url.Valu
 		}
 	}
 	if c.Vendor == "" {
-		c.Tiles = catalogTiles(groups, useRevenue, currency, needle, mode)
+		c.Tiles = catalogVendorTiles(groups, useRevenue, currency, needle, mode)
 	}
 }
 
@@ -462,6 +462,13 @@ func catalogTiles(groups []mapGroup, revenue bool, currency, needle, mode string
 		items = items[end:]
 	}
 	return tiles
+}
+
+func catalogVendorTiles(groups []mapGroup, revenue bool, currency, needle, mode string) []views.CatalogTile {
+	for i := range groups {
+		groups[i].link = ""
+	}
+	return catalogTiles(groups, revenue, currency, needle, mode)
 }
 
 func vendorProductTiles(vendor string, vendorCount int64, rows []monitorObservation, pulses []views.PulseItem, records []views.Link, mode string) []views.CatalogTile {
