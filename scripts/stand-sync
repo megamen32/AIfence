@@ -161,11 +161,11 @@ build_code() {
       [ -n "${AIFENCE_PERSONAL_CACHE+x}" ] && vendor_env+=(AIFENCE_PERSONAL_CACHE="$AIFENCE_PERSONAL_CACHE")
       (cd "$appdir" && env "${vendor_env[@]}" "$GO_BIN" tool templ generate && env "${vendor_env[@]}" "$GO_BIN" mod vendor)
     fi
-    rsync -a --delete --partial --exclude .git --exclude .runtime --exclude private --exclude data --exclude materials --exclude ".airlock/local" "$appdir/" "$bundle/apps/$app/"
     if [ "$app" = product-manager ] && [ -f "$worktree/apps/path-check/check_purchase_path.py" ]; then
       mkdir -p "$appdir/pathcheck"
       cp "$worktree/apps/path-check/check_purchase_path.py" "$appdir/pathcheck/check_purchase_path.py"
     fi
+    rsync -a --delete --partial --exclude .git --exclude .runtime --exclude private --exclude data --exclude materials --exclude ".airlock/local" "$appdir/" "$bundle/apps/$app/"
     image_ref=$(awk -F '|' -v a="$app" '$2==a {print $4; exit}' "$RUN_DIR/source-apps.tsv" 2>/dev/null || true)
     [ -n "$image_ref" ] || { echo "No exact Airlock image_ref for $app in source-apps.tsv" >&2; IFS=$oldifs; return 47; }
     printf '%s\t%s\n' "$app" "$image_ref" >> "$bundle/app-image-refs.tsv"
@@ -176,10 +176,12 @@ build_code() {
   bundle_remote="$remote_dir/bundle"
   tar_remote="$remote_dir/source-bundle.tar"
   helper_remote="$remote_dir/stand-sync-build"
+  reconcile_remote="$remote_dir/stand-sync-reconcile"
   refs_remote="$remote_dir/built-image-refs.tsv"
   ssh_target "mkdir -p $(printf '%q' "$remote_dir")"
   rsync "${RSYNC_RESUME[@]}" "$RUN_DIR/source-bundle.tar" "$TARGET_HOST:$tar_remote"
   rsync "${RSYNC_RESUME[@]}" "$SOURCE_ROOT/scripts/stand-sync-build" "$TARGET_HOST:$helper_remote"
+  rsync "${RSYNC_RESUME[@]}" "$SOURCE_ROOT/scripts/stand-sync-reconcile" "$TARGET_HOST:$reconcile_remote"
   ssh_target "set -Eeuo pipefail; rm -rf $(printf '%q' "$bundle_remote"); mkdir -p $(printf '%q' "$bundle_remote"); tar -xf $(printf '%q' "$tar_remote") -C $(printf '%q' "$bundle_remote"); chmod 700 $(printf '%q' "$helper_remote"); $(printf '%q' "$helper_remote") $(printf '%q' "$REMOTE_ROOT") $(printf '%q' "$bundle_remote") $(printf '%q' "$APPS_CSV") $(printf '%q' "$bundle_remote/app-image-refs.tsv") $(printf '%q' "$refs_remote")"
   rsync "${RSYNC_RESUME[@]}" "$TARGET_HOST:$refs_remote" "$RUN_DIR/built-image-refs.tsv"
   target_sha=$sha
@@ -193,10 +195,14 @@ state_phase() { [ "$MODE" = state ] || printf 'state skipped (code-only)\n' > "$
 restore_phase() { [ "$MODE" = state ] || printf 'restore skipped (code-only)\n' > "$RUN_DIR/restore-skipped"; }
 reconcile_phase() {
   if [ -n "${STAND_SYNC_RECONCILE_CMD:-}" ]; then
-    ssh_target "set -Eeuo pipefail; eval $(printf '%q' "$STAND_SYNC_RECONCILE_CMD")"
+    refs_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/built-image-refs.tsv"
+    ssh_target "set -Eeuo pipefail; export STAND_SYNC_IMAGE_REFS_FILE=$(printf '%q' "$refs_remote"); eval $(printf '%q' "$STAND_SYNC_RECONCILE_CMD")"
   else
-    echo "Missing STAND_SYNC_RECONCILE_CMD; set it to re-register apps, re-apply grants, and restart source watches." >&2
-    return 43
+    source_sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
+    reconcile_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/stand-sync-reconcile"
+    refs_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/built-image-refs.tsv"
+    bundle_remote="$REMOTE_ROOT/.stand-sync/$SYNC_KEY/bundle"
+    ssh_target "set -Eeuo pipefail; bash $(printf '%q' "$reconcile_remote") $(printf '%q' "$REMOTE_ROOT") $(printf '%q' "$APPS_CSV") $(printf '%q' "$source_sha") $(printf '%q' "$bundle_remote") $(printf '%q' "$refs_remote")"
   fi
 }
 health_phase() {
