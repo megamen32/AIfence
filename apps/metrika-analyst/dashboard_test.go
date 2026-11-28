@@ -67,8 +67,8 @@ func TestSandboxDashboardUsesKESFixture(t *testing.T) {
 	if view.SourceChip != "Выгрузка Метрики · fixtures/aifence-original.json" {
 		t.Fatalf("dashboard source = %q", view.SourceChip)
 	}
-	if view.State != "ok" || view.Headline == "" || !strings.Contains(view.Headline, "Kaspersky Endpoint Security") {
-		t.Fatalf("dashboard KES view = state %q headline %q", view.State, view.Headline)
+	if view.State != "ok" || view.Headline == "" || !strings.Contains(view.Eyebrow, "KASPERSKY ENDPOINT SECURITY") {
+		t.Fatalf("dashboard KES view = state %q eyebrow %q headline %q", view.State, view.Eyebrow, view.Headline)
 	}
 }
 
