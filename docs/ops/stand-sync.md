@@ -19,11 +19,11 @@ The target root is \`/home/roomhacker/aifence-move\`. Successful phases leave \`
 
 | Phase | Behavior |
 | --- | --- |
-| pin | Reads the source Git SHA and contract fingerprint, plus non-secret image IDs from the Mac Docker context when available. |
-| build | Full mode delegates the native, resumable \`scripts/stand/move-to-server100.sh\`; code-only fetches that SHA into a target worktree and runs the target compose build. |
+| pin | Reads the source Git SHA and contract fingerprint, plus non-secret source image/container IDs and OCI revision/version labels from the Mac Docker context when available; rows are written to source-agent-shas.tsv. |
+| build | Full mode delegates the native, resumable \`scripts/stand/move-to-server100.sh\`; code-only fetches that SHA into a target worktree and runs the target compose build; if no matching service exists, it builds apps/<slug>/Dockerfile directly and tags a stand-sync image. |
 | state | Full mode uses the existing \`pg_dump -Fc\` and resumable rsync transfer; code-only records a skip. |
 | restore | Restores dumps before app startup in full mode; code-only records a skip. |
-| reconcile | Runs \`STAND_SYNC_RECONCILE_CMD\` on the target to re-register apps, re-apply grants bound to app version and restart source watches. |
+| reconcile | Runs \`STAND_SYNC_RECONCILE_CMD\` on the target to re-register apps, re-apply grants bound to app version and restart source watches. A missing hook is a hard failure with the retry command. |
 | health | Checks the HTTPS health endpoint. |
 | smoke | Checks comma-separated URLs and optionally runs \`STAND_SYNC_SCREENSHOT_CMD\` in the receipt directory. |
 

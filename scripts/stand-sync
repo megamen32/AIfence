@@ -79,6 +79,18 @@ pin_phase() {
   if command -v docker >/dev/null 2>&1 && docker context inspect colima-aifence >/dev/null 2>&1; then
     DOCKER_CONTEXT=colima-aifence docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' > "$RUN_DIR/source-images.tsv" || true
     chmod 600 "$RUN_DIR/source-images.tsv"
+    DOCKER_CONTEXT=colima-aifence docker ps --format '{{.Names}}\t{{.Image}}' > "$RUN_DIR/source-agents.tsv" || true
+    {
+      printf 'name\timage\tid\trevision\tversion\n' 
+      while IFS=$'\t' read -r name image; do
+        [ -n "$name" ] || continue
+        id=$(DOCKER_CONTEXT=colima-aifence docker inspect --format '{{.Id}}' "$name" 2>/dev/null || true)
+        rev=$(DOCKER_CONTEXT=colima-aifence docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$name" 2>/dev/null || true)
+        ver=$(DOCKER_CONTEXT=colima-aifence docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$name" 2>/dev/null || true)
+        printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$image" "$id" "$rev" "$ver"
+      done < "$RUN_DIR/source-agents.tsv"
+    } > "$RUN_DIR/source-agent-shas.tsv"
+    chmod 600 "$RUN_DIR/source-agents.tsv" "$RUN_DIR/source-agent-shas.tsv"
   fi
   chmod 600 "$RUN_DIR/pin.env" "$MANIFEST"
 }
@@ -88,7 +100,9 @@ build_full() {
 }
 build_code() {
   sha=$(awk -F '\t' '$1=="source_sha"{print $2}' "$RUN_DIR/pin.env")
+  apps_q=$(printf "%q" "$APPS_CSV")
   target_sha=$(ssh_target "set -Eeuo pipefail
+apps=$apps_q
 root=$(printf '%q' "$REMOTE_ROOT")
 repo=\$root/repo
 mkdir -p \$root/.stand-sync/worktrees
@@ -99,10 +113,22 @@ if [ ! -e \$wt/.git ]; then git -C \$repo worktree add --detach \$wt $sha; fi
 cd \$wt
 if [ -n \${STAND_SYNC_BUILD_CMD:-} ]; then eval \"\$STAND_SYNC_BUILD_CMD\"
 else
- svc=\$(docker compose config --services 2>/dev/null | awk '/product-manager|product_manager|pm/{print; exit}')
- [ -n \"\$svc\" ] || { echo 'No product-manager compose service; set STAND_SYNC_BUILD_CMD on server-100' >&2; exit 42; }
- docker compose build \"\$svc\" && docker compose up -d --no-deps \"\$svc\"
-fi
+ oldifs=\$IFS; IFS=,
+ for app in \$apps; do
+  svc=\$(docker compose config --services 2>/dev/null | grep -E "(^|-)\$app$" | head -1 || true)
+  if [ -n "\$svc" ]; then
+   docker compose build "\$svc" && docker compose up -d --no-deps "\$svc"
+  elif [ -f "apps/\$app/Dockerfile" ]; then
+   prefix=\${STAND_SYNC_APP_IMAGE_PREFIX:-aifence}
+   image="\$prefix-\$app:stand-sync-$sha"
+   docker build -f "apps/\$app/Dockerfile" -t "\$image" "apps/\$app"
+   echo "built \$app \$image" >&2
+  else
+   echo "No Compose service or apps/\$app/Dockerfile; set STAND_SYNC_BUILD_CMD on server-100" >&2
+   exit 42
+  fi
+ done
+ IFS=\$oldifs
 git rev-parse HEAD")
   tmp=$RUN_DIR/manifest.tmp
   awk -F '\t' -v OFS='\t' -v s="$target_sha" 'NR==1{print;next}{$4=s;print}' "$MANIFEST" > "$tmp"
@@ -114,7 +140,8 @@ reconcile_phase() {
   if [ -n "${STAND_SYNC_RECONCILE_CMD:-}" ]; then
     ssh_target "set -Eeuo pipefail; eval $(printf '%q' "$STAND_SYNC_RECONCILE_CMD")"
   else
-    printf 'Set STAND_SYNC_RECONCILE_CMD to re-register app, re-apply version-bound grants, and restart source watches.\n' > "$RUN_DIR/reconcile-required"
+    echo "Missing STAND_SYNC_RECONCILE_CMD; set it to re-register apps, re-apply grants, and restart source watches." >&2
+    return 43
   fi
 }
 health_phase() {
